@@ -1,6 +1,19 @@
-import { DoubleSide, FloatType, Mesh, NearestFilter, Object3D, OrthographicCamera, ShaderMaterial, Uniform, Vector2, WebGLRenderer, WebGLRenderTarget, Texture } from 'three';
+import {
+  DoubleSide,
+  FloatType,
+  Mesh,
+  NearestFilter,
+  Object3D,
+  OrthographicCamera,
+  ShaderMaterial,
+  Uniform,
+  Vector2,
+  WebGLRenderer,
+  WebGLRenderTarget,
+  Texture,
+} from 'three';
 
-const worldPositionVertexShader =`
+const worldPositionVertexShader = `
     uniform vec2 offset;
     attribute vec2 uv2;
     varying vec4 vWorldPosition;
@@ -20,19 +33,17 @@ const worldPositionFragmentShader = `
     }
 `;
 
-
 const worldPositionMaterial = new ShaderMaterial({
-    vertexShader: worldPositionVertexShader,
-    fragmentShader: worldPositionFragmentShader,
-    side: DoubleSide,
-    fog: false,
-    uniforms: {
-        offset: new Uniform(new Vector2(0,0))
-    }
-})
+  vertexShader: worldPositionVertexShader,
+  fragmentShader: worldPositionFragmentShader,
+  side: DoubleSide,
+  fog: false,
+  uniforms: {
+    offset: new Uniform(new Vector2(0, 0)),
+  },
+});
 
-
-const normalVertexShader =`
+const normalVertexShader = `
     varying vec4 vNormal;
     attribute vec2 uv2;
     uniform vec2 offset;
@@ -53,97 +64,103 @@ const normalFragmentShader = `
     }
 `;
 
-
 const normalMaterial = new ShaderMaterial({
-    vertexShader: normalVertexShader,
-    fragmentShader: normalFragmentShader,
-    side: DoubleSide,
-    fog: false,
-    uniforms: {
-        offset: new Uniform(new Vector2(0,0))
-    }
-})
+  vertexShader: normalVertexShader,
+  fragmentShader: normalFragmentShader,
+  side: DoubleSide,
+  fog: false,
+  uniforms: {
+    offset: new Uniform(new Vector2(0, 0)),
+  },
+});
 
-const offsets =
-[
-    { x: -2, y: -2 },
-    { x: 2, y: -2 },
-    { x: -2, y: 2 },
-    { x: 2, y: 2 },
+const offsets = [
+  { x: -2, y: -2 },
+  { x: 2, y: -2 },
+  { x: -2, y: 2 },
+  { x: 2, y: 2 },
 
-    { x: -1, y: -2 },
-    { x: 1, y: -2 },
-    { x: -2, y: -1 },
-    { x: 2, y: -1 },
-    { x: -2, y: 1 },
-    { x: 2, y: 1 },
-    { x: -1, y: 2 },
-    { x: 1, y: 2 },
+  { x: -1, y: -2 },
+  { x: 1, y: -2 },
+  { x: -2, y: -1 },
+  { x: 2, y: -1 },
+  { x: -2, y: 1 },
+  { x: 2, y: 1 },
+  { x: -1, y: 2 },
+  { x: 1, y: 2 },
 
-    { x: -2, y: 0 },
-    { x: 2, y: 0 },
-    { x: 0, y: -2 },
-    { x: 0, y: 2 },
+  { x: -2, y: 0 },
+  { x: 2, y: 0 },
+  { x: 0, y: -2 },
+  { x: 0, y: 2 },
 
-    { x: -1, y: -1 },
-    { x: 1, y: -1 },
-    { x: -1, y: 0 },
-    { x: 1, y: 0 },
-    { x: -1, y: 1 },
-    { x: 1, y: 1 },
-    { x: 0, y: -1 },
-    { x: 0, y: 1 },
+  { x: -1, y: -1 },
+  { x: 1, y: -1 },
+  { x: -1, y: 0 },
+  { x: 1, y: 0 },
+  { x: -1, y: 1 },
+  { x: 1, y: 1 },
+  { x: 0, y: -1 },
+  { x: 0, y: 1 },
 
-    { x: 0, y: 0 },
+  { x: 0, y: 0 },
 ];
 
-export const renderAtlas = (renderer: WebGLRenderer, meshs: Mesh[], resolution: number, dialate: boolean = true) => {
+export const renderAtlas = (
+  renderer: WebGLRenderer,
+  meshs: Mesh[],
+  resolution: number,
+  dialate: boolean = true,
+) => {
+  const renderWithShader = (material: ShaderMaterial): Texture => {
+    const target = new WebGLRenderTarget(resolution, resolution, {
+      type: FloatType,
+      magFilter: NearestFilter,
+      minFilter: NearestFilter,
+    });
+    // Create orthographic camera with large clip area to prevent clipping the geometry
+    // I'm don't know a better way to do this :(
+    const orthographicCamera = new OrthographicCamera(-100, 100, -100, 100, -100, 200);
+    orthographicCamera.updateMatrix();
 
-    const renderWithShader = (material: ShaderMaterial): Texture => {
-        const target = new WebGLRenderTarget(resolution, resolution, {type: FloatType, magFilter: NearestFilter, minFilter: NearestFilter});
-        // Create orthographic camera with large clip area to prevent clipping the geometry
-        // I'm don't know a better way to do this :(
-        const orthographicCamera = new OrthographicCamera(-100, 100, -100, 100, -100, 200);
-        orthographicCamera.updateMatrix();
-    
-        // Re-create objects with util material - Maybe we could just change the material on the fly?
-        const lightMapMeshes = new Object3D();
-        lightMapMeshes.matrixWorldAutoUpdate = false;
+    // Re-create objects with util material - Maybe we could just change the material on the fly?
+    const lightMapMeshes = new Object3D();
+    lightMapMeshes.matrixWorldAutoUpdate = false;
 
-        for (const mesh of meshs) {
-            const lightMapMesh = mesh.clone();
-            lightMapMesh.material = material;
-            lightMapMeshes.add(lightMapMesh);
-        }
-
-        // Setup renderer
-        renderer.autoClear = false;
-        renderer.setRenderTarget(target);
-        renderer.setClearColor(0, 0);
-        renderer.clear()
-    
-        if(dialate) {
-            for (const offset of offsets) {
-                material.uniforms.offset.value.x = offset.x * (1 / resolution);
-                material.uniforms.offset.value.y = offset.y * (1 / resolution);
-                renderer.render(lightMapMeshes, orthographicCamera)
-            }
-        }
-    
-        material.uniforms.offset.value.x = 0;
-        material.uniforms.offset.value.y = 0;
-        renderer.render(lightMapMeshes, orthographicCamera)
-    
-        renderer.setRenderTarget(null);
-        
-        return target.texture;
+    for (const mesh of meshs) {
+      const lightMapMesh = mesh.clone();
+      lightMapMesh.material = material;
+      lightMapMeshes.add(lightMapMesh);
     }
 
-    const positionTexture = renderWithShader(worldPositionMaterial);
-    const normalTexture = renderWithShader(normalMaterial);
+    // Setup renderer
+    renderer.autoClear = false;
+    renderer.setRenderTarget(target);
+    renderer.setClearColor(0, 0);
+    renderer.clear();
 
-    return {
-        positionTexture,
-        normalTexture,
-    };
+    if (dialate) {
+      for (const offset of offsets) {
+        material.uniforms.offset.value.x = offset.x * (1 / resolution);
+        material.uniforms.offset.value.y = offset.y * (1 / resolution);
+        renderer.render(lightMapMeshes, orthographicCamera);
+      }
+    }
+
+    material.uniforms.offset.value.x = 0;
+    material.uniforms.offset.value.y = 0;
+    renderer.render(lightMapMeshes, orthographicCamera);
+
+    renderer.setRenderTarget(null);
+
+    return target.texture;
+  };
+
+  const positionTexture = renderWithShader(worldPositionMaterial);
+  const normalTexture = renderWithShader(normalMaterial);
+
+  return {
+    positionTexture,
+    normalTexture,
+  };
 };

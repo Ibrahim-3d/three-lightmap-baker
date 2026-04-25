@@ -345,3 +345,19 @@ But Task 03's `extractPerTriangleMaterials` built the per-triangle albedo+emissi
 - Render-target leaks (architecture.md §4) still present for primary Pass 1 G-buffers. MRT RT and composite RT are disposed on rebake.
 
 **Next session** — Phase B: status panel rebuild. Replace the current Tweakpane `Monitor` readouts (samples/spp/etaSec) with a proper progress bar widget showing percentage + elapsed-vs-remaining time. Then Phase C (UI structure + labels polish), then Phase D1 (texel density heatmap, read-only).
+
+### Standards Checkpoint — 2026-04-26
+- Created CONTRIBUTING.md with full coding standards
+- Added ESLint + Prettier configuration
+- Tightened tsconfig strict options
+- Updated CLAUDE.md with coding standards reference
+- Added lint/format/typecheck npm scripts
+- All future tasks must pass `npm run check` before commit
+
+### Context-Driven Development Setup — 2026-04-26
+- Added modularity rules to CONTRIBUTING.md (300 line/file, 50 line/function, 5 import max)
+- Created docs/DECISIONS.md with D-001 through D-004
+- Created docs/FAILED-APPROACHES.md with F-001 through F-003
+- Appended system diagram, data flow, and key invariants to docs/architecture.md
+- Created docs/GLOSSARY.md with all project-specific terms defined
+- Updated CLAUDE.md with modularity reference and context-driven development section

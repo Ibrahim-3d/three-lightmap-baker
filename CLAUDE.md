@@ -133,3 +133,50 @@ Sub-agent prompts must be self-contained. Per the agent's tool result, the worke
 ### Trust but verify
 
 A sub-agent's summary describes what it INTENDED to do, not necessarily what it did. After any agent that wrote files, the main session should `Read` the relevant changed file to confirm — or dispatch `build-verifier` to catch syntax/type damage.
+
+## Coding Standards
+
+All code must follow CONTRIBUTING.md. Key rules:
+
+- GLSL 3.0 ES only, with MRT where applicable
+- No `any` in TypeScript — use proper types
+- Every WebGL resource must be tracked and disposed
+- Try/finally for renderer state changes
+- Yield to browser every 100ms during bake operations
+- Console logs prefixed with `[baker]`, behind DEBUG flag in production
+- See CONTRIBUTING.md for full rules
+
+## File Naming
+
+- kebab-case for files: `gap-flood.ts` not `gapFlood.ts`
+- See CONTRIBUTING.md naming table for full conventions
+
+## Before Committing
+
+1. `npx tsc --noEmit` — zero errors
+2. `npx eslint src/` — zero errors, warnings acceptable but fix if easy
+3. `npx prettier --check src/` — all files formatted
+
+## Modularity
+
+- Max 300 lines per file, 50 lines per function
+- Max 5 project imports per file
+- No circular imports, no module-level mutable state
+- See CONTRIBUTING.md "Code Modularity Rules" for full details
+- CHECK THESE BEFORE EVERY COMMIT
+
+## Context-Driven Development
+
+Before starting any session, read these files in order:
+1. `.claude/progress.md` — what was done, what's next
+2. `docs/DECISIONS.md` — why things are the way they are
+3. `docs/FAILED-APPROACHES.md` — what NOT to try again
+4. `docs/ARCHITECTURE.md` — how the system fits together
+5. `docs/GLOSSARY.md` — what terms mean in this project
+
+After every session, update:
+1. `.claude/progress.md` — append session log with tasks completed, blockers, next steps
+2. `docs/DECISIONS.md` — append any new decisions made during the session
+3. `docs/FAILED-APPROACHES.md` — append any approaches that were tried and failed
+
+NEVER delete entries from DECISIONS.md or FAILED-APPROACHES.md. Superseded decisions get their status changed to "superseded by D-XX", not removed. Failed approaches stay forever as warnings.

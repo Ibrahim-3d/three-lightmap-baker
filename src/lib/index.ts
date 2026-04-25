@@ -23,7 +23,10 @@ export type { CompositeResult } from './lightmap/Composite';
 
 // --- Refinement (chart dilation + bilateral denoise) ---
 export { runPostProcess as runRefinement } from './lightmap/Refinement';
-export type { PostProcessOptions as RefinementOptions, PostProcessResult as RefinementResult } from './lightmap/Refinement';
+export type {
+  PostProcessOptions as RefinementOptions,
+  PostProcessResult as RefinementResult,
+} from './lightmap/Refinement';
 
 // --- Geometry & material extraction ---
 export { mergeGeometry, extractPerTriangleMaterials } from './utils/GeometryUtils';
@@ -41,11 +44,11 @@ export type { AtlasViewerCorner, AtlasViewerOptions } from './AtlasViewer';
 // --- High-level one-call API (Phase 3) ---
 export { LightmapBaker, LightmapBakeResult } from './LightmapBaker';
 export type {
-    LightmapBakerOptions,
-    LightOptions,
-    GIOptions,
-    AOOptions,
-    BakePhase,
-    BakeHooks,
-    BakeStats,
+  LightmapBakerOptions,
+  LightOptions,
+  GIOptions,
+  AOOptions,
+  BakePhase,
+  BakeHooks,
+  BakeStats,
 } from './LightmapBaker';

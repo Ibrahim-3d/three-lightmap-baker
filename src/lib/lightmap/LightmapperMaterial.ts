@@ -1,82 +1,84 @@
-import { Color, GLSL3, Matrix4, ShaderMaterial, Texture, Vector3 } from "three";
-import { MeshBVH, MeshBVHUniformStruct, shaderIntersectFunction, shaderStructs } from 'three-mesh-bvh';
-
+import { Color, GLSL3, Matrix4, ShaderMaterial, Texture, Vector3 } from 'three';
+import {
+  MeshBVH,
+  MeshBVHUniformStruct,
+  shaderIntersectFunction,
+  shaderStructs,
+} from 'three-mesh-bvh';
 
 export type LightmapperMaterialOptions = {
-    bvh: MeshBVH,
-    invModelMatrix: Matrix4,
+  bvh: MeshBVH;
+  invModelMatrix: Matrix4;
 
-    positions: Texture,
-    normals: Texture,
+  positions: Texture;
+  normals: Texture;
 
-    /** Per-triangle albedo (RGBA float, square, indexed by faceIndices.w). Task 03. */
-    albedoTex: Texture,
-    /** Per-triangle emissive (RGBA float, same layout as albedoTex). Task 03. */
-    emissiveTex: Texture,
-    /** Side length of the material textures (both are W×W). */
-    materialTextureSize: number,
+  /** Per-triangle albedo (RGBA float, square, indexed by faceIndices.w). Task 03. */
+  albedoTex: Texture;
+  /** Per-triangle emissive (RGBA float, same layout as albedoTex). Task 03. */
+  emissiveTex: Texture;
+  /** Side length of the material textures (both are W×W). */
+  materialTextureSize: number;
 
-    casts: number,
+  casts: number;
 
-    lightPosition: Vector3;
-    lightSize: number;
-    /** Linear-space RGB tint of the point light (multiplied with lightIntensity). */
-    lightColor: Color;
-    /** Scalar HDR intensity. 1.0 = baseline (matches the pre-Task-04 hardcoded += 1.0). */
-    lightIntensity: number;
-    // giIntensity removed — Phase A.3 applies it at view time in CompositeMaterial.
-    /** Linear-space environment/sky color added on hemisphere-ray miss + as gentle untinted fill. */
-    skyColor: Color;
-    /** Scalar multiplier on skyColor. 0 = closed-scene physical bake. */
-    skyIntensity: number;
+  lightPosition: Vector3;
+  lightSize: number;
+  /** Linear-space RGB tint of the point light (multiplied with lightIntensity). */
+  lightColor: Color;
+  /** Scalar HDR intensity. 1.0 = baseline (matches the pre-Task-04 hardcoded += 1.0). */
+  lightIntensity: number;
+  // giIntensity removed — Phase A.3 applies it at view time in CompositeMaterial.
+  /** Linear-space environment/sky color added on hemisphere-ray miss + as gentle untinted fill. */
+  skyColor: Color;
+  /** Scalar multiplier on skyColor. 0 = closed-scene physical bake. */
+  skyIntensity: number;
 
-    opacity: number;
-    sampleIndex: number;
+  opacity: number;
+  sampleIndex: number;
 
-    directLightEnabled: boolean;
-    indirectLightEnabled: boolean;
-    ambientLightEnabled: boolean;
-    ambientDistance: number;
+  directLightEnabled: boolean;
+  indirectLightEnabled: boolean;
+  ambientLightEnabled: boolean;
+  ambientDistance: number;
 };
 
 export class LightmapperMaterial extends ShaderMaterial {
+  constructor(options: LightmapperMaterialOptions) {
+    const bvhUniformStruct = new MeshBVHUniformStruct();
+    bvhUniformStruct.updateFrom(options.bvh);
 
-    constructor(options: LightmapperMaterialOptions) {
+    super({
+      transparent: true,
+      glslVersion: GLSL3,
+      depthTest: false,
+      depthWrite: false,
 
-        const bvhUniformStruct = new MeshBVHUniformStruct();
-        bvhUniformStruct.updateFrom(options.bvh)
+      uniforms: {
+        bvh: { value: bvhUniformStruct },
+        positions: { value: options.positions },
+        normals: { value: options.normals },
+        albedoTex: { value: options.albedoTex },
+        emissiveTex: { value: options.emissiveTex },
+        materialTextureSize: { value: options.materialTextureSize },
+        invModelMatrix: { value: options.invModelMatrix },
+        casts: { value: options.casts },
+        lightPosition: { value: options.lightPosition },
+        lightSize: { value: options.lightSize },
+        lightColor: { value: options.lightColor },
+        lightIntensity: { value: options.lightIntensity },
+        // giIntensity removed — Phase A.3 applies it in CompositeMaterial at view time.
+        skyColor: { value: options.skyColor },
+        skyIntensity: { value: options.skyIntensity },
+        opacity: { value: 1 },
+        sampleIndex: { value: 0 },
+        directLightEnabled: { value: options.directLightEnabled },
+        indirectLightEnabled: { value: options.indirectLightEnabled },
+        ambientLightEnabled: { value: options.ambientLightEnabled },
+        ambientDistance: { value: options.ambientDistance },
+      },
 
-        super({
-            transparent: true,
-            glslVersion: GLSL3,
-            depthTest: false,
-            depthWrite: false,
-
-            uniforms: {
-                bvh: { value: bvhUniformStruct },
-                positions: { value: options.positions },
-                normals: { value: options.normals },
-                albedoTex: { value: options.albedoTex },
-                emissiveTex: { value: options.emissiveTex },
-                materialTextureSize: { value: options.materialTextureSize },
-                invModelMatrix: { value: options.invModelMatrix },
-                casts: { value: options.casts },
-                lightPosition: { value: options.lightPosition },
-                lightSize: { value: options.lightSize },
-                lightColor: { value: options.lightColor },
-                lightIntensity: { value: options.lightIntensity },
-                // giIntensity removed — Phase A.3 applies it in CompositeMaterial at view time.
-                skyColor: { value: options.skyColor },
-                skyIntensity: { value: options.skyIntensity },
-                opacity: { value: 1 },
-                sampleIndex: { value: 0 },
-                directLightEnabled: { value: options.directLightEnabled },
-                indirectLightEnabled: { value: options.indirectLightEnabled },
-                ambientLightEnabled: { value: options.ambientLightEnabled },
-                ambientDistance: { value: options.ambientDistance },
-            },
-
-            vertexShader: /* glsl */`
+      vertexShader: /* glsl */ `
                 out vec2 vUv;
                 void main() {
                     gl_Position = vec4( position, 1.0 );
@@ -84,13 +86,13 @@ export class LightmapperMaterial extends ShaderMaterial {
                 }
             `,
 
-            fragmentShader: /* glsl */`
+      fragmentShader: /* glsl */ `
                 precision highp float;
                 precision highp sampler2D;
                 precision highp isampler2D;
                 precision highp usampler2D;
-                ${ shaderStructs }
-                ${ shaderIntersectFunction }
+                ${shaderStructs}
+                ${shaderIntersectFunction}
 
                 uniform mat4 invModelMatrix;
                 uniform sampler2D positions;
@@ -330,8 +332,7 @@ export class LightmapperMaterial extends ShaderMaterial {
                     aoOut       = ambientLightEnabled   ? vec4(adverageAO.rgb,            opacity)
                                                        : vec4(0.0, 0.0, 0.0, opacity);
                 }
-            `
-        });
-    }
+            `,
+    });
+  }
 }
-

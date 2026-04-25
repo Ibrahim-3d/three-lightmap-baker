@@ -4,7 +4,13 @@
 	"type": "module",
 	"scripts": {
 		"start": "vite --mode dev --host",
-		"build": "vite build"
+		"build": "vite build",
+		"lint": "eslint src/",
+		"lint:fix": "eslint src/ --fix",
+		"format": "prettier --write src/",
+		"format:check": "prettier --check src/",
+		"typecheck": "tsc --noEmit",
+		"check": "npm run typecheck && npm run lint && npm run format:check"
 	},
 	"dependencies": {
 		"@tweakpane/core": "^1.0.3",
@@ -14,8 +20,12 @@
 		"xatlas-three": "^0.2.0"
 	},
 	"devDependencies": {
-		"typescript": "^4.4.4",
 		"@types/three": "^0.161.0",
+		"@typescript-eslint/eslint-plugin": "^8.59.0",
+		"@typescript-eslint/parser": "^8.59.0",
+		"eslint": "^10.2.1",
+		"prettier": "^3.8.3",
+		"typescript": "^4.4.4",
 		"vite": "^2.6.13"
 	}
 }

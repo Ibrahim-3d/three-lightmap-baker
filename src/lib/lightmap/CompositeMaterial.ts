@@ -1,12 +1,12 @@
-import { GLSL3, ShaderMaterial, Texture } from "three";
+import { GLSL3, ShaderMaterial, Texture } from 'three';
 
 export type CompositeMaterialOptions = {
-    directTex:       Texture;
-    indirectTex:     Texture;
-    aoTex:           Texture;
-    directIntensity: number;
-    giIntensity:     number;
-    aoEnabled:       boolean;
+  directTex: Texture;
+  indirectTex: Texture;
+  aoTex: Texture;
+  directIntensity: number;
+  giIntensity: number;
+  aoEnabled: boolean;
 };
 
 /**
@@ -15,23 +15,23 @@ export type CompositeMaterialOptions = {
  * Phase A.3: giIntensity and directIntensity are applied here at view time.
  */
 export class CompositeMaterial extends ShaderMaterial {
-    constructor(opts: CompositeMaterialOptions) {
-        super({
-            glslVersion: GLSL3,
-            transparent: false,
-            depthWrite:  false,
-            depthTest:   false,
+  constructor(opts: CompositeMaterialOptions) {
+    super({
+      glslVersion: GLSL3,
+      transparent: false,
+      depthWrite: false,
+      depthTest: false,
 
-            uniforms: {
-                directTex:       { value: opts.directTex },
-                indirectTex:     { value: opts.indirectTex },
-                aoTex:           { value: opts.aoTex },
-                directIntensity: { value: opts.directIntensity },
-                giIntensity:     { value: opts.giIntensity },
-                aoEnabled:       { value: opts.aoEnabled },
-            },
+      uniforms: {
+        directTex: { value: opts.directTex },
+        indirectTex: { value: opts.indirectTex },
+        aoTex: { value: opts.aoTex },
+        directIntensity: { value: opts.directIntensity },
+        giIntensity: { value: opts.giIntensity },
+        aoEnabled: { value: opts.aoEnabled },
+      },
 
-            vertexShader: /* glsl */`
+      vertexShader: /* glsl */ `
                 out vec2 vUv;
                 void main() {
                     gl_Position = vec4(position, 1.0);
@@ -39,7 +39,7 @@ export class CompositeMaterial extends ShaderMaterial {
                 }
             `,
 
-            fragmentShader: /* glsl */`
+      fragmentShader: /* glsl */ `
                 precision highp float;
                 precision highp sampler2D;
 
@@ -67,6 +67,6 @@ export class CompositeMaterial extends ShaderMaterial {
                     outColor = vec4(lit, 1.0);
                 }
             `,
-        });
-    }
+    });
+  }
 }

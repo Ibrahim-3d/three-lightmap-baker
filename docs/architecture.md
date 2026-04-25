@@ -237,3 +237,73 @@ Task 06 (Export / API)
 
 *End of architecture snapshot. Anything not described here is either out-of-tree
 (node_modules) or untouched legacy (`LightBakerExample.ts`, `LoaderUtils.ts`).*
+
+---
+
+## 9. System Diagram (target architecture)
+
+```
+┌─────────────────────────────────────────────────────┐
+│                    LightmapBaker                     │
+│                   (orchestrator)                     │
+├─────────────┬──────────────┬────────────────────────┤
+│             │              │                        │
+│   UV Unwrap │   Pass 1     │   Pass 2               │
+│   (xatlas)  │   UV→World   │   Ray Trace            │
+│             │   Position   │   (BVH + bounce)       │
+│             │   + Normal   │                        │
+│             │   (MRT)      │                        │
+├─────────────┴──────────────┴────────────────────────┤
+│                                                      │
+│   Post-Processing Pipeline                           │
+│   gap-flood → denoise → downscale → export          │
+│                                                      │
+├──────────────────────────────────────────────────────┤
+│                                                      │
+│   Output: BakeResult                                 │
+│   - lightmaps: Map<Mesh, Texture>                   │
+│   - aoMaps: Map<Mesh, Texture>  (if requested)      │
+│   - probes: LightProbe[]       (if requested)       │
+│   - apply() / export() / dispose()                  │
+│                                                      │
+└──────────────────────────────────────────────────────┘
+```
+
+## 10. Data Flow
+
+```
+Scene meshes
+  │
+  ▼
+xatlas unwrap → geometry with UV2
+  │
+  ▼
+Pass 1: render geometry with gl_Position = uv2*2-1
+  │      fragment outputs worldPos (RT0) + worldNormal (RT1)
+  │
+  ▼
+Pass 2: fullscreen quad reads worldPos + worldNormal textures
+  │      for each texel: trace rays from worldPos along hemisphere
+  │      BVH intersection via three-mesh-bvh
+  │      accumulate: emissive (direct) + albedo × bounce (indirect)
+  │
+  ▼
+gap-flood: dilate edges 4px to cover UV seams
+  │
+  ▼
+denoise: bilateral filter guided by worldPos + worldNormal
+  │
+  ▼
+downscale: bilinear reduce if superSample > 1
+  │
+  ▼
+BakeResult: lightmap textures applied via mesh.material.lightMap
+```
+
+## 11. Key Invariants
+
+1. Pass 1 and Pass 2 are SEPARATE shaders, SEPARATE draw calls
+2. Material data (albedo, emissive) is packed into DataTextures indexed by triangle index in the merged BVH
+3. Every WebGL resource has an explicit owner and dispose path
+4. The orchestrator (baker.ts) is the ONLY file that knows the phase sequence
+5. Passes communicate through typed data, never through shared mutable state

@@ -1,4 +1,4 @@
-import { NoBlending, ShaderMaterial, Texture } from "three";
+import { NoBlending, ShaderMaterial, Texture } from 'three';
 
 /**
  * Chart-aware 3x3 max-spread dilation.
@@ -12,25 +12,25 @@ import { NoBlending, ShaderMaterial, Texture } from "three";
  * Run iteratively (4x in Task 5 spec) on ping-pong RTs.
  */
 export class DilationMaterial extends ShaderMaterial {
-    constructor(opts: { map?: Texture; positions?: Texture; resolution?: number } = {}) {
-        super({
-            blending: NoBlending,
-            transparent: false,
-            depthWrite: false,
-            depthTest: false,
-            uniforms: {
-                map:        { value: opts.map ?? null },
-                positions:  { value: opts.positions ?? null },
-                resolution: { value: opts.resolution ?? 1024 },
-            },
-            vertexShader: /* glsl */`
+  constructor(opts: { map?: Texture; positions?: Texture; resolution?: number } = {}) {
+    super({
+      blending: NoBlending,
+      transparent: false,
+      depthWrite: false,
+      depthTest: false,
+      uniforms: {
+        map: { value: opts.map ?? null },
+        positions: { value: opts.positions ?? null },
+        resolution: { value: opts.resolution ?? 1024 },
+      },
+      vertexShader: /* glsl */ `
                 varying vec2 vUv;
                 void main() {
                     vUv = uv;
                     gl_Position = vec4(position, 1.0);
                 }
             `,
-            fragmentShader: /* glsl */`
+      fragmentShader: /* glsl */ `
                 uniform sampler2D map;
                 uniform sampler2D positions;
                 uniform float resolution;
@@ -66,6 +66,6 @@ export class DilationMaterial extends ShaderMaterial {
                         : here;
                 }
             `,
-        });
-    }
+    });
+  }
 }
