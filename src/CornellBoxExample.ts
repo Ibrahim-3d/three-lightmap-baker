@@ -27,7 +27,7 @@ import { Pane } from 'tweakpane';
 import { generateAtlas } from './atlas/generateAtlas';
 import { renderAtlas } from './atlas/renderAtlas';
 import { generateLightmapper, Lightmapper, RaycastOptions } from './lightmap/Lightmapper';
-import { runPostProcess, PostProcessResult } from './lightmap/PostProcess';
+import { runPostProcess as runRefinement, PostProcessResult as RefinementResult } from './lightmap/Refinement';
 import { runComposite, CompositeResult } from './lightmap/Composite';
 import { mergeGeometry, extractPerTriangleMaterials } from './utils/GeometryUtils';
 import { buildMaterialTextures } from './utils/MaterialTextures';
@@ -47,15 +47,15 @@ const HALF = ROOM / 2;
  * once MRT lands. For now this preserves the Session-6 behaviour through the registry.
  */
 type LayerContext = {
-    composite:   Texture | null;  // combined view (direct + indirect*gi) * ao — Phase A.3
-    direct:      Texture | null;  // MRT[0]
-    indirect:    Texture | null;  // MRT[1]
-    ao:          Texture | null;  // MRT[2]
-    raw:         Texture | null;  // alias for composite, back-compat
-    post:        Texture | null;  // post.texture (denoised final)
-    postDilated: Texture | null;  // dilation-only stage — PostProcess doesn't expose separately yet
-    positions:   Texture | null;
-    normals:     Texture | null;
+    composite:         Texture | null;  // combined view (direct + indirect*gi) * ao — Phase A.3
+    direct:            Texture | null;  // MRT[0]
+    indirect:          Texture | null;  // MRT[1]
+    ao:                Texture | null;  // MRT[2]
+    raw:               Texture | null;  // alias for composite, back-compat
+    refinement:        Texture | null;  // refinement.texture (denoised final)
+    refinementDilated: Texture | null;  // dilation-only stage — Refinement doesn't expose separately yet
+    positions:         Texture | null;
+    normals:           Texture | null;
 };
 
 type Layer = {
@@ -74,8 +74,8 @@ type Layer = {
  * TODO Phase A.3 follow-up: expose dilated-only stage from PostProcess for a "Combined (Dilated)" layer.
  */
 const LAYERS: Layer[] = [
-    { id: 'combined',     label: 'Combined',            group: 'output', showAlbedo: true,  getLightMap: c => c.post ?? c.composite },
-    { id: 'combinedPost', label: 'Combined (Denoised)', group: 'output', showAlbedo: true,  getLightMap: c => c.post ?? c.composite },
+    { id: 'combined',     label: 'Combined',            group: 'output', showAlbedo: true,  getLightMap: c => c.refinement ?? c.composite },
+    { id: 'combinedPost', label: 'Combined (Refined)',  group: 'output', showAlbedo: true,  getLightMap: c => c.refinement ?? c.composite },
     { id: 'combinedRaw',  label: 'Combined (Raw)',      group: 'output', showAlbedo: true,  getLightMap: c => c.composite },
     { id: 'direct',       label: 'Direct',              group: 'output', showAlbedo: false, getLightMap: c => c.direct },
     { id: 'indirect',     label: 'Indirect (GI)',       group: 'output', showAlbedo: false, getLightMap: c => c.indirect },
@@ -141,8 +141,8 @@ export class CornellBoxExample {
 
     /** View-time composite of MRT direct+indirect+AO. Eagerly allocated at bake start. */
     private composite: CompositeResult | null = null;
-    /** Result of the most recent post-process (dilation + denoise). Null until run. */
-    private post: PostProcessResult | null = null;
+    /** Result of the most recent refinement pass (dilation + denoise). Null until run. */
+    private refinement: RefinementResult | null = null;
 
     pane: Pane;
 
@@ -176,8 +176,8 @@ export class CornellBoxExample {
         pause: false,
         showGizmo: true,
 
-        // --- Post-process (Task 5) ---
-        autoApplyPost: true,             // run dilation+denoise automatically when bake hits target
+        // --- Refinement (Task 5) ---
+        autoApplyRefinement: true,       // run dilation+denoise automatically when bake hits target
         dilationIterations: 4,           // 4px halo per spec
         denoiseEnabled: true,
         denoiseSigma: 2.5,               // spatial blur sigma (in texels)
@@ -188,7 +188,7 @@ export class CornellBoxExample {
         samples: 0,                      // current frame count (UI mirror of lightmapper state)
         spp: 0,                          // samples-per-texel = samples × casts
         etaSec: 0,                       // estimated seconds remaining
-        postStatus: 'idle',              // 'idle' | 'running' | 'applied' | 'skipped'
+        refinementStatus: 'idle',        // 'idle' | 'running' | 'applied' | 'skipped'
     };
 
     constructor() {
@@ -232,84 +232,94 @@ export class CornellBoxExample {
         this.lightTransformController.attach(this.lightDummy);
         this.scene.add(this.lightTransformController);
 
-        this.pane = new Pane({ title: 'Cornell Bake' });
-        this.pane.addInput(this.options, 'preset', { options: presets }).on('change', () => this.rebuildScene());
-        this.pane.addInput(this.options, 'layer', { options: LAYER_OPTIONS, label: 'layer' })
-            .on('change', () => this.applyRenderMode());
+        this.pane = new Pane({ title: '🔆 Lightbaker' });
 
-        // Quality preset — picks lightMapSize, casts, targetSamples in one shot.
-        this.pane.addInput(this.options, 'quality', {
+        const viewFolder = this.pane.addFolder({ title: 'View', expanded: true });
+        (viewFolder as any).element.classList.add('tp-view');
+        viewFolder.addInput(this.options, 'layer', { options: LAYER_OPTIONS, label: 'Layer' })
+            .on('change', () => this.applyRenderMode());
+        viewFolder.addInput(this.options, 'filterMode', { options: Filter, label: 'Filtering' })
+            .on('change', () => this.applyRenderMode());
+        viewFolder.addInput(this.options, 'showGizmo', { label: 'Show Gizmo' });
+        viewFolder.addInput(this.options, 'pause', { label: 'Pause' });
+
+        const bakeFolder = this.pane.addFolder({ title: 'Bake Settings', expanded: false });
+        (bakeFolder as any).element.classList.add('tp-bake');
+        bakeFolder.addInput(this.options, 'quality', {
             options: Object.fromEntries(Object.keys(QUALITY_PRESETS).map(k => [k, k])),
-            label: 'preset',
+            label: 'Preset',
         }).on('change', (e) => this.applyQualityPreset(e.value as QualityPresetName));
 
-        this.pane.addInput(this.options, 'lightMapSize', { min: 128, max: 2048, step: 128 })
+        bakeFolder.addInput(this.options, 'lightMapSize', { min: 128, max: 2048, step: 128, label: 'Resolution' })
             .on('change', () => { 
                 this.options.quality = 'Custom'; 
                 this.pane.refresh(); 
                 this.bake(); 
             });
-        // ↑ casts cap was 4; bump to 16 so Final preset (8 casts) and tuners can reach it
-        this.pane.addInput(this.options, 'casts', { min: 1, max: 16, step: 1 })
+        bakeFolder.addInput(this.options, 'casts', { min: 1, max: 16, step: 1, label: 'Casts/Frame' })
             .on('change', () => { 
                 this.options.quality = 'Custom'; 
                 this.pane.refresh(); 
                 this.bake();
             });
-        this.pane.addInput(this.options, 'targetSamples', { min: 16, max: 1024, step: 16, label: 'samples (frames)' })
+        bakeFolder.addInput(this.options, 'targetSamples', { min: 16, max: 1024, step: 16, label: 'Target Frames' })
             .on('change', () => { 
                 this.options.quality = 'Custom'; 
                 this.pane.refresh(); 
                 this.bake();
             });
+        bakeFolder.addButton({ title: 'Bake Now' }).on('click', () => this.bake());
 
-        this.pane.addInput(this.options, 'lightSize', { min: 0.1, max: 5, step: 0.1 })
+        const lightFolder = this.pane.addFolder({ title: 'Lighting & GI', expanded: false });
+        (lightFolder as any).element.classList.add('tp-light');
+        
+        const directFolder = lightFolder.addFolder({ title: 'Direct Light' });
+        directFolder.addInput(this.options, 'directLightEnabled', { label: 'Enabled' })
             .on('change', () => this.bake());
-        this.pane.addInput(this.options, 'lightIntensity', { min: 0.0, max: 15.0, step: 0.1 })
+        directFolder.addInput(this.options, 'lightColor', { view: 'color', label: 'Color' })
             .on('change', () => this.bake());
-        this.pane.addInput(this.options, 'lightColor', { view: 'color' })
+        directFolder.addInput(this.options, 'lightIntensity', { min: 0.0, max: 15.0, step: 0.1, label: 'Bake Power' })
             .on('change', () => this.bake());
-        this.pane.addInput(this.options, 'directIntensity', { min: 0.0, max: 4.0, step: 0.05, label: 'direct intensity' })
+        directFolder.addInput(this.options, 'lightSize', { min: 0.1, max: 5, step: 0.1, label: 'Source Size' })
+            .on('change', () => this.bake());
+        directFolder.addInput(this.options, 'directIntensity', { min: 0.0, max: 4.0, step: 0.05, label: 'View Multiplier' })
             .on('change', () => this.composite?.refresh({ directIntensity: this.options.directIntensity }));
-        this.pane.addInput(this.options, 'giIntensity', { min: 0.0, max: 4.0, step: 0.05, label: 'gi intensity' })
+
+        const giFolder = lightFolder.addFolder({ title: 'Global Illumination' });
+        giFolder.addInput(this.options, 'indirectLightEnabled', { label: 'Enabled' })
+            .on('change', () => this.bake());
+        giFolder.addInput(this.options, 'giIntensity', { min: 0.0, max: 4.0, step: 0.05, label: 'Bounce Power' })
             .on('change', () => this.composite?.refresh({ giIntensity: this.options.giIntensity }));
-        this.pane.addInput(this.options, 'skyColor', { view: 'color', label: 'sky color' })
+        giFolder.addInput(this.options, 'skyColor', { view: 'color', label: 'Sky Color' })
             .on('change', () => this.bake());
-        this.pane.addInput(this.options, 'skyIntensity', { min: 0.0, max: 4.0, step: 0.05, label: 'sky intensity' })
+        giFolder.addInput(this.options, 'skyIntensity', { min: 0.0, max: 4.0, step: 0.05, label: 'Sky Intensity' })
             .on('change', () => this.bake());
-        this.pane.addInput(this.options, 'directLightEnabled')
-            .on('change', () => this.bake());
-        this.pane.addInput(this.options, 'indirectLightEnabled')
-            .on('change', () => this.bake());
-        this.pane.addInput(this.options, 'ambientLightEnabled')
+
+        const aoFolder = lightFolder.addFolder({ title: 'Ambient Occlusion' });
+        aoFolder.addInput(this.options, 'ambientLightEnabled', { label: 'Enabled' })
             .on('change', () => {
                 this.composite?.refresh({ aoEnabled: this.options.ambientLightEnabled });
                 this.bake();
             });
-        this.pane.addInput(this.options, 'ambientDistance', { min: 0.05, max: 2, step: 0.05 })
+        aoFolder.addInput(this.options, 'ambientDistance', { min: 0.05, max: 2, step: 0.05, label: 'Max Distance' })
             .on('change', () => this.bake());
-        this.pane.addInput(this.options, 'filterMode', { options: Filter }).on('change', () => this.applyRenderMode());
-        this.pane.addButton({ title: 'Bake' }).on('click', () => this.bake());
-        this.pane.addInput(this.options, 'pause');
-        this.pane.addInput(this.options, 'showGizmo', { label: 'show gizmo' });
 
-        // --- Post-process folder (Task 5) ---
-        const post = this.pane.addFolder({ title: 'Post-process' });
-        post.addInput(this.options, 'autoApplyPost', { label: 'auto-apply' });
-        post.addInput(this.options, 'dilationIterations', { min: 0, max: 8, step: 1, label: 'dilate iters' });
-        post.addInput(this.options, 'denoiseEnabled', { label: 'denoise' });
-        post.addInput(this.options, 'denoiseSigma', { min: 0.1, max: 8, step: 0.1, label: 'denoise sigma' });
-        post.addInput(this.options, 'denoiseThreshold', { min: 0.01, max: 1, step: 0.01, label: 'edge thresh' });
-        post.addInput(this.options, 'denoiseKSigma', { min: 0.5, max: 3, step: 0.1, label: 'kernel ×' });
-        post.addButton({ title: 'Apply Post' }).on('click', () => this.applyPostProcess());
-        post.addButton({ title: 'Show Raw' }).on('click', () => this.showRaw());
+        // --- Refinement folder ---
+        const post = this.pane.addFolder({ title: 'Refinement', expanded: false });
+        (post as any).element.classList.add('tp-post');
+        post.addInput(this.options, 'autoApplyRefinement', { label: 'Auto-apply' });
+        post.addInput(this.options, 'dilationIterations', { min: 0, max: 8, step: 1, label: 'Dilate Iters' });
+        post.addInput(this.options, 'denoiseEnabled', { label: 'Denoise' });
+        post.addInput(this.options, 'denoiseSigma', { min: 0.1, max: 8, step: 0.1, label: 'Spatial Sigma' });
+        post.addInput(this.options, 'denoiseThreshold', { min: 0.01, max: 1, step: 0.01, label: 'Edge Thresh' });
+        post.addInput(this.options, 'denoiseKSigma', { min: 0.5, max: 3, step: 0.1, label: 'Range Sigma' });
+        post.addButton({ title: 'Run Refinement' }).on('click', () => this.applyRefinement());
+        post.addButton({ title: 'Revert to Raw' }).on('click', () => this.showUnrefined());
 
-        // --- Status folder (read-only monitors) ---
-        const stat = this.pane.addFolder({ title: 'Status' });
-        stat.addMonitor(this.options, 'samples', { label: 'frames' });
-        stat.addMonitor(this.options, 'spp', { label: 'spp' });
-        stat.addMonitor(this.options, 'etaSec', { label: 'eta (s)', format: (v: number) => v.toFixed(1) });
-        stat.addMonitor(this.options, 'postStatus', { label: 'post' });
+        const sceneFolder = this.pane.addFolder({ title: 'Scene', expanded: false });
+        (sceneFolder as any).element.classList.add('tp-scene');
+        sceneFolder.addInput(this.options, 'preset', { options: presets, label: 'Complexity' })
+            .on('change', () => this.rebuildScene());
 
         this.initUI();
         this.rebuildScene();
@@ -354,6 +364,7 @@ export class CornellBoxExample {
         this.progressContainer.appendChild(barBg);
 
         this.progressBar = document.createElement('div');
+        this.progressBar.className = 'progress-pulse';
         this.progressBar.style.width = '0%';
         this.progressBar.style.height = '100%';
         this.progressBar.style.backgroundColor = '#00ff00';
@@ -581,8 +592,8 @@ export class CornellBoxExample {
         // (which owns the underlying RT) is overwritten.
         this.composite?.dispose();
         this.composite = null;
-        this.post?.dispose();
-        this.post = null;
+        this.refinement?.dispose();
+        this.refinement = null;
         this.lightmapper?.dispose();
 
         this.lightmapper = await generateLightmapper(
@@ -609,7 +620,7 @@ export class CornellBoxExample {
         // Reset readouts. Pause flag flipped on by the render loop once
         // `lightmapper.render()` reports `done = true` (frame count reaches
         // options.targetSamples). post + composite already disposed above.
-        this.options.postStatus = 'idle';
+        this.options.refinementStatus = 'idle';
         this.options.samples = 0;
         this.options.spp = 0;
         this.options.etaSec = 0;
@@ -630,32 +641,36 @@ export class CornellBoxExample {
         this.bake();
     }
 
-    /** Run dilation + denoise on the current lightmap. Swaps the displayed texture. */
-    private applyPostProcess() {
+    private async applyRefinement() {
         if (!this.lightmapper || !this.positionTexture) return;
-        this.options.postStatus = 'running';
+        this.options.refinementStatus = 'running';
         this.pane.refresh();
 
-        this.post?.dispose();
+        this.refinement?.dispose();
         // Phase A.3: post-process chains off the composite (not raw direct) so denoising
         // operates on the already-combined (direct+indirect*gi)*ao signal.
-        this.post = runPostProcess(
-            this.renderer,
-            this.composite!.texture,
-            this.positionTexture,
-            this.options.lightMapSize,
-            {
-                dilationIterations: this.options.dilationIterations,
-                denoiseEnabled:     this.options.denoiseEnabled,
-                denoiseSigma:       this.options.denoiseSigma,
-                denoiseThreshold:   this.options.denoiseThreshold,
-                denoiseKSigma:      this.options.denoiseKSigma,
-            },
+        const src = this.composite!.texture;
+        const res = this.options.lightMapSize;
+
+        this.refinement = await runRefinement(
+            this.renderer, 
+            src, 
+            this.positionTexture, 
+            res, 
+            this.options,
+            (progress) => {
+                this.progressBar.style.width = `${Math.min(100, progress * 100)}%`;
+                this.progressText.innerText = `Refinement: ${Math.round(progress * 100)}%\n` +
+                                            `Dilation & Bilateral Denoise...`;
+            }
         );
-        this.options.postStatus = (this.options.dilationIterations > 0 || this.options.denoiseEnabled)
+        this.options.refinementStatus = (this.options.dilationIterations > 0 || this.options.denoiseEnabled)
             ? 'applied' : 'skipped';
         this.pane.refresh();
         this.applyRenderMode();
+
+        this.progressText.innerText = `Baking & Refinement complete!\n` +
+                                    `Ready.`;
 
         // Hide progress widget after a delay
         setTimeout(() => {
@@ -663,11 +678,11 @@ export class CornellBoxExample {
         }, 3000);
     }
 
-    /** Revert display to the raw progressive lightmap (drops post-process result). */
-    private showRaw() {
-        this.post?.dispose();
-        this.post = null;
-        this.options.postStatus = 'idle';
+    /** Revert display to the raw progressive lightmap (drops refinement result). */
+    private showUnrefined() {
+        this.refinement?.dispose();
+        this.refinement = null;
+        this.options.refinementStatus = 'idle';
         this.pane.refresh();
         this.applyRenderMode();
     }
@@ -675,15 +690,15 @@ export class CornellBoxExample {
     /** Resolve the current LayerContext from cached textures. */
     private layerContext(): LayerContext {
         return {
-            composite:   this.composite?.texture ?? null,
-            direct:      this.lightmapper?.textures.direct   ?? null,
-            indirect:    this.lightmapper?.textures.indirect ?? null,
-            ao:          this.lightmapper?.textures.ao       ?? null,
-            raw:         this.composite?.texture ?? null,
-            post:        this.post?.texture ?? null,
-            postDilated: null, // PostProcess currently only exposes final; leave for future
-            positions:   this.positionTexture ?? null,
-            normals:     this.normalTexture ?? null,
+            composite:         this.composite?.texture ?? null,
+            direct:            this.lightmapper?.textures.direct   ?? null,
+            indirect:          this.lightmapper?.textures.indirect ?? null,
+            ao:                this.lightmapper?.textures.ao       ?? null,
+            raw:               this.composite?.texture ?? null,
+            refinement:        this.refinement?.texture ?? null,
+            refinementDilated: null, // Refinement currently only exposes final; leave for future
+            positions:         this.positionTexture ?? null,
+            normals:           this.normalTexture ?? null,
         };
     }
 
@@ -767,7 +782,7 @@ export class CornellBoxExample {
                     this.composite?.texture && (this.composite.texture.needsUpdate = true);
 
                     this.pane.refresh();
-                    if (this.options.autoApplyPost) this.applyPostProcess();
+                    if (this.options.autoApplyRefinement) this.applyRefinement();
                     return; // Stop processing this frame
                 }
 

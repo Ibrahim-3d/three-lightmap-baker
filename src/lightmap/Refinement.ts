@@ -38,13 +38,14 @@ const fsCam = new OrthographicCamera();
  *
  * Two RTs are allocated and ping-ponged. Caller owns disposal via the returned handle.
  */
-export const runPostProcess = (
+export const runPostProcess = async (
     renderer: WebGLRenderer,
     src: Texture,
     positions: Texture,
     resolution: number,
     opts: PostProcessOptions,
-): PostProcessResult => {
+    onProgress?: (percent: number) => void,
+): Promise<PostProcessResult> => {
     const makeRT = () => new WebGLRenderTarget(resolution, resolution, {
         type: FloatType,
         minFilter: LinearMipMapLinearFilter,
@@ -67,12 +68,20 @@ export const runPostProcess = (
     let write: WebGLRenderTarget = rtB;
     let input: Texture = src;
 
+    const totalPasses = Math.max(0, opts.dilationIterations) + (opts.denoiseEnabled ? 1 : 0);
+    let completedPasses = 0;
+
     for (let i = 0; i < Math.max(0, opts.dilationIterations); i++) {
         dilate.uniforms.map.value = input;
         draw(dilate, write);
         input = write.texture;
         // swap
         const tmp = read; read = write; write = tmp;
+        
+        completedPasses++;
+        onProgress?.(completedPasses / totalPasses);
+        // Allow UI to repaint
+        await new Promise(resolve => requestAnimationFrame(resolve));
     }
 
     if (opts.denoiseEnabled) {
@@ -86,6 +95,10 @@ export const runPostProcess = (
         input = write.texture;
         denoise.dispose();
         const tmp = read; read = write; write = tmp;
+
+        completedPasses++;
+        onProgress?.(completedPasses / totalPasses);
+        await new Promise(resolve => requestAnimationFrame(resolve));
     }
 
     dilate.dispose();
