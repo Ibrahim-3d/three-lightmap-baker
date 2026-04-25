@@ -3,6 +3,7 @@ import {
     Color,
     DoubleSide,
     LinearFilter,
+    LinearMipMapLinearFilter,
     Mesh,
     MeshBasicMaterial,
     MeshStandardMaterial,
@@ -24,13 +25,17 @@ import { MeshBVH } from 'three-mesh-bvh';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls';
 import { Pane } from 'tweakpane';
-import { generateAtlas } from './atlas/generateAtlas';
-import { renderAtlas } from './atlas/renderAtlas';
-import { generateLightmapper, Lightmapper, RaycastOptions } from './lightmap/Lightmapper';
-import { runPostProcess as runRefinement, PostProcessResult as RefinementResult } from './lightmap/Refinement';
-import { runComposite, CompositeResult } from './lightmap/Composite';
-import { mergeGeometry, extractPerTriangleMaterials } from './utils/GeometryUtils';
-import { buildMaterialTextures } from './utils/MaterialTextures';
+import {
+    generateAtlas,
+    renderAtlas,
+    generateLightmapper, Lightmapper, RaycastOptions,
+    runRefinement, RefinementResult,
+    runComposite, CompositeResult,
+    mergeGeometry, extractPerTriangleMaterials,
+    buildMaterialTextures,
+    exportLightmap, ExportFormat,
+    AtlasViewer, AtlasViewerCorner,
+} from '../lib';
 
 /** Diagnostic logs — flip to true locally when debugging. CLAUDE.md convention. */
 const DEBUG = false;
@@ -189,7 +194,22 @@ export class CornellBoxExample {
         spp: 0,                          // samples-per-texel = samples × casts
         etaSec: 0,                       // estimated seconds remaining
         refinementStatus: 'idle',        // 'idle' | 'running' | 'applied' | 'skipped'
+
+        // --- Export (Task 06 Phase 1) ---
+        exportFormat: 'png' as ExportFormat,  // 'png' | 'exr' | 'bin'
+
+        // --- Atlas viewer (2D corner overlay) ---
+        atlasViewerEnabled: true,
+        atlasViewerSize: 256,
+        atlasViewerCorner: 'br' as AtlasViewerCorner,  // 'tl' | 'tr' | 'bl' | 'br'
+        atlasViewerSRGB: true,
     };
+
+    private atlasViewer: AtlasViewer = (() => {
+        const v = new AtlasViewer({ size: 256, corner: 'br', sRGB: true });
+        v.attachHeader();
+        return v;
+    })();
 
     constructor() {
         this.scene = new Scene();
@@ -315,6 +335,30 @@ export class CornellBoxExample {
         post.addInput(this.options, 'denoiseKSigma', { min: 0.5, max: 3, step: 0.1, label: 'Range Sigma' });
         post.addButton({ title: 'Run Refinement' }).on('click', () => this.applyRefinement());
         post.addButton({ title: 'Revert to Raw' }).on('click', () => this.showUnrefined());
+
+        // --- Export folder (Task 06 Phase 1) ---
+        const exportFolder = this.pane.addFolder({ title: 'Export', expanded: false });
+        (exportFolder as any).element.classList.add('tp-export');
+        exportFolder.addInput(this.options, 'exportFormat', {
+            options: { 'PNG (LDR preview)': 'png', 'EXR (HDR linear)': 'exr', 'Raw Float32 (.bin)': 'bin' },
+            label: 'Format',
+        });
+        exportFolder.addButton({ title: 'Export Final Lightmap' }).on('click', () => this.exportFinal());
+        exportFolder.addButton({ title: 'Export Current Layer' }).on('click', () => this.exportCurrent());
+
+        // --- Atlas Viewer folder ---
+        const viewerFolder = this.pane.addFolder({ title: 'Atlas Viewer', expanded: false });
+        (viewerFolder as any).element.classList.add('tp-viewer');
+        viewerFolder.addInput(this.options, 'atlasViewerEnabled', { label: 'Enabled' })
+            .on('change', e => { this.atlasViewer.visible = e.value; });
+        viewerFolder.addInput(this.options, 'atlasViewerSize', { min: 128, max: 768, step: 32, label: 'Size' })
+            .on('change', e => this.atlasViewer.setSize(e.value));
+        viewerFolder.addInput(this.options, 'atlasViewerCorner', {
+            options: { 'Top-Left': 'tl', 'Top-Right': 'tr', 'Bot-Left': 'bl', 'Bot-Right': 'br' },
+            label: 'Corner',
+        }).on('change', e => this.atlasViewer.setCorner(e.value));
+        viewerFolder.addInput(this.options, 'atlasViewerSRGB', { label: 'sRGB Encode' })
+            .on('change', e => this.atlasViewer.setSRGB(e.value));
 
         const sceneFolder = this.pane.addFolder({ title: 'Scene', expanded: false });
         (sceneFolder as any).element.classList.add('tp-scene');
@@ -678,6 +722,34 @@ export class CornellBoxExample {
         }, 3000);
     }
 
+    /** Export the "deliverable" lightmap — refinement if available, else composite. */
+    private async exportFinal() {
+        const tex = this.refinement?.texture ?? this.composite?.texture ?? null;
+        if (!tex) { console.warn('[baker] export: no bake to export — bake first'); return; }
+        const stage = this.refinement ? 'refined' : 'composite';
+        await this.runExport(tex, `lightmap_${stage}_${this.options.lightMapSize}`);
+    }
+
+    /** Export whatever the active layer is currently displaying. */
+    private async exportCurrent() {
+        const layer = LAYERS.find(l => l.id === this.options.layer) ?? LAYERS[0];
+        const tex = layer.getLightMap(this.layerContext());
+        if (!tex) { console.warn(`[baker] export: layer "${layer.id}" has no exportable texture`); return; }
+        await this.runExport(tex, `lightmap_${layer.id}_${this.options.lightMapSize}`);
+    }
+
+    private async runExport(tex: Texture, basename: string) {
+        const fmt = this.options.exportFormat;
+        const res = this.options.lightMapSize;
+        const t0 = performance.now();
+        try {
+            await exportLightmap(this.renderer, tex, res, basename, fmt);
+            console.log(`[baker] exported ${basename}.${fmt} (${res}×${res}) in ${(performance.now() - t0).toFixed(0)}ms`);
+        } catch (e) {
+            console.error('[baker] export failed:', e);
+        }
+    }
+
     /** Revert display to the raw progressive lightmap (drops refinement result). */
     private showUnrefined() {
         this.refinement?.dispose();
@@ -808,6 +880,16 @@ export class CornellBoxExample {
 
             this.controls.update();
             this.renderer.render(this.scene, this.camera);
+
+            // 2D atlas viewer overlay — track the active layer's texture each frame.
+            this.atlasViewer.visible = this.options.atlasViewerEnabled;
+            if (this.atlasViewer.visible) {
+                const layer = LAYERS.find(l => l.id === this.options.layer) ?? LAYERS[0];
+                const tex = layer.getLightMap(this.layerContext()) ?? this.composite?.texture ?? null;
+                this.atlasViewer.setTexture(tex);
+                this.atlasViewer.setLayerLabel(layer.label);
+            }
+            this.atlasViewer.render(this.renderer);
         };
         tick();
     }

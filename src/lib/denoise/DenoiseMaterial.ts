@@ -90,7 +90,11 @@ export class DenoiseMaterial extends MaterialBase {
 				varying vec2 vUv;
 				void main() {
 					vUv = uv;
-					gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+					// NDC pass-through — matches DilationMaterial/CompositeMaterial.
+					// Using projectionMatrix * modelViewMatrix with the default
+					// OrthographicCamera (near=0.1) clips the z=0 quad and produces
+					// no output, silently bypassing denoise.
+					gl_Position = vec4( position, 1.0 );
 				}
 			`,
 

@@ -109,6 +109,23 @@ export const runPostProcess = async (
     const ranAny = opts.dilationIterations > 0 || opts.denoiseEnabled;
     const result = ranAny ? read.texture : src;
 
+    // Sentinel: read a 4x4 center patch and log the avg so the user can confirm
+    // refinement actually changed pixel values (vs. silently passing through or clearing).
+    // One readback per refinement run — negligible cost, runs once post-bake.
+    if (ranAny) {
+        const x = Math.max(0, Math.floor(resolution / 2) - 2);
+        const buf = new Float32Array(4 * 4 * 4);
+        renderer.readRenderTargetPixels(read, x, x, 4, 4, buf);
+        let r = 0, g = 0, b = 0;
+        for (let i = 0; i < 16; i++) { r += buf[i * 4]; g += buf[i * 4 + 1]; b += buf[i * 4 + 2]; }
+        const fmt = (n: number) => (n / 16).toFixed(4);
+        console.log(
+            `[baker] refinement: dilations=${opts.dilationIterations}, denoise=${opts.denoiseEnabled ? 'on' : 'off'} ` +
+            `(sigma=${opts.denoiseSigma}, threshold=${opts.denoiseThreshold}, kSigma=${opts.denoiseKSigma}) — ` +
+            `center 4x4 avg rgb = (${fmt(r)}, ${fmt(g)}, ${fmt(b)})`
+        );
+    }
+
     return {
         texture: result,
         dispose: () => { rtA.dispose(); rtB.dispose(); },

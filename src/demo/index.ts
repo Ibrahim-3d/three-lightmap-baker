@@ -1,5 +1,5 @@
 import { CornellBoxExample } from './CornellBoxExample';
-import { loadXAtlasThree } from './atlas/generateAtlas';
+import { loadXAtlasThree } from '../lib';
 
 (async () => {
     await loadXAtlasThree();

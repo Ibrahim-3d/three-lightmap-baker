@@ -3,11 +3,8 @@ import { MeshBVH } from 'three-mesh-bvh';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls';
 import { Pane } from 'tweakpane';
-import { generateAtlas } from './atlas/generateAtlas';
-import { renderAtlas } from './atlas/renderAtlas';
-import { generateLightmapper as generateLightmapper, Lightmapper, RaycastOptions } from './lightmap/Lightmapper';
-import { mergeGeometry } from './utils/GeometryUtils';
-import { LoadGLTF } from './utils/LoaderUtils';
+import { generateAtlas, renderAtlas, generateLightmapper, Lightmapper, RaycastOptions, mergeGeometry } from '../../lib';
+import { LoadGLTF } from './LoaderUtils';
 
 const models = {
     ["level_blockout.glb"]: "level_blockout.glb",

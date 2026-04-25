@@ -8,7 +8,28 @@
 			href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>👨‍🍳</text></svg>"
 		/>
 		<title>Three Lightmap Baker</title>
-		<script type="module" crossorigin src="/three-lightmap-baker/assets/index.b82f3988.js"></script>
+		<style>
+			/* Tweakpane Color Coding */
+			.tp-view  .tp-fldv_t { background-color: #2a4b5d !important; color: #7ad1ff !important; }
+			.tp-bake  .tp-fldv_t { background-color: #2a5d4b !important; color: #7affd1 !important; }
+			.tp-light .tp-fldv_t { background-color: #5d4b2a !important; color: #ffd17a !important; }
+			.tp-post  .tp-fldv_t { background-color: #4b2a5d !important; color: #d17aff !important; }
+			.tp-scene .tp-fldv_t { background-color: #444444 !important; color: #cccccc !important; }
+
+			/* Sub-folders (Direct/GI/AO) - slightly lighter */
+			.tp-light .tp-fldv .tp-fldv_t { background-color: rgba(255,255,255,0.05) !important; color: #fff !important; }
+
+			/* Progress bar "Pulse" animation */
+			@keyframes progress-pulse {
+				0% { opacity: 0.8; }
+				50% { opacity: 1; box-shadow: 0 0 10px #00ff00; }
+				100% { opacity: 0.8; }
+			}
+			.progress-pulse {
+				animation: progress-pulse 1.5s infinite ease-in-out;
+			}
+		</style>
+		<script type="module" crossorigin src="/three-lightmap-baker/assets/index.937a9dcb.js"></script>
 	</head>
 	<body style="margin: 0px; background: #202020">
 		
