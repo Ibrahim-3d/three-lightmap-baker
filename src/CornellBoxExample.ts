@@ -143,10 +143,6 @@ export class CornellBoxExample {
     private composite: CompositeResult | null = null;
     /** Result of the most recent post-process (dilation + denoise). Null until run. */
     private post: PostProcessResult | null = null;
-    /** Wall-clock when current bake started, for time-remaining estimate. */
-    private bakeStartMs = 0;
-    /** Last reported sample count (so the loop can detect "done" once and run post). */
-    private lastSamples = 0;
 
     pane: Pane;
 
@@ -315,7 +311,58 @@ export class CornellBoxExample {
         stat.addMonitor(this.options, 'etaSec', { label: 'eta (s)', format: (v: number) => v.toFixed(1) });
         stat.addMonitor(this.options, 'postStatus', { label: 'post' });
 
+        this.initUI();
         this.rebuildScene();
+    }
+
+    private initUI() {
+        this.fpsElement = document.createElement('div');
+        this.fpsElement.style.position = 'absolute';
+        this.fpsElement.style.top = '10px';
+        this.fpsElement.style.left = '10px';
+        this.fpsElement.style.color = '#00ff00';
+        this.fpsElement.style.fontFamily = 'monospace';
+        this.fpsElement.style.fontSize = '12px';
+        this.fpsElement.style.pointerEvents = 'none';
+        this.fpsElement.style.zIndex = '100';
+        document.body.appendChild(this.fpsElement);
+
+        // Progress Widget
+        this.progressContainer = document.createElement('div');
+        this.progressContainer.style.position = 'absolute';
+        this.progressContainer.style.bottom = '20px';
+        this.progressContainer.style.left = '20px';
+        this.progressContainer.style.width = '300px';
+        this.progressContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+        this.progressContainer.style.padding = '12px';
+        this.progressContainer.style.borderRadius = '4px';
+        this.progressContainer.style.fontFamily = 'monospace';
+        this.progressContainer.style.fontSize = '11px';
+        this.progressContainer.style.color = '#fff';
+        this.progressContainer.style.display = 'none';
+        this.progressContainer.style.zIndex = '100';
+        this.progressContainer.style.border = '1px solid #444';
+        document.body.appendChild(this.progressContainer);
+
+        const barBg = document.createElement('div');
+        barBg.style.width = '100%';
+        barBg.style.height = '4px';
+        barBg.style.backgroundColor = '#222';
+        barBg.style.marginTop = '8px';
+        barBg.style.borderRadius = '2px';
+        barBg.style.overflow = 'hidden';
+        this.progressContainer.appendChild(barBg);
+
+        this.progressBar = document.createElement('div');
+        this.progressBar.style.width = '0%';
+        this.progressBar.style.height = '100%';
+        this.progressBar.style.backgroundColor = '#00ff00';
+        barBg.appendChild(this.progressBar);
+
+        this.progressText = document.createElement('div');
+        this.progressText.style.marginTop = '8px';
+        this.progressText.style.whiteSpace = 'pre';
+        this.progressContainer.appendChild(this.progressText);
     }
 
     updateSize() {
@@ -442,6 +489,12 @@ export class CornellBoxExample {
 
     private async bake() {
         if (!this.meshes.length) return;
+
+        // Show progress widget and record start time
+        this.progressContainer.style.display = 'block';
+        this.bakeStartTime = performance.now();
+        this.options.postStatus = 'baking...';
+
         const res = this.options.lightMapSize;
 
         // CRITICAL: renderAtlas reads each mesh's modelMatrix and mergeGeometry calls
@@ -521,6 +574,7 @@ export class CornellBoxExample {
             albedoTexture: matTex.albedoTexture,
             emissiveTexture: matTex.emissiveTexture,
             materialTextureSize: matTex.side,
+            targetSamples: this.options.targetSamples,
         };
         // Free GPU resources from any prior bake before re-allocating. Composite/post
         // hold refs into the OLD MRT textures, so dispose them BEFORE the lightmapper
@@ -560,8 +614,6 @@ export class CornellBoxExample {
         this.options.spp = 0;
         this.options.etaSec = 0;
         this.options.pause = false;
-        this.lastSamples = 0;
-        this.bakeStartMs = performance.now();
         this.pane.refresh();
         this.lightmapper.render();
         this.applyRenderMode();
@@ -604,6 +656,11 @@ export class CornellBoxExample {
             ? 'applied' : 'skipped';
         this.pane.refresh();
         this.applyRenderMode();
+
+        // Hide progress widget after a delay
+        setTimeout(() => {
+            this.progressContainer.style.display = 'none';
+        }, 3000);
     }
 
     /** Revert display to the raw progressive lightmap (drops post-process result). */
@@ -613,35 +670,6 @@ export class CornellBoxExample {
         this.options.postStatus = 'idle';
         this.pane.refresh();
         this.applyRenderMode();
-    }
-
-    /**
-     * 🟡 USER CONTRIBUTION REQUESTED 🟡
-     *
-     * Estimate seconds remaining for the current bake. Called once per frame from the
-     * render loop with the latest sample count. Result lands in `options.etaSec`.
-     *
-     * The naive answer is:
-     *   elapsed * (target - samples) / samples
-     * but that swings wildly for small `samples`. Real choices:
-     *   - Naive proportional (above) — simple, jumpy first second.
-     *   - Rolling window — average frame time over last K frames; multiply by remaining.
-     *   - Exponential moving average (EMA) — smooth, low memory, tunable α.
-     *
-     * Pick one. Keep it 5–10 lines. The trade-off is responsiveness (fast convergence
-     * to the true rate) vs stability (no jittery countdown).
-     *
-     * Inputs available:
-     *   - samples:     frames rendered so far (>= 1)
-     *   - target:      frames target (> samples; caller already gated on this)
-     *   - elapsedMs:   wall-clock since `this.bakeStartMs`
-     *   - this.lastSamples / this.bakeStartMs are mutable scratch you can repurpose
-     *
-     * Implement and remove this banner comment when done.
-     */
-    private estimateTimeRemaining(samples: number, target: number, elapsedMs: number): number {
-        // TODO(user): replace this stub with a real estimator (see options above).
-        return Math.max(0, (elapsedMs / 1000) * (target - samples) / Math.max(1, samples));
     }
 
     /** Resolve the current LayerContext from cached textures. */
@@ -687,21 +715,14 @@ export class CornellBoxExample {
 
     private looping = false;
     private fpsElement: HTMLDivElement;
+    private progressContainer: HTMLDivElement;
+    private progressBar: HTMLDivElement;
+    private progressText: HTMLDivElement;
+    private bakeStartTime: number = 0;
 
     private startLoop() {
         if (this.looping) return;
         this.looping = true;
-
-        this.fpsElement = document.createElement('div');
-        this.fpsElement.style.position = 'absolute';
-        this.fpsElement.style.top = '10px';
-        this.fpsElement.style.left = '10px';
-        this.fpsElement.style.color = '#00ff00';
-        this.fpsElement.style.fontFamily = 'monospace';
-        this.fpsElement.style.fontSize = '12px';
-        this.fpsElement.style.pointerEvents = 'none';
-        this.fpsElement.style.zIndex = '100';
-        document.body.appendChild(this.fpsElement);
 
         let lastTime = performance.now();
         let frames = 0;
@@ -725,23 +746,14 @@ export class CornellBoxExample {
 
             if (this.lightmapper && !this.options.pause) {
                 const r = this.lightmapper.render();
-
-                // Phase A.3: refresh composite every frame so layer views reflect latest accumulation.
-                this.composite?.refresh();
-
-                // Update readouts. Cheap — Pane.refresh batches DOM writes per frame.
-                if (r.samples !== this.lastSamples) {
-                    this.lastSamples = r.samples;
-                    this.options.samples = r.samples;
-                    this.options.spp     = r.samples * this.options.casts;
-                    this.options.etaSec  = r.done ? 0 : this.estimateTimeRemaining(
-                        r.samples, this.options.targetSamples, performance.now() - this.bakeStartMs,
-                    );
-                }
-
                 if (r.done) {
                     this.options.pause = true;
                     this.options.etaSec = 0;
+                    
+                    const elapsed = (performance.now() - this.bakeStartTime) / 1000;
+                    console.log(`[baker] done in ${elapsed.toFixed(2)}s`);
+                    this.progressText.innerText = `Baking complete! ${elapsed.toFixed(1)}s\n` +
+                                                `Running post-process...`;
 
                     // Manual mipmap generation at the end to keep the progressive loop fast.
                     // Swapping to LinearMipMapLinearFilter enables hardware mipmap sampling.
@@ -756,7 +768,27 @@ export class CornellBoxExample {
 
                     this.pane.refresh();
                     if (this.options.autoApplyPost) this.applyPostProcess();
+                    return; // Stop processing this frame
                 }
+
+                // Phase A.3: refresh composite every frame so layer views reflect latest accumulation.
+                this.composite?.refresh();
+
+                // Update Progress Widget
+                const totalSamples = this.options.targetSamples;
+                const progress = totalSamples > 0 ? (r.samples / totalSamples) : 0;
+                this.progressBar.style.width = `${Math.min(100, progress * 100)}%`;
+                
+                const elapsed = (performance.now() - this.bakeStartTime) / 1000;
+                const eta = (progress > 0 && progress < 1) ? (elapsed / progress - elapsed) : 0;
+                
+                const spp = r.samples * this.options.casts;
+                this.options.samples = r.samples;
+                this.options.spp = spp;
+                this.options.etaSec = Math.ceil(eta);
+
+                this.progressText.innerText = `Baking: ${r.samples}/${totalSamples} frames (${spp} spp)\n` +
+                                            `Elapsed: ${elapsed.toFixed(1)}s | ETA: ${this.options.etaSec}s`;
             }
 
             this.controls.update();
