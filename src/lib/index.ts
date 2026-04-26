@@ -45,6 +45,10 @@ export type { AtlasViewerCorner, AtlasViewerOptions } from './AtlasViewer';
 export { collectLightsFromScene, buildLightTexture, disposeLightTexture } from './lightmap/Lights';
 export type { PackedLight, LightType } from './lightmap/Lights';
 
+// --- Texel density debug visualization (Task 7E) ---
+export { TexelDensityMaterial } from './lightmap/TexelDensityMaterial';
+export type { TexelDensityMaterialOptions } from './lightmap/TexelDensityMaterial';
+
 // --- Errors ---
 export { BakeError } from './errors';
 export type { BakeErrorPhase } from './errors';

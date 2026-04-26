@@ -43,7 +43,9 @@ import {
   AtlasViewer,
   AtlasViewerCorner,
   PackedLight,
+  TexelDensityMaterial,
 } from '../lib';
+import type { Material } from 'three';
 
 /** Diagnostic logs — flip to true locally when debugging. CLAUDE.md convention. */
 const DEBUG = false;
@@ -151,6 +153,15 @@ const LAYERS: Layer[] = [
     showAlbedo: false,
     getLightMap: (c) => c.normals,
   },
+  {
+    // Material-swap layer: replaces mesh material with TexelDensityMaterial.
+    // applyRenderMode special-cases this id and restores originals on switch-away.
+    id: 'texelDensity',
+    label: 'Texel Density',
+    group: 'debug',
+    showAlbedo: false,
+    getLightMap: () => null,
+  },
 ];
 
 const LAYER_OPTIONS = Object.fromEntries(LAYERS.map((l) => [l.label, l.id]));
@@ -216,6 +227,11 @@ export class CornellBoxExample {
   /** Result of the most recent refinement pass (dilation + denoise). Null until run. */
   private refinement: RefinementResult | null = null;
 
+  /** Lazy-allocated TexelDensityMaterial for the "Texel Density" debug layer. */
+  private texelDensityMat: TexelDensityMaterial | null = null;
+  /** Caches each mesh's original material so we can restore it when leaving a swap layer. */
+  private originalMaterials = new WeakMap<Mesh, Material>();
+
   pane: Pane;
 
   options = {
@@ -235,6 +251,8 @@ export class CornellBoxExample {
     ambientDistance: 0.5,
     aoIntensity: 1.0,
     aoExponent: 1.5,
+    /** Texel-density debug viz target (texels per world meter). Layer = "Texel Density". */
+    texelsPerMeter: 10,
     lightSize: 2.9,
     // Linear-space HDR intensity multiplier for the bake's point light.
     lightIntensity: 2.0,
@@ -342,6 +360,15 @@ export class CornellBoxExample {
       .on('change', () => this.applyRenderMode());
     viewFolder.addInput(this.options, 'showGizmo', { label: 'Show Gizmo' });
     viewFolder.addInput(this.options, 'pause', { label: 'Pause' });
+    // Texel density target — only meaningful when the "Texel Density" layer is active.
+    viewFolder
+      .addInput(this.options, 'texelsPerMeter', {
+        min: 1,
+        max: 50,
+        step: 0.5,
+        label: 'Density Target (px/m)',
+      })
+      .on('change', () => this.texelDensityMat?.setTexelsPerMeter(this.options.texelsPerMeter));
 
     const bakeFolder = this.pane.addFolder({ title: 'Bake Settings', expanded: false });
     (bakeFolder as any).element.classList.add('tp-bake');
@@ -1033,6 +1060,31 @@ export class CornellBoxExample {
     const layer = LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0]!;
     const ctx = this.layerContext();
     const lm = layer.getLightMap(ctx);
+
+    // Material-swap layers (e.g. "Texel Density"). Restore originals on switch-away.
+    if (layer.id === 'texelDensity') {
+      if (!this.texelDensityMat) {
+        this.texelDensityMat = new TexelDensityMaterial({
+          texelsPerMeter: this.options.texelsPerMeter,
+          lightmapSize: this.options.lightMapSize,
+        });
+      } else {
+        this.texelDensityMat.setLightmapSize(this.options.lightMapSize);
+        this.texelDensityMat.setTexelsPerMeter(this.options.texelsPerMeter);
+      }
+      for (const m of this.meshes) {
+        if (!this.originalMaterials.has(m)) this.originalMaterials.set(m, m.material);
+        m.material = this.texelDensityMat as unknown as SceneObj['material'];
+      }
+      this.visualLight.visible = false;
+      return;
+    }
+
+    // Restore originals if we just left a swap layer.
+    for (const m of this.meshes) {
+      const orig = this.originalMaterials.get(m);
+      if (orig && m.material !== orig) m.material = orig as SceneObj['material'];
+    }
 
     for (const m of this.meshes) {
       const mat = m.material as MeshStandardMaterial & { _originalMap?: Texture | null };
