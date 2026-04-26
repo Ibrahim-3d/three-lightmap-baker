@@ -54,7 +54,7 @@ export const runComposite = (
   const cam = new OrthographicCamera();
 
   // SAFETY: uniforms are constructed in CompositeMaterial; presence is invariant.
-  const u = mat.uniforms as Record<string, { value: unknown }>;
+  const u = mat.uniforms;
 
   const refresh = (
     overrides?: Partial<{ directIntensity: number; giIntensity: number; aoEnabled: boolean }>,

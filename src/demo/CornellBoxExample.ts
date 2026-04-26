@@ -17,7 +17,6 @@ import {
   SRGBColorSpace,
   Texture,
   TorusKnotGeometry,
-  Vector3,
   WebGLMultipleRenderTargets,
   WebGLRenderer,
 } from 'three';
@@ -810,7 +809,7 @@ export class CornellBoxExample {
     this.refinement = null;
     this.lightmapper?.dispose();
 
-    this.lightmapper = await generateLightmapper(
+    this.lightmapper = generateLightmapper(
       this.renderer,
       this.positionTexture,
       this.normalTexture,
@@ -904,7 +903,7 @@ export class CornellBoxExample {
 
   /** Export whatever the active layer is currently displaying. */
   private async exportCurrent() {
-    const layer = (LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0]!);
+    const layer = LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0]!;
     const tex = layer.getLightMap(this.layerContext());
     if (!tex) {
       console.warn(`[baker] export: layer "${layer.id}" has no exportable texture`);
@@ -954,7 +953,7 @@ export class CornellBoxExample {
 
   /** Apply the active layer to every mesh. Registry lookup, no per-layer if/else. */
   private applyRenderMode() {
-    const layer = (LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0]!);
+    const layer = LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0]!;
     const ctx = this.layerContext();
     const lm = layer.getLightMap(ctx);
 
@@ -1031,10 +1030,10 @@ export class CornellBoxExample {
             tex.minFilter = LinearMipMapLinearFilter;
             this.renderer.initTexture(tex);
           }
-          this.composite?.texture && (this.composite.texture.needsUpdate = true);
+          if (this.composite?.texture) this.composite.texture.needsUpdate = true;
 
           this.pane.refresh();
-          if (this.options.autoApplyRefinement) this.applyRefinement();
+          if (this.options.autoApplyRefinement) void this.applyRefinement();
           return; // Stop processing this frame
         }
 
@@ -1065,7 +1064,7 @@ export class CornellBoxExample {
       // 2D atlas viewer overlay — track the active layer's texture each frame.
       this.atlasViewer.visible = this.options.atlasViewerEnabled;
       if (this.atlasViewer.visible) {
-        const layer = (LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0]!);
+        const layer = LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0]!;
         const tex = layer.getLightMap(this.layerContext()) ?? this.composite?.texture ?? null;
         this.atlasViewer.setTexture(tex);
         this.atlasViewer.setLayerLabel(layer.label);

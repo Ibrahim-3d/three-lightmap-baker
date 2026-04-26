@@ -340,7 +340,7 @@ export class LightmapBaker {
       materialTextureSize: matTex.side,
       targetSamples: this.opts.samples,
     };
-    const lightmapper = await generateLightmapper(
+    const lightmapper = generateLightmapper(
       this.renderer,
       atlas.positionTexture,
       atlas.normalTexture,

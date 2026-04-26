@@ -361,3 +361,15 @@ But Task 03's `extractPerTriangleMaterials` built the per-triangle albedo+emissi
 - Appended system diagram, data flow, and key invariants to docs/architecture.md
 - Created docs/GLOSSARY.md with all project-specific terms defined
 - Updated CLAUDE.md with modularity reference and context-driven development section
+
+### Standards + Debt Cleanup — 2026-04-26 (Prompt 2)
+- Phase 1: prettier auto-format applied; ESLint v10 flat config (eslint.config.js) added
+- Phase 2: TypeScript strict compliance — narrowed all noUncheckedIndexedAccess fallout, replaced `any` in DenoiseMaterial with typed parameters, module-augmented three-mesh-bvh for the missing shaderIntersectFunction export, added vite-env.d.ts; legacy LightBakerExample excluded from typecheck
+- Phase 3: WebGL resource leak audit — renderAtlas now returns dispose() that releases position+normal RTs (was leaking two RTs per bake!); LightmapBakeResult.dispose() chains atlas + matTex disposal; all renderer state mutations wrapped in try/finally so a render throw cannot leave autoClear/clearColor/RT corrupted
+- Phase 4: Shader audit — DilationMaterial/AtlasViewer/renderAtlas/exportLightmap converted from GLSL1 to GLSL3 (varying→in/out, texture2D→texture, gl_FragColor→explicit out); DenoiseMaterial deliberately stays GLSL1 (documented exception); NaN guards added to randomSpherePoint sqrt and shadow-ray distToLight; CompositeMaterial pow() guarded against negative input; renderAtlas normal output guards zero-length vectors
+- Phase 5: BakeError class with phase + meshName, validateOptions() pre-flight on construction, EXT_color_buffer_float check at bake start, AbortSignal aborts now throw BakeError tagged with the catching phase
+- Phase 6: console logging — all log/info prefixed [baker] and gated behind import.meta.env.DEV; demo runExport rethrows after logging (was swallow-and-continue)
+- Phase 7: file org already split into src/lib/ + src/demo/ in commit 694c930 (Phase D)
+- Phase 8: `npm run check` passes — typecheck clean, format clean, lint 0 errors (28 informational warnings, none in lib/lightmap path)
+- All changes are behavioral no-ops in the bake pipeline (algorithm and math unchanged)
+- Type-aware ESLint rule set dropped — strict TypeScript is the safety net; type-aware rules fired hundreds of times on Tweakpane any-typed bindings with no real value
