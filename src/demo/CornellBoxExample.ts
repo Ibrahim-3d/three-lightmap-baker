@@ -382,19 +382,6 @@ export class CornellBoxExample {
       .on('change', () => this.applyRenderMode());
     viewFolder.addInput(this.options, 'showGizmo', { label: 'Show Gizmo' });
     viewFolder.addInput(this.options, 'pause', { label: 'Pause' });
-    // Texel density target — only meaningful when the "Texel Density" layer is active.
-    viewFolder
-      .addInput(this.options, 'texelsPerMeter', {
-        min: 1,
-        max: 50,
-        step: 0.5,
-        label: 'Density Target (px/m)',
-      })
-      .on('change', () => {
-        this.texelDensityMat?.setTexelsPerMeter(this.options.texelsPerMeter);
-        // Density target also drives the bin-packer — re-bake to apply.
-        this.bake();
-      });
 
     const bakeFolder = this.pane.addFolder({ title: 'Bake Settings', expanded: false });
     (bakeFolder as any).element.classList.add('tp-bake');
@@ -410,11 +397,24 @@ export class CornellBoxExample {
         min: 128,
         max: 2048,
         step: 128,
-        label: 'Resolution',
+        label: 'Atlas Size',
       })
       .on('change', () => {
         this.options.quality = 'Custom';
         this.pane.refresh();
+        this.bake();
+      });
+    // Density target — feeds the bin-packer (more density → more atlases) and
+    // also drives the "Texel Density" debug viz layer. Re-bake on change.
+    bakeFolder
+      .addInput(this.options, 'texelsPerMeter', {
+        min: 1,
+        max: 50,
+        step: 0.5,
+        label: 'Density (px/m)',
+      })
+      .on('change', () => {
+        this.texelDensityMat?.setTexelsPerMeter(this.options.texelsPerMeter);
         this.bake();
       });
     bakeFolder
