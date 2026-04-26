@@ -61,7 +61,16 @@ const normalVertexShader = /* glsl */ `
     uniform vec2 offset;
 
     void main() {
-        vNormal = modelMatrix * vec4(normal, 0.0);
+        // Inverse-transpose of the upper-left 3x3 of the model matrix preserves
+        // normal direction under non-uniform scale. mat3(modelMatrix) alone
+        // skews normals on stretched axes — visible as wrong shading falloff
+        // on imported GLB content. inverse()/transpose() are GLSL3 built-ins.
+        mat3 worldNormalMatrix = transpose(inverse(mat3(modelMatrix)));
+        vec3 worldNormal = worldNormalMatrix * normal;
+        // Alpha = 0.0 to match the prior modelMatrix * vec4(normal, 0.0) output.
+        // The fragment shader emits length-checked xyz and forwards w as the
+        // chart-mask convention; keeping it 0 matches the previous wire format.
+        vNormal = vec4(worldNormal, 0.0);
         gl_Position = vec4((uv2 + offset) * 2.0 - 1.0, 0.0, 1.0);
     }
 `;

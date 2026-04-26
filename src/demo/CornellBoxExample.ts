@@ -703,6 +703,7 @@ export class CornellBoxExample {
     // Show progress widget and record start time
     this.progressContainer.style.display = 'block';
     this.bakeStartTime = performance.now();
+    this.bakeBatchHistory = [];
 
     const res = this.options.lightMapSize;
 
@@ -984,6 +985,34 @@ export class CornellBoxExample {
   private progressBar!: HTMLDivElement;
   private progressText!: HTMLDivElement;
   private bakeStartTime: number = 0;
+  /**
+   * Rolling window of `{samples, t}` checkpoints used by `estimateTimeRemaining`.
+   * Push one entry per RAF tick where `r.samples` advanced; trim to last
+   * `BAKE_ETA_WINDOW` entries. Reset to `[]` on every new bake.
+   */
+  private bakeBatchHistory: { samples: number; t: number }[] = [];
+  private static readonly BAKE_ETA_WINDOW = 16;
+
+  /**
+   * Rolling-average ETA (seconds). Uses the slope of the last
+   * `BAKE_ETA_WINDOW` (samples, time) checkpoints rather than total
+   * `elapsed/progress` — discards RAF startup overhead and adapts to
+   * GPU thermal throttling mid-bake. Returns 0 when no estimate is
+   * possible (no history yet, target unset, already done, or non-positive
+   * sample rate).
+   */
+  private estimateTimeRemaining(currentSamples: number, targetSamples: number): number {
+    if (targetSamples <= 0 || currentSamples >= targetSamples) return 0;
+    const hist = this.bakeBatchHistory;
+    if (hist.length < 2) return 0;
+    const first = hist[0]!;
+    const last = hist[hist.length - 1]!;
+    const dn = last.samples - first.samples;
+    const dtMs = last.t - first.t;
+    if (dn <= 0 || dtMs <= 0) return 0;
+    const msPerSample = dtMs / dn;
+    return ((targetSamples - currentSamples) * msPerSample) / 1000;
+  }
 
   private startLoop() {
     if (this.looping) return;
@@ -1046,7 +1075,18 @@ export class CornellBoxExample {
         this.progressBar.style.width = `${Math.min(100, progress * 100)}%`;
 
         const elapsed = (performance.now() - this.bakeStartTime) / 1000;
-        const eta = progress > 0 && progress < 1 ? elapsed / progress - elapsed : 0;
+
+        // Append to rolling history only when sample count actually advanced;
+        // RAF can fire at >60Hz on high-refresh displays without a new sample.
+        const now = performance.now();
+        const tail = this.bakeBatchHistory[this.bakeBatchHistory.length - 1];
+        if (!tail || tail.samples !== r.samples) {
+          this.bakeBatchHistory.push({ samples: r.samples, t: now });
+          if (this.bakeBatchHistory.length > CornellBoxExample.BAKE_ETA_WINDOW) {
+            this.bakeBatchHistory.shift();
+          }
+        }
+        const eta = this.estimateTimeRemaining(r.samples, totalSamples);
 
         const spp = r.samples * this.options.casts;
         this.options.samples = r.samples;
