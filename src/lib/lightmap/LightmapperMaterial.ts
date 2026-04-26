@@ -1,4 +1,4 @@
-import { Color, GLSL3, Matrix4, ShaderMaterial, Texture, Vector3 } from 'three';
+import { Color, GLSL3, Matrix4, ShaderMaterial, Texture } from 'three';
 import {
   MeshBVH,
   MeshBVHUniformStruct,
@@ -23,14 +23,12 @@ export type LightmapperMaterialOptions = {
   casts: number;
   bounces: number;
 
-  lightPosition: Vector3;
-  lightSize: number;
-  /** Linear-space RGB tint of the point light (multiplied with lightIntensity). */
-  lightColor: Color;
-  /** Scalar HDR intensity. 1.0 = baseline (matches the pre-Task-04 hardcoded += 1.0). */
-  lightIntensity: number;
-  // giIntensity removed — Phase A.3 applies it at view time in CompositeMaterial.
-  /** Linear-space environment/sky color added on hemisphere-ray miss + as gentle untinted fill. */
+  /** Multi-light DataTexture: 4 texels wide × lightCount tall, RGBA float. */
+  lightsTex: Texture;
+  /** Number of active lights in lightsTex. 0 = no direct lighting. */
+  lightCount: number;
+
+  /** Linear-space environment/sky color added on hemisphere-ray miss. */
   skyColor: Color;
   /** Scalar multiplier on skyColor. 0 = closed-scene physical bake. */
   skyIntensity: number;
@@ -65,11 +63,8 @@ export class LightmapperMaterial extends ShaderMaterial {
         invModelMatrix: { value: options.invModelMatrix },
         casts: { value: options.casts },
         bounces: { value: options.bounces },
-        lightPosition: { value: options.lightPosition },
-        lightSize: { value: options.lightSize },
-        lightColor: { value: options.lightColor },
-        lightIntensity: { value: options.lightIntensity },
-        // giIntensity removed — Phase A.3 applies it in CompositeMaterial at view time.
+        lightsTex: { value: options.lightsTex },
+        lightCount: { value: options.lightCount },
         skyColor: { value: options.skyColor },
         skyIntensity: { value: options.skyIntensity },
         opacity: { value: 1 },
@@ -92,17 +87,24 @@ export class LightmapperMaterial extends ShaderMaterial {
                 /*
                  * Lightmap Bake — Fragment Shader (GLSL3).
                  *
-                 * Input :
-                 *   - positions / normals : G-buffer textures keyed by lightmap UV (vUv)
-                 *   - bvh                 : MeshBVH uniform struct of the merged scene
-                 *   - albedoTex / emissiveTex (W×W float)  : per-triangle material lookup
+                 * Inputs:
+                 *   positions / normals  : G-buffer textures keyed by lightmap UV
+                 *   bvh                  : MeshBVH uniform struct of the merged scene
+                 *   albedoTex/emissiveTex: per-triangle material lookup (W×W float)
+                 *   lightsTex            : 4-wide × lightCount-tall RGBA float texture
+                 *                         texel(0,i)=pos+type, (1,i)=dir+p0,
+                 *                         (2,i)=color+p1, (3,i)=p2,p3,0,0
                  *
-                 * Output (MRT, per-texel) :
-                 *   directOut    : direct lighting from the point light (NEE, with N.L)
-                 *   indirectOut  : N-bounce GI + sky on miss (cosine-weighted hemisphere sampling)
-                 *   aoOut        : 1.0 - smoothed near-field occlusion (radius = ambientDistance)
+                 * Outputs (MRT):
+                 *   directOut   : raw direct irradiance (no surface albedo applied)
+                 *   indirectOut : N-bounce GI + sky on miss
+                 *   aoOut       : 1.0 – smoothed near-field occlusion
                  *
-                 * Progressive accumulation is done by the renderer via opacity = 1/(n+1).
+                 * directOut convention: stores "incoming light per unit albedo".
+                 * Material color is applied at composite/view time. This matches
+                 * the pre-7C energy balance for the single-light case.
+                 *
+                 * Progressive accumulation: opacity = 1/(n+1), done by the caller.
                  */
                 precision highp float;
                 precision highp sampler2D;
@@ -115,23 +117,23 @@ export class LightmapperMaterial extends ShaderMaterial {
                 uniform sampler2D positions;
                 uniform sampler2D normals;
 
-                // Per-triangle material lookup tables (Task 03).
-                // Indexed by global triangle index (faceIndices.w from BVH hit).
-                // Coordinate: triIdx -> (triIdx % W, triIdx / W) on a W×W square.
+                // Per-triangle material lookup (Task 03). Indexed by faceIndices.w.
                 uniform sampler2D albedoTex;
                 uniform sampler2D emissiveTex;
                 uniform float materialTextureSize;
 
                 #define MAX_BOUNCES 4
+                // Static upper cap on lights checked per shadow loop iteration.
+                // Runtime count is controlled by the lightCount uniform.
+                #define MAX_LIGHTS 16
 
                 uniform int casts;
                 uniform int bounces;
 
-                uniform vec3 lightPosition;
-                uniform float lightSize;
-                uniform vec3 lightColor;
-                uniform float lightIntensity;
-                // giIntensity uniform removed — Phase A.3 applies it in CompositeMaterial.
+                // Multi-light texture: 4 texels wide × lightCount tall, RGBA float.
+                uniform sampler2D lightsTex;
+                uniform int lightCount;
+
                 uniform vec3 skyColor;
                 uniform float skyIntensity;
                 uniform int sampleIndex;
@@ -149,105 +151,185 @@ export class LightmapperMaterial extends ShaderMaterial {
                 layout(location = 1) out vec4 indirectOut;
                 layout(location = 2) out vec4 aoOut;
 
-                /**
-                 * Look up a triangle's material color from a square material texture.
-                 * Will be called from the hit branch of the bounce loop in Task 04.
-                 *
-                 * triIdx == faceIndices.w returned by bvhIntersectFirstHit.
-                 */
-                vec3 readTriangleMaterial(sampler2D tex, uint triIdx) {
-                    uint W = uint(materialTextureSize);
-                    uint x = triIdx % W;
-                    uint y = triIdx / W;
-                    vec2 uv = (vec2(x, y) + 0.5) / materialTextureSize;
-                    return texture(tex, uv).rgb;
-                }
+                // ── RNG ──────────────────────────────────────────────────────────
 
                 uvec4 s0;
                 void rng_initialize(vec2 p, int frame) {
-                    // white noise seed
                     s0 = uvec4( uint(p.x), uint(p.y), uint( frame ), uint( p.x ) + uint( p.y ) );
                 }
-
                 void pcg4d( inout uvec4 v ) {
                     v = v * 1664525u + 1013904223u;
-                    v.x += v.y * v.w;
-                    v.y += v.z * v.x;
-                    v.z += v.x * v.y;
-                    v.w += v.y * v.z;
+                    v.x += v.y * v.w; v.y += v.z * v.x;
+                    v.z += v.x * v.y; v.w += v.y * v.z;
                     v = v ^ ( v >> 16u );
-                    v.x += v.y*v.w;
-                    v.y += v.z*v.x;
-                    v.z += v.x*v.y;
-                    v.w += v.y*v.z;
+                    v.x += v.y*v.w; v.y += v.z*v.x;
+                    v.z += v.x*v.y; v.w += v.y*v.z;
+                }
+                float rand()  { pcg4d(s0); return float(s0.x) / float(0xffffffffu); }
+                vec2  rand2() { pcg4d(s0); return vec2(s0.xy) / float(0xffffffffu); }
+                vec3  rand3() { pcg4d(s0); return vec3(s0.xyz) / float(0xffffffffu); }
+                vec4  rand4() { pcg4d(s0); return vec4(s0) / float(0xffffffffu); }
+
+                // ── Geometry helpers ─────────────────────────────────────────────
+
+                vec3 randomSpherePoint(vec3 r) {
+                    float ang1 = (r.x + 1.0) * 3.1415;
+                    float u = r.y; float u2 = u * u;
+                    float s = sqrt(max(0.0, 1.0 - u2));
+                    return vec3(s * cos(ang1), s * sin(ang1), u);
                 }
 
-                float rand() {
-                    pcg4d(s0);
-                    return float( s0.x ) / float( 0xffffffffu );
-                }
-                vec2 rand2() {
-                    pcg4d( s0 );
-                    return vec2( s0.xy ) / float(0xffffffffu);
-                }
-                vec3 rand3() {
-                    pcg4d(s0);
-                    return vec3( s0.xyz ) / float( 0xffffffffu );
-                }
-                vec4 rand4() {
-                    pcg4d(s0);
-                    return vec4(s0)/float(0xffffffffu);
-                }
-
-                vec3 randomSpherePoint(vec3 rand) {
-                    float ang1 = (rand.x + 1.0) * 3.1415; // [-1..1) -> [0..2*PI)
-                    float u = rand.y; // [-1..1), cos and acos(2v-1) cancel each other out, so we arrive at [-1..1)
-                    float u2 = u * u;
-                    // max(0,...) guards against negative arg from floating-point round-off when |u| ≈ 1.
-                    float sqrt1MinusU2 = sqrt(max(0.0, 1.0 - u2));
-                    float x = sqrt1MinusU2 * cos(ang1);
-                    float y = sqrt1MinusU2 * sin(ang1);
-                    float z = u;
-                    return vec3(x, y, z);
-                  }
-
-                  vec3 getHemisphereSample( vec3 n, vec2 uv ) {
-                    // https://www.rorydriscoll.com/2009/01/07/better-sampling/
-                    // https://graphics.pixar.com/library/OrthonormalB/paper.pdf
-                    float s = n.z == 0.0 ? 1.0 : sign( n.z );
-                    float a = - 1.0 / ( s + n.z );
+                vec3 getHemisphereSample( vec3 n, vec2 uv ) {
+                    float s = n.z == 0.0 ? 1.0 : sign(n.z);
+                    float a = -1.0 / (s + n.z);
                     float b = n.x * n.y * a;
-                    vec3 b1 = vec3( 1.0 + s * n.x * n.x * a, s * b, - s * n.x );
-                    vec3 b2 = vec3( b, s + n.y * n.y * a, - n.y );
-                    float r = sqrt( uv.x );
+                    vec3 b1 = vec3(1.0 + s * n.x * n.x * a, s * b, -s * n.x);
+                    vec3 b2 = vec3(b, s + n.y * n.y * a, -n.y);
+                    float r = sqrt(uv.x);
                     float theta = 2.0 * 3.1415 * uv.y;
-                    float x = r * cos( theta );
-                    float y = r * sin( theta );
-                    return x * b1 + y * b2 + sqrt( 1.0 - uv.x ) * n;
+                    return r * cos(theta) * b1 + r * sin(theta) * b2 + sqrt(1.0 - uv.x) * n;
                 }
+
+                // ── Material lookup ──────────────────────────────────────────────
+
+                vec3 readTriangleMaterial(sampler2D tex, uint triIdx) {
+                    uint W = uint(materialTextureSize);
+                    vec2 uv = (vec2(triIdx % W, triIdx / W) + 0.5) / materialTextureSize;
+                    return texture(tex, uv).rgb;
+                }
+
+                // ── Light texture access ─────────────────────────────────────────
+
+                /**
+                 * Read texel (slot, lightIdx) from the 4-wide light texture.
+                 * slot ∈ {0,1,2,3}. Guard: only call when lightCount > 0.
+                 */
+                vec4 readLight(int lightIdx, int slot) {
+                    vec2 uv = (vec2(float(slot), float(lightIdx)) + 0.5)
+                              / vec2(4.0, float(lightCount));
+                    return texture(lightsTex, uv);
+                }
+
+                // ── Light sampling ───────────────────────────────────────────────
+
+                struct LightSample {
+                    vec3  L;         // unit direction from hit toward light
+                    float distance;  // distance to light (1e6 for directional)
+                    vec3  emission;  // color * falloff (0 = skip shadow ray)
+                };
+
+                /**
+                 * Sample light li at hitPos / hitNormal using 2D random input rnd.
+                 * Directional jitter uses tan(angularSize) approximation — valid for
+                 * small angles (sun disc ≲ 5°). Larger values over-bias the direction.
+                 */
+                LightSample sampleLight(int li, vec3 hitPos, vec3 hitNormal, vec2 rnd) {
+                    vec4 t0 = readLight(li, 0);
+                    vec4 t1 = readLight(li, 1);
+                    vec4 t2 = readLight(li, 2);
+                    vec4 t3 = readLight(li, 3);
+                    int  ltype  = int(t0.w + 0.5);
+                    vec3 lpos   = t0.xyz;
+                    vec3 ldir   = normalize(t1.xyz);
+                    vec3 lcolor = t2.xyz;
+                    float p0 = t1.w, p1 = t2.w; // p2=t3.x, p3=t3.y available if needed
+
+                    LightSample s;
+                    s.emission = vec3(0.0);
+                    s.distance = 1e6;
+
+                    if (ltype == 0) {
+                        // Point — sphere jitter for soft shadows (radius = p0).
+                        vec3 jitter = (p0 > 0.0) ? randomSpherePoint(vec3(rnd, rand())) * p0
+                                                  : vec3(0.0);
+                        vec3 d = (lpos + jitter) - hitPos;
+                        s.distance = max(length(d), 1e-5);
+                        s.L        = d / s.distance;
+                        s.emission = lcolor;
+                    }
+                    else if (ltype == 1) {
+                        // Directional — effectively infinite distance.
+                        vec3 baseL = -ldir;
+                        vec3 jitter = (p0 > 0.0)
+                            ? randomSpherePoint(vec3(rnd, rand())) * tan(p0)
+                            : vec3(0.0);
+                        s.L        = normalize(baseL + jitter);
+                        s.distance = 1e6;
+                        s.emission = lcolor;
+                    }
+                    else if (ltype == 2) {
+                        // Spot — point source with angular cone falloff.
+                        // p0 = innerAngleCos, p1 = outerAngleCos.
+                        vec3 d = lpos - hitPos;
+                        s.distance = max(length(d), 1e-5);
+                        s.L = d / s.distance;
+                        float cosAngle = dot(-s.L, ldir);
+                        float falloff  = clamp((cosAngle - p1) / max(p0 - p1, 1e-5), 0.0, 1.0);
+                        s.emission = lcolor * falloff;
+                    }
+                    else {
+                        // Area — rectangle centered at lpos, normal = ldir, width=p0, height=p1.
+                        vec3 up = abs(ldir.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+                        vec3 tu = normalize(cross(up, ldir));
+                        vec3 tv = cross(ldir, tu);
+                        vec2 luv = rnd - 0.5;
+                        vec3 sample_pos = lpos + tu * (luv.x * p0) + tv * (luv.y * p1);
+                        vec3 d = sample_pos - hitPos;
+                        s.distance = max(length(d), 1e-5);
+                        s.L = d / s.distance;
+                        // One-sided emission: only emits in -ldir hemisphere.
+                        s.emission = lcolor * max(0.0, dot(-s.L, ldir));
+                    }
+                    return s;
+                }
+
+                // ── NEE (Next Event Estimation) ──────────────────────────────────
+
+                /**
+                 * Sum NEE contributions from ALL lights at a hit point.
+                 * One shadow ray per light. hitAlbedo: pass vec3(1.0) for the
+                 * direct channel (raw irradiance); pass surface albedo for GI bounces.
+                 * NaN guard: bvhIntersectFirstHit out-param sd initialised to 0.
+                 */
+                vec3 sampleAllLightsNEE(vec3 hitPos, vec3 hitNormal, vec3 hitAlbedo) {
+                    if (lightCount <= 0) return vec3(0.0);
+                    vec3 sum = vec3(0.0);
+                    vec3 bary = vec3(0.0); float sideVal = 1.0;
+                    for (int li = 0; li < MAX_LIGHTS; li++) {
+                        if (li >= lightCount) break;
+                        LightSample ls = sampleLight(li, hitPos, hitNormal, rand4().xy);
+                        if (ls.emission == vec3(0.0)) continue;
+                        float cosL = max(0.0, dot(hitNormal, ls.L));
+                        if (cosL <= 0.0) continue;
+                        vec3 shadowOrigin = hitPos + hitNormal * 0.001;
+                        uvec4 sfi = uvec4(0u); vec3 sfn = vec3(0.0,0.0,1.0); float sd = 0.0;
+                        bool occ = bvhIntersectFirstHit(bvh, shadowOrigin, ls.L, sfi, sfn, bary, sideVal, sd);
+                        if (occ && sd < ls.distance - 0.001) continue;
+                        // 1/PI dropped — matches pre-7C energy balance convention.
+                        sum += hitAlbedo * cosL * ls.emission;
+                    }
+                    return sum;
+                }
+
+                // ── Path tracer ──────────────────────────────────────────────────
 
                 /**
                  * N-bounce path tracer. Called once per hemisphere cast.
-                 * b=0 semantics match the old single-bounce NEE block exactly.
-                 *
-                 * faceNormal from three-mesh-bvh is already side-flipped (norm = side*normalize(norm)).
-                 * Do NOT re-flip — re-flipping pushes shadow origins INTO surfaces.
+                 * faceNormal from three-mesh-bvh is already side-flipped.
+                 * DO NOT re-flip — re-flipping pushes shadow origins into surfaces.
                  */
                 vec3 tracePath(
                     vec3 ro, vec3 rd,
                     bool hit, uvec4 fi, vec3 fn, float fd
                 ) {
-                    vec3  throughput = vec3(1.0);
-                    vec3  radiance   = vec3(0.0);
-                    // Reusable scratch for bvhIntersectFirstHit out-params.
-                    vec3  bary = vec3(0.0);
+                    vec3 throughput = vec3(1.0);
+                    vec3 radiance   = vec3(0.0);
+                    vec3 bary = vec3(0.0);
                     float sideVal = 1.0;
 
                     for (int b = 0; b < MAX_BOUNCES; b++) {
                         if (b >= bounces) break;
-
                         if (!hit) {
-                            // Miss — sky only on b==0 to avoid double-counting.
                             if (b == 0) radiance += throughput * skyColor * skyIntensity;
                             break;
                         }
@@ -255,38 +337,26 @@ export class LightmapperMaterial extends ShaderMaterial {
                         vec3 hitAlbedo   = readTriangleMaterial(albedoTex,   fi.w);
                         vec3 hitEmissive = readTriangleMaterial(emissiveTex, fi.w);
                         vec3 hitPos      = ro + rd * fd;
-                        // faceNormal already flipped by three-mesh-bvh — do NOT re-flip.
                         vec3 hitNormal   = fn;
                         vec3 hitOrigin   = hitPos + hitNormal * 0.001;
 
-                        // (a) Emissive — cosθ/PDF cancel under cosine-weighted sampling.
+                        // (a) Emissive surface contribution.
                         radiance += throughput * hitEmissive;
 
-                        // (b) NEE shadow ray to point light.
-                        vec3  toLight     = lightPosition - hitOrigin;
-                        float distToLight = max(length(toLight), 1e-5);
-                        vec3  L           = toLight / distToLight;
-                        float cosL        = max(0.0, dot(hitNormal, L));
-                        if (cosL > 0.0) {
-                            uvec4 sfi = uvec4(0u); vec3 sfn = vec3(0.0,0.0,1.0); float sd = 0.0;
-                            bool shadowHit = bvhIntersectFirstHit(bvh, hitOrigin, L, sfi, sfn, bary, sideVal, sd);
-                            if (!shadowHit || sd >= distToLight - 0.001) {
-                                // Drop 1/PI to match pre-Task-07 energy-balance (same order as direct).
-                                radiance += throughput * hitAlbedo * cosL * lightColor * lightIntensity;
-                            }
-                        }
+                        // (b) NEE — all lights, with surface albedo (GI bounce).
+                        radiance += throughput * sampleAllLightsNEE(hitOrigin, hitNormal, hitAlbedo);
 
-                        // (c) Throughput — cos/PDF cancel under cosine-weighted hemisphere.
+                        // (c) Throughput update — cosine/PDF cancel.
                         throughput *= hitAlbedo;
 
-                        // (d) Russian Roulette after bounce 2 (unbiased: terminate with prob 1-p).
+                        // (d) Russian Roulette from bounce 2 onward.
                         if (b >= 2) {
                             float p = clamp(max(throughput.r, max(throughput.g, throughput.b)), 0.0, 1.0);
                             if (rand() > p) break;
                             throughput /= max(p, 1e-4);
                         }
 
-                        // (e) Next bounce — cosine-weighted hemisphere from hit normal.
+                        // (e) Next bounce — cosine-weighted hemisphere.
                         ro  = hitOrigin;
                         rd  = getHemisphereSample(hitNormal, rand4().xy);
                         fd  = 0.0;
@@ -295,87 +365,63 @@ export class LightmapperMaterial extends ShaderMaterial {
                     return radiance;
                 }
 
+                // ── Main ─────────────────────────────────────────────────────────
+
                 void main() {
                     vec4 position = texture(positions, vUv);
-                    vec4 normal = texture(normals, vUv);
+                    vec4 normal   = texture(normals,   vUv);
 
-                    rng_initialize( gl_FragCoord.xy, sampleIndex );
+                    rng_initialize(gl_FragCoord.xy, sampleIndex);
 
-                    vec3 rayOrigin = vec3(position.r, position.g, position.b);
-                    vec3 rayDirection = vec3(normal.r, normal.g, normal.b);
-
+                    vec3 rayOrigin    = position.rgb;
+                    vec3 rayDirection = normal.rgb;
                     rayOrigin += rayDirection * 0.001;
 
-                    uvec4 faceIndices = uvec4( 0u );
-                    vec3 faceNormal = vec3( 0.0, 0.0, 1.0 );
-                    vec3 barycoord = vec3( 0.0 );
-                    float side = 1.0;
-                    float dist = 0.0;
+                    uvec4 faceIndices = uvec4(0u);
+                    vec3  faceNormal  = vec3(0.0, 0.0, 1.0);
+                    vec3  barycoord   = vec3(0.0);
+                    float side        = 1.0;
+                    float dist        = 0.0;
 
-                    vec3 totalIndirectLight = vec3(0.0);
-                    float totalAO = 0.0;
-                    vec3 totalDirectLight = vec3(0.0);
+                    vec3  totalIndirectLight = vec3(0.0);
+                    float totalAO            = 0.0;
+                    vec3  totalDirectLight   = vec3(0.0);
 
-                    if(ambientLightEnabled || indirectLightEnabled) {
-                        for ( int i = 0; i < casts; i++ ) {
-                            vec3 newDirection = getHemisphereSample(normal.xyz, rand4().xy);
+                    if (ambientLightEnabled || indirectLightEnabled) {
+                        for (int i = 0; i < casts; i++) {
+                            vec3 newDir = getHemisphereSample(normal.xyz, rand4().xy);
+                            if (dot(rayDirection, newDir) > 0.0) {
+                                bool hit = bvhIntersectFirstHit(bvh, rayOrigin, newDir,
+                                    faceIndices, faceNormal, barycoord, side, dist);
 
-                            if(dot(rayDirection, newDirection) > 0.0) {
-                                bool hit = bvhIntersectFirstHit( bvh, rayOrigin, newDirection, faceIndices, faceNormal, barycoord, side, dist );
-
-                                // N-bounce path tracer on the indirect channel.
-                                // bounces=1 matches the old single-bounce NEE behavior exactly:
-                                //   miss  → skyColor*skyIntensity
-                                //   hit b=0 → hitEmissive + NEE-tint (same as before)
-                                if (indirectLightEnabled) {
-                                    totalIndirectLight += tracePath(rayOrigin, newDirection, hit, faceIndices, faceNormal, dist);
-                                }
+                                if (indirectLightEnabled)
+                                    totalIndirectLight += tracePath(rayOrigin, newDir, hit,
+                                                                    faceIndices, faceNormal, dist);
 
                                 if (ambientLightEnabled) {
-                                    if(!hit) {
-                                        totalAO += 1.0;
-                                    } else {
-                                        // Smooth AO falloff: 0.0 at contact, 1.0 at ambientDistance
-                                        totalAO += clamp(dist / ambientDistance, 0.0, 1.0);
-                                    }
+                                    totalAO += hit ? clamp(dist / ambientDistance, 0.0, 1.0)
+                                                   : 1.0;
                                 }
                             }
                         }
                     }
 
-                    if(directLightEnabled) {
-                        for ( int i = 0; i < casts; i++ ) {
-                            vec3  toLight     = lightPosition - rayOrigin;
-                            float distToLight = length(toLight);
-                            // Jittered sampling for soft shadows
-                            vec3  L           = normalize(toLight + randomSpherePoint(rand3()) * lightSize);
-                            
-                            float dotNL = dot(normal.xyz, L);
-                            // L.y > 0 ensures the light only emits "downward" (one-sided plane logic)
-                            if (dotNL > 0.0 && L.y > 0.0) {
-                                bool hit = bvhIntersectFirstHit( bvh, rayOrigin, L, faceIndices, faceNormal, barycoord, side, dist );
-
-                                if(!hit || dist >= distToLight - 0.01) {
-                                    // Apply Lambertian N.L falloff for 3D depth
-                                    totalDirectLight += lightColor * lightIntensity * dotNL;
-                                }
-                            }
+                    if (directLightEnabled) {
+                        // Direct lighting: NEE over all lights at the primary surface.
+                        // hitAlbedo=vec3(1.0) keeps directOut as raw irradiance so the
+                        // material color is applied at composite time (bake convention).
+                        for (int i = 0; i < casts; i++) {
+                            totalDirectLight += sampleAllLightsNEE(rayOrigin, normal.xyz, vec3(1.0));
                         }
                     }
 
-                    vec4 adverageDirectLight = vec4(totalDirectLight / float(casts), 1.0);
-                    vec4 adverageAO = vec4(vec3(totalAO / float(casts)), 1.0);
-                    // Raw indirect — giIntensity moved to CompositeMaterial (Phase A.3 view-time composite).
-                    vec4 adverageIndirectLight = vec4(totalIndirectLight / float(casts), 1.0);
+                    vec4 avgDirect   = vec4(totalDirectLight / float(casts), 1.0);
+                    vec4 avgAO       = vec4(vec3(totalAO / float(casts)), 1.0);
+                    vec4 avgIndirect = vec4(totalIndirectLight / float(casts), 1.0);
 
-                    // MRT outputs — each channel written independently.
-                    // Compositing (multiplier, AO multiply) moves to Phase A.3 CompositeMaterial.
-                    directOut   = directLightEnabled   ? vec4(adverageDirectLight.rgb,   opacity)
-                                                       : vec4(0.0, 0.0, 0.0, opacity);
-                    indirectOut = indirectLightEnabled  ? vec4(adverageIndirectLight.rgb, opacity)
-                                                       : vec4(0.0, 0.0, 0.0, opacity);
-                    aoOut       = ambientLightEnabled   ? vec4(adverageAO.rgb,            opacity)
-                                                       : vec4(0.0, 0.0, 0.0, opacity);
+                    directOut   = directLightEnabled   ? vec4(avgDirect.rgb,   opacity) : vec4(0.0, 0.0, 0.0, opacity);
+                    indirectOut = indirectLightEnabled  ? vec4(avgIndirect.rgb, opacity) : vec4(0.0, 0.0, 0.0, opacity);
+                    aoOut       = ambientLightEnabled   ? vec4(avgAO.rgb,       opacity) : vec4(0.0, 0.0, 0.0, opacity);
                 }
             `,
     });

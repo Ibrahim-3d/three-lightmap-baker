@@ -10,6 +10,7 @@ import {
   Vector3,
   WebGLRenderer,
 } from 'three';
+import { PackedLight, collectLightsFromScene } from './lightmap/Lights';
 import { MeshBVH } from 'three-mesh-bvh';
 import { generateAtlas } from './atlas/generateAtlas';
 import { renderAtlas } from './atlas/renderAtlas';
@@ -88,6 +89,9 @@ export type LightOptions = {
   size?: number;
   enabled?: boolean;
 };
+
+// Re-export so callers can import PackedLight from the public API.
+export type { PackedLight };
 export type GIOptions = {
   enabled?: boolean;
   intensity?: number;
@@ -311,17 +315,29 @@ export class LightmapBaker {
     // --- 3. Bake (RAF-driven progressive accumulation) ---
     const tB0 = performance.now();
     hooks.onProgress?.('bake', 0);
-    const lightColor = toLinearColor(this.opts.light.color, 0xffffff);
     const skyColor = toLinearColor(this.opts.gi.skyColor, 0xffffff);
+
+    // Build light list: collect from scene, then fall back to the LightOptions
+    // synthetic point light if no scene lights found (or if direct is disabled).
+    let sceneLights: PackedLight[] = collectLightsFromScene(scene);
+    if (sceneLights.length === 0 && this.opts.light.enabled) {
+      const lightColor = toLinearColor(this.opts.light.color, 0xffffff);
+      sceneLights = [
+        {
+          type: 'point',
+          position: this.opts.light.position.clone(),
+          direction: new Vector3(0, -1, 0),
+          color: lightColor.multiplyScalar(this.opts.light.intensity),
+          params: [this.opts.light.size, 0, 0, 0],
+        },
+      ];
+    }
 
     const raycastOpts: RaycastOptions = {
       resolution: this.opts.resolution,
       casts: this.opts.castsPerFrame,
       filterMode: this.opts.filtering === 'linear' ? LinearFilter : NearestFilter,
-      lightPosition: this.opts.light.position,
-      lightSize: this.opts.light.size,
-      lightColor,
-      lightIntensity: this.opts.light.intensity,
+      lights: sceneLights,
       skyColor,
       skyIntensity: this.opts.gi.skyIntensity,
       ambientDistance: this.opts.ao.distance,

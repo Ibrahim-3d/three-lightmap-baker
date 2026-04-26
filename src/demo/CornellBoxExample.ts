@@ -17,6 +17,7 @@ import {
   SRGBColorSpace,
   Texture,
   TorusKnotGeometry,
+  Vector3,
   WebGLMultipleRenderTargets,
   WebGLRenderer,
 } from 'three';
@@ -41,6 +42,7 @@ import {
   ExportFormat,
   AtlasViewer,
   AtlasViewerCorner,
+  PackedLight,
 } from '../lib';
 
 /** Diagnostic logs — flip to true locally when debugging. CLAUDE.md convention. */
@@ -254,6 +256,14 @@ export class CornellBoxExample {
     denoiseSigma: 2.5, // spatial blur sigma (in texels)
     denoiseThreshold: 0.18, // range sigma — higher = more blurring across edges
     denoiseKSigma: 1.0, // kernel radius multiplier
+
+    // --- Secondary directional light (Task 7C) ---
+    secondaryLightEnabled: false,
+    secondaryDirX: -0.5,
+    secondaryDirY: -1.0,
+    secondaryDirZ: -0.5,
+    secondaryIntensity: 0.8,
+    secondaryColor: '#ffffcc',
 
     // --- Readouts (rendered as monitors) ---
     samples: 0, // current frame count (UI mirror of lightmapper state)
@@ -483,6 +493,32 @@ export class CornellBoxExample {
     });
     post.addButton({ title: 'Run Refinement' }).on('click', () => this.applyRefinement());
     post.addButton({ title: 'Revert to Raw' }).on('click', () => this.showUnrefined());
+
+    // --- Secondary light (Task 7C) ---
+    const secFolder = lightFolder.addFolder({ title: 'Secondary Light (Directional)' });
+    secFolder
+      .addInput(this.options, 'secondaryLightEnabled', { label: 'Enabled' })
+      .on('change', () => this.bake());
+    secFolder
+      .addInput(this.options, 'secondaryDirX', { min: -1, max: 1, step: 0.05, label: 'Dir X' })
+      .on('change', () => this.bake());
+    secFolder
+      .addInput(this.options, 'secondaryDirY', { min: -1, max: 1, step: 0.05, label: 'Dir Y' })
+      .on('change', () => this.bake());
+    secFolder
+      .addInput(this.options, 'secondaryDirZ', { min: -1, max: 1, step: 0.05, label: 'Dir Z' })
+      .on('change', () => this.bake());
+    secFolder
+      .addInput(this.options, 'secondaryIntensity', {
+        min: 0,
+        max: 5,
+        step: 0.1,
+        label: 'Intensity',
+      })
+      .on('change', () => this.bake());
+    secFolder
+      .addInput(this.options, 'secondaryColor', { view: 'color', label: 'Color' })
+      .on('change', () => this.bake());
 
     // --- Export folder (Task 06 Phase 1) ---
     const exportFolder = this.pane.addFolder({ title: 'Export', expanded: false });
@@ -776,29 +812,49 @@ export class CornellBoxExample {
           `[baker] per-mesh triangle counts (input order): [${perTri.perMeshTriangleCounts.join(', ')}]`,
       );
 
-    // Linear-space Color from the sRGB hex picker. Three's Color ctor accepts "#rrggbb"
-    // as sRGB and stores linear when SRGBColorSpace is the renderer output — but Color
-    // values uploaded as uniforms are taken raw, so we convert explicitly.
+    // Linear-space Color from the sRGB hex picker.
     const lightColorLinear = new Color(this.options.lightColor).convertSRGBToLinear();
     const skyColorLinear = new Color(this.options.skyColor).convertSRGBToLinear();
 
     // Mirror the bake intensity onto the realtime PointLight so Standard mode roughly
     // tracks the bake. The 30× factor is a heuristic match (visualLight uses inverse-
-    // square decay; the bake's 1.0-per-cast unit is unitless), default 4.0 → ~120 — a
-    // bit hotter than the previously hardcoded 80, which matches the new bake target.
+    // square decay; the bake's 1.0-per-cast unit is unitless).
     this.visualLight.color.copy(lightColorLinear);
     this.visualLight.intensity = 30 * this.options.lightIntensity;
+
+    // Build light list for the bake. Primary = point light at lightDummy.position.
+    const primaryLight: PackedLight = {
+      type: 'point',
+      position: this.lightDummy.position.clone(),
+      direction: new Vector3(0, -1, 0),
+      color: lightColorLinear.clone().multiplyScalar(this.options.lightIntensity),
+      params: [this.options.lightSize, 0, 0, 0],
+    };
+    const lights: PackedLight[] = [primaryLight];
+    if (this.options.secondaryLightEnabled) {
+      const secColor = new Color(this.options.secondaryColor)
+        .convertSRGBToLinear()
+        .multiplyScalar(this.options.secondaryIntensity);
+      const secDir = new Vector3(
+        this.options.secondaryDirX,
+        this.options.secondaryDirY,
+        this.options.secondaryDirZ,
+      ).normalize();
+      lights.push({
+        type: 'directional',
+        position: new Vector3(0, 0, 0),
+        direction: secDir,
+        color: secColor,
+        params: [0, 0, 0, 0],
+      });
+    }
 
     // 4. Spawn progressive lightmapper
     const opts: RaycastOptions = {
       resolution: res,
       casts: this.options.casts,
       filterMode: this.options.filterMode === 'linear' ? LinearFilter : NearestFilter,
-      lightPosition: this.lightDummy.position,
-      lightSize: this.options.lightSize,
-      lightColor: lightColorLinear,
-      lightIntensity: this.options.lightIntensity,
-      // giIntensity removed from bake opts — Phase A.3 applies it in CompositeMaterial.
+      lights,
       skyColor: skyColorLinear,
       skyIntensity: this.options.skyIntensity,
       ambientDistance: this.options.ambientDistance,

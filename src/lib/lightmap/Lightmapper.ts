@@ -1,5 +1,6 @@
 import {
   Color,
+  DataTexture,
   LinearFilter,
   FloatType,
   Matrix4,
@@ -8,23 +9,19 @@ import {
   PlaneGeometry,
   Texture,
   TextureFilter,
-  Vector3,
   WebGLMultipleRenderTargets,
   WebGLRenderer,
 } from 'three';
+// Color is used for prevClearColor below.
 import { MeshBVH } from 'three-mesh-bvh';
 import { LightmapperMaterial } from './LightmapperMaterial';
+import { PackedLight, buildLightTexture, disposeLightTexture } from './Lights';
 
 export type RaycastOptions = {
   resolution: number;
   casts: number;
-  lightPosition: Vector3;
-  lightSize: number;
-  /** Linear-space tint of the point light. */
-  lightColor: Color;
-  /** Scalar HDR intensity (1.0 ≈ baseline brightness). */
-  lightIntensity: number;
-  // giIntensity removed — Phase A.3 applies it in CompositeMaterial at view time.
+  /** Array of lights to bake. Pass [] for emissive-only scenes. */
+  lights: PackedLight[];
   /** Linear-space environment color used on hemisphere-miss. */
   skyColor: Color;
   /** 0 = closed-scene physical bake; >0 brightens corners and dim regions uniformly. */
@@ -73,6 +70,11 @@ export const generateLightmapper = (
   bvh: MeshBVH,
   options: RaycastOptions,
 ): Lightmapper => {
+  // Build the light DataTexture from the caller-supplied PackedLight array.
+  // Always allocates at least 1 row so the sampler is always bound.
+  const lightBuild = buildLightTexture(options.lights);
+  const lightTexture: DataTexture = lightBuild.texture;
+
   const raycastMaterial = new LightmapperMaterial({
     bvh,
     invModelMatrix: new Matrix4().identity(),
@@ -83,11 +85,8 @@ export const generateLightmapper = (
     materialTextureSize: options.materialTextureSize,
     casts: options.casts,
     bounces: options.bounces ?? 1,
-    lightPosition: options.lightPosition,
-    lightSize: options.lightSize,
-    lightColor: options.lightColor,
-    lightIntensity: options.lightIntensity,
-    // giIntensity removed — Phase A.3 applies it in CompositeMaterial.
+    lightsTex: lightTexture,
+    lightCount: lightBuild.count,
     skyColor: options.skyColor,
     skyIntensity: options.skyIntensity,
     opacity: 1,
@@ -155,6 +154,7 @@ export const generateLightmapper = (
   };
 
   const dispose = (): void => {
+    disposeLightTexture(lightTexture);
     renderTarget.dispose();
     raycastMaterial.dispose();
     raycastMesh.geometry.dispose();

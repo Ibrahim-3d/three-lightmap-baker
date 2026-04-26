@@ -41,6 +41,10 @@ export type { ExportFormat } from './utils/exportLightmap';
 export { AtlasViewer } from './AtlasViewer';
 export type { AtlasViewerCorner, AtlasViewerOptions } from './AtlasViewer';
 
+// --- Multi-light packing (Task 7C) ---
+export { collectLightsFromScene, buildLightTexture, disposeLightTexture } from './lightmap/Lights';
+export type { PackedLight, LightType } from './lightmap/Lights';
+
 // --- Errors ---
 export { BakeError } from './errors';
 export type { BakeErrorPhase } from './errors';
