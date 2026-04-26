@@ -7,6 +7,7 @@ import {
   MeshStandardMaterial,
 } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { BakeError } from '../errors';
 
 /**
  * Merge meshes into a single BufferGeometry suitable for MeshBVH.
@@ -29,7 +30,8 @@ export const mergeGeometry = (meshes: Mesh[]): BufferGeometry => {
     g.applyMatrix4(mesh.matrixWorld);
 
     const posAttr = g.attributes.position;
-    if (!posAttr) throw new Error('[baker] mesh geometry has no position attribute');
+    if (!posAttr)
+      throw new BakeError('mesh geometry has no position attribute', 'geometry', mesh.name);
     const vCount = posAttr.count;
     const meshIdxArr = new Float32Array(vCount);
     meshIdxArr.fill(meshIdx);
@@ -58,7 +60,7 @@ const triangleCount = (mesh: Mesh): number => {
   const g = mesh.geometry;
   if (g.index) return g.index.count / 3;
   const pos = g.attributes.position;
-  if (!pos) throw new Error('[baker] mesh geometry missing position attribute');
+  if (!pos) throw new BakeError('mesh geometry missing position attribute', 'geometry', mesh.name);
   return pos.count / 3;
 };
 
@@ -125,12 +127,16 @@ export const extractPerTriangleMaterials = (
 ): PerTriangleMaterials => {
   const indexAttr = merged.index;
   if (!indexAttr) {
-    throw new Error('[baker] mergeGeometry must produce an indexed geometry; got non-indexed');
+    throw new BakeError(
+      'mergeGeometry must produce an indexed geometry; got non-indexed',
+      'geometry',
+    );
   }
   const meshIdxAttr = merged.attributes.meshIndex as BufferAttribute | undefined;
   if (!meshIdxAttr) {
-    throw new Error(
-      "[baker] merged geometry is missing 'meshIndex' attribute — did mergeGeometry skip the per-vertex tag?",
+    throw new BakeError(
+      "merged geometry is missing 'meshIndex' attribute — did mergeGeometry skip the per-vertex tag?",
+      'geometry',
     );
   }
 

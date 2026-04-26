@@ -41,6 +41,10 @@ export type { ExportFormat } from './utils/exportLightmap';
 export { AtlasViewer } from './AtlasViewer';
 export type { AtlasViewerCorner, AtlasViewerOptions } from './AtlasViewer';
 
+// --- Errors ---
+export { BakeError } from './errors';
+export type { BakeErrorPhase } from './errors';
+
 // --- High-level one-call API (Phase 3) ---
 export { LightmapBaker, LightmapBakeResult } from './LightmapBaker';
 export type {

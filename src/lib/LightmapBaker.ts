@@ -19,6 +19,7 @@ import { runPostProcess, PostProcessOptions, PostProcessResult } from './lightma
 import { mergeGeometry, extractPerTriangleMaterials } from './utils/GeometryUtils';
 import { buildMaterialTextures } from './utils/MaterialTextures';
 import { exportLightmap, ExportFormat } from './utils/exportLightmap';
+import { BakeError, BakeErrorPhase } from './errors';
 
 /**
  * One-call lightmap baker — wraps the lib primitives behind the Task 06 spec API.
@@ -101,6 +102,46 @@ export type AOOptions = {
 
 const toLinearColor = (c: Color | string | number | undefined, fallback: number): Color =>
   new Color(c ?? fallback).convertSRGBToLinear();
+
+const isPowerOfTwo = (n: number): boolean => n > 0 && (n & (n - 1)) === 0;
+
+/**
+ * Validate every numeric/required field BEFORE allocating GPU resources. Each
+ * failure throws a single BakeError so the caller sees one structured error
+ * instead of a cascade of secondary failures.
+ */
+function validateOptions(opts: LightmapBakerOptions): void {
+  const samples = opts.samples ?? 96;
+  if (!Number.isFinite(samples) || samples < 1 || samples > 4096)
+    throw new BakeError(`samples must be 1-4096, got ${samples}`, 'validation');
+
+  const casts = opts.castsPerFrame ?? 5;
+  if (!Number.isFinite(casts) || casts < 1 || casts > 256)
+    throw new BakeError(`castsPerFrame must be 1-256, got ${casts}`, 'validation');
+
+  const bounces = opts.bounces ?? 1;
+  if (!Number.isInteger(bounces) || bounces < 0 || bounces > 8)
+    throw new BakeError(`bounces must be integer 0-8, got ${bounces}`, 'validation');
+
+  const resolution = opts.resolution ?? 1024;
+  if (!Number.isFinite(resolution) || resolution < 16 || resolution > 4096)
+    throw new BakeError(`resolution must be 16-4096, got ${resolution}`, 'validation');
+  if (!isPowerOfTwo(resolution))
+    throw new BakeError(`resolution must be a power of two, got ${resolution}`, 'validation');
+
+  if (opts.light?.intensity !== undefined && opts.light.intensity < 0)
+    throw new BakeError(`light.intensity must be >= 0, got ${opts.light.intensity}`, 'validation');
+  if (opts.light?.size !== undefined && opts.light.size < 0)
+    throw new BakeError(`light.size must be >= 0, got ${opts.light.size}`, 'validation');
+
+  if (opts.gi?.intensity !== undefined && opts.gi.intensity < 0)
+    throw new BakeError(`gi.intensity must be >= 0, got ${opts.gi.intensity}`, 'validation');
+  if (opts.gi?.skyIntensity !== undefined && opts.gi.skyIntensity < 0)
+    throw new BakeError(`gi.skyIntensity must be >= 0, got ${opts.gi.skyIntensity}`, 'validation');
+
+  if (opts.ao?.distance !== undefined && opts.ao.distance < 0)
+    throw new BakeError(`ao.distance must be >= 0, got ${opts.ao.distance}`, 'validation');
+}
 
 const DEFAULT_REFINEMENT: PostProcessOptions = {
   dilationIterations: 4,
@@ -186,6 +227,8 @@ export class LightmapBaker {
     public readonly renderer: WebGLRenderer,
     opts: LightmapBakerOptions = {},
   ) {
+    validateOptions(opts);
+
     if ((opts.bounces ?? 1) > 1) {
       console.warn(
         '[baker] bounces > 1 accepted but currently no-op — shader is hardcoded 1-bounce. ' +
@@ -226,15 +269,26 @@ export class LightmapBaker {
 
   async bake(scene: Scene | Object3D, hooks: BakeHooks = {}): Promise<LightmapBakeResult> {
     const t0 = performance.now();
+
+    // Pre-flight scene + GL context checks before allocating any GPU resources.
     const meshes = collectBakeMeshes(scene);
     if (!meshes.length)
-      throw new Error(
-        '[baker] no bake-eligible meshes in scene (need Mesh + MeshStandardMaterial-like)',
+      throw new BakeError(
+        'no bake-eligible meshes in scene (need Mesh + MeshStandardMaterial-like)',
+        'validation',
       );
+
+    const gl = this.renderer.getContext();
+    if (!gl.getExtension('EXT_color_buffer_float'))
+      throw new BakeError(
+        'EXT_color_buffer_float WebGL2 extension is unavailable; FloatType RTs cannot be allocated',
+        'validation',
+      );
+
     scene.updateMatrixWorld(true);
 
-    const checkAbort = () => {
-      if (hooks.signal?.aborted) throw new Error('[baker] aborted');
+    const checkAbort = (phase: BakeErrorPhase): void => {
+      if (hooks.signal?.aborted) throw new BakeError('aborted by signal', phase);
     };
 
     // --- 1. UV unwrap ---
@@ -242,7 +296,7 @@ export class LightmapBaker {
     hooks.onProgress?.('uv-unwrap', 0);
     await generateAtlas(meshes);
     hooks.onProgress?.('uv-unwrap', 1);
-    checkAbort();
+    checkAbort('unwrap');
     const tUV1 = performance.now();
 
     // --- 2. Geometry: G-buffers + BVH + per-tri materials ---
@@ -258,7 +312,7 @@ export class LightmapBaker {
     const perTri = extractPerTriangleMaterials(merged, meshes);
     const matTex = buildMaterialTextures(perTri);
     hooks.onProgress?.('geometry', 1);
-    checkAbort();
+    checkAbort('geometry');
     const tG1 = performance.now();
 
     // --- 3. Bake (RAF-driven progressive accumulation) ---
@@ -295,9 +349,9 @@ export class LightmapBaker {
     );
 
     await new Promise<void>((resolve, reject) => {
-      const tick = () => {
+      const tick = (): void => {
         if (hooks.signal?.aborted) {
-          reject(new Error('[baker] aborted'));
+          reject(new BakeError('aborted by signal', 'bake'));
           return;
         }
         const r = lightmapper.render();
