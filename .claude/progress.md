@@ -2,34 +2,50 @@
 
 ## Status
 
-| Task | Status | Notes |
-|---|---|---|
-| 00 — Agentic setup | ✅ Done | CLAUDE.md + task files created |
-| 01 — Baseline verification | ✅ Done | Direct light + AO + shadows confirmed; screenshot saved. Surfaced an architectural blocker for Task 03/04 — see Session 1 notes. |
-| 02 — Understand architecture | ✅ Done | `docs/architecture.md` written. Data flow, shader inventory, RT lifecycle (incl. leak notes), and bounce-ray insertion point pinned to `LightmapperMaterial.ts:178`. All four Session-1 blockers confirmed in code. |
-| 03 — Material textures | ✅ Done | `extractPerTriangleMaterials` + `buildMaterialTextures` produce two square FloatType RGBA `DataTexture`s keyed by global triangle index. Wired into `LightmapperMaterial` via 3 new uniforms (`albedoTex`, `emissiveTex`, `materialTextureSize`) plus a GLSL helper `readTriangleMaterial(tex, triIdx)`. Console verification logs triangle 0 (floor) and first left-wall triangle (red) on every bake. Vite build succeeds. |
-| 04 — Bounce lighting (GI) | ✅ Done (1-bounce, NEE + emissive). **Critical bug fixed in Session 5** — BVH index reorder vs material lookup mismatch. | Hit branch implements emissive direct + albedo-tinted NEE shadow ray. Light intensity, GI intensity, sky color/intensity all controllable via tweakpane. Walls thickened to BoxGeometry. Material lookup now built post-BVH against the reordered index buffer. Vite build 721.22 KiB. |
-| 05 — Quality + denoising | 🟡 In progress (Session 6) | Sample-budget gating + samples slider, chart-aware dilation, bilateral denoise wired, quality presets, status readouts. Bounces still hardcoded to 1. ETA estimator stub awaiting user formula. Vite build 730.53 KiB. |
-| 06 — Export + API | ⬜ Not started | |
-
-### Extended (any order after Task 06)
+### Core
 
 | Task | Status | Notes |
 |---|---|---|
-| 07 — Multiple lights | ⬜ Not started | Point, directional, spot, rect area |
-| 08 — WebGL timeout protection | ⬜ Not started | Batch work, prevent TDR/BSOD |
-| 09 — Separate AO map | ⬜ Not started | Grayscale occlusion output |
-| 10 — Lightmap downscaling | ⬜ Not started | Supersample + downscale |
-| 11 — Light probes (SH) | ⬜ Not started | For dynamic objects in Atelier |
-| 12 — Model import/export | ⬜ Not started | GLB round-trip with baked lightmaps |
-| 13 — Layer system + MRT | 🟡 In progress (Session 7) | Phase A.1 (S6) + A.2 + A.3 (S7) done. Phase B/C/D pending. |
+| 01 — Baseline verification | ✅ Done | |
+| 02 — Understand architecture | ✅ Done | |
+| 03 — Material textures | ✅ Done | Per-triangle albedo+emissive DataTextures |
+| 04 — Bounce lighting (GI) | ✅ Done (1-bounce) | Multi-bounce deferred → merged into Task 07 below |
+| 05 — Quality + denoising | ✅ Done | ETA estimator stub remains |
+| 06 — Export + API | ✅ Done | LightmapBaker class, PNG/EXR/raw export |
+| 09 — Separate AO map | ✅ Done | Via Task 13 MRT layers |
+| 13 — Layer system + MRT | ✅ Phases A–C done | D1/D2 (texel density heatmap) merged below |
+
+### Debt items resolved
+
+| Item | Status |
+|---|---|
+| RT leak audit | ✅ Fixed (9b3b1cc) |
+| `[baker]` prefix + DEBUG gate | ✅ Done (3739f94) |
+| BakeError + validation | ✅ Done (b40e339) |
+| GLSL3 + shader guards | ✅ Done (bed1f19) |
+
+### Remaining carryovers (folded into Task 07 below)
+
+- `estimateTimeRemaining()` — stub, needs implementation
+- Atlas-pass normal uses `mat3(modelMatrix)` instead of inverse-transpose — breaks under non-uniform scale
+- sRGB hex picker → linear shader mismatch
+
+### Extended tasks
+
+| Task | Status |
+|---|---|
+| 07 — Multi-light + multi-bounce + production polish (merged) | ⬜ Starting now |
+| 08 — WebGL timeout protection | ⬜ |
+| 10 — Lightmap downscaling | ⬜ |
+| 11 — Light probes (SH) | ⬜ |
+| 12 — Model import/export | ⬜ |
 
 ### Deliberate exclusions
 
 | lucas-jones TODO item | Why excluded |
 |---|---|
 | Denoise offline (Optix) | Requires native binary — violates browser-only constraint |
-| Only denoise indirect light & AO | Nice-to-have, can add later by separating accumulators in Task 09's pattern |
+| Only denoise indirect light & AO | Nice-to-have; can be added by separating MRT denoise channels |
 
 ## Session Log
 
