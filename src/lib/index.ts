@@ -10,7 +10,7 @@
  */
 
 // --- Atlas (UV2 unwrap + position/normal G-buffers) ---
-export { generateAtlas, loadXAtlasThree } from './atlas/generateAtlas';
+export { generateAtlas, generateAtlases, loadXAtlasThree } from './atlas/generateAtlas';
 export { renderAtlas } from './atlas/renderAtlas';
 
 // --- Bake pipeline (path-traced GI) ---
