@@ -57,10 +57,14 @@ export const runPostProcess = async (
   const rtB = makeRT();
 
   const draw = (mat: ShaderMaterial, target: WebGLRenderTarget): void => {
-    fsQuad.material = mat;
-    renderer.setRenderTarget(target);
-    renderer.render(fsQuad, fsCam);
-    renderer.setRenderTarget(null);
+    const prevRT = renderer.getRenderTarget();
+    try {
+      fsQuad.material = mat;
+      renderer.setRenderTarget(target);
+      renderer.render(fsQuad, fsCam);
+    } finally {
+      renderer.setRenderTarget(prevRT);
+    }
   };
 
   const dilate = new DilationMaterial({ positions, resolution });

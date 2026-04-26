@@ -68,12 +68,14 @@ export const runComposite = (
     const prev = renderer.getRenderTarget();
     const autoClear = renderer.autoClear;
 
-    renderer.autoClear = true; // Composite is a single-pass full-screen quad, so autoClear=true is fine/expected.
-    renderer.setRenderTarget(rt);
-    renderer.render(quad, cam);
-
-    renderer.setRenderTarget(prev);
-    renderer.autoClear = autoClear;
+    try {
+      renderer.autoClear = true; // Composite is a single-pass full-screen quad, so autoClear=true is fine/expected.
+      renderer.setRenderTarget(rt);
+      renderer.render(quad, cam);
+    } finally {
+      renderer.setRenderTarget(prev);
+      renderer.autoClear = autoClear;
+    }
   };
 
   // Initial render

@@ -101,9 +101,18 @@ export const generateLightmapper = (
     magFilter: LinearFilter,
     generateMipmaps: false,
   });
+
+  // Save renderer state so the initial RT clear doesn't permanently mutate it.
+  const prevRT = renderer.getRenderTarget();
+  const prevClearColor = new Color();
+  renderer.getClearColor(prevClearColor);
+  const prevClearAlpha = renderer.getClearAlpha();
+
   renderer.setRenderTarget(renderTarget);
   renderer.setClearColor(0x000000, 0);
   renderer.clear();
+  renderer.setRenderTarget(prevRT);
+  renderer.setClearColor(prevClearColor, prevClearAlpha);
 
   const raycastMesh = new Mesh(new PlaneGeometry(2, 2), raycastMaterial);
   const orthographicCamera = new OrthographicCamera();
@@ -121,30 +130,32 @@ export const generateLightmapper = (
     if (target > 0 && totalSamples >= target) return { samples: totalSamples, done: true };
 
     const autoClear = renderer.autoClear;
-    renderer.autoClear = false;
-    renderer.setRenderTarget(renderTarget);
-    sampleIndexU.value = totalSamples;
-    // Correct progressive average math: Opacity = 1 / (n + 1)
-    opacityU.value = 1 / (totalSamples + 1);
-    renderer.render(raycastMesh, orthographicCamera);
-    renderer.setRenderTarget(null);
-    renderer.autoClear = autoClear;
+    const rtBefore = renderer.getRenderTarget();
+    try {
+      renderer.autoClear = false;
+      renderer.setRenderTarget(renderTarget);
+      sampleIndexU.value = totalSamples;
+      // Correct progressive average math: Opacity = 1 / (n + 1)
+      opacityU.value = 1 / (totalSamples + 1);
+      renderer.render(raycastMesh, orthographicCamera);
+    } finally {
+      renderer.setRenderTarget(rtBefore);
+      renderer.autoClear = autoClear;
+    }
 
     totalSamples++;
     return { samples: totalSamples, done: target > 0 && totalSamples >= target };
   };
 
-  const reset = () => {
+  const reset = (): void => {
     totalSamples = 0;
   };
 
-  const dispose = () => {
+  const dispose = (): void => {
     renderTarget.dispose();
     raycastMaterial.dispose();
     raycastMesh.geometry.dispose();
   };
-
-  renderer.setRenderTarget(null);
 
   const [direct, indirect, ao] = renderTarget.texture;
   if (!direct || !indirect || !ao)

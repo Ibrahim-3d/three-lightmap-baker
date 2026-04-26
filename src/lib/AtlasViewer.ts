@@ -259,26 +259,28 @@ export class AtlasViewer {
     renderer.getScissor(this.prevScissor);
     renderer.getViewport(this.prevViewport);
 
-    renderer.setScissorTest(true);
-    renderer.setScissor(x, y, sz, sz);
-    renderer.setViewport(x, y, sz, sz);
-    renderer.autoClear = false;
-    renderer.render(this.scene, this.cam);
-
-    renderer.setScissor(
-      this.prevScissor.x,
-      this.prevScissor.y,
-      this.prevScissor.z,
-      this.prevScissor.w,
-    );
-    renderer.setViewport(
-      this.prevViewport.x,
-      this.prevViewport.y,
-      this.prevViewport.z,
-      this.prevViewport.w,
-    );
-    renderer.setScissorTest(prevScissorTest);
-    renderer.autoClear = prevAutoClear;
+    try {
+      renderer.setScissorTest(true);
+      renderer.setScissor(x, y, sz, sz);
+      renderer.setViewport(x, y, sz, sz);
+      renderer.autoClear = false;
+      renderer.render(this.scene, this.cam);
+    } finally {
+      renderer.setScissor(
+        this.prevScissor.x,
+        this.prevScissor.y,
+        this.prevScissor.z,
+        this.prevScissor.w,
+      );
+      renderer.setViewport(
+        this.prevViewport.x,
+        this.prevViewport.y,
+        this.prevViewport.z,
+        this.prevViewport.w,
+      );
+      renderer.setScissorTest(prevScissorTest);
+      renderer.autoClear = prevAutoClear;
+    }
   }
 
   dispose(): void {

@@ -67,11 +67,14 @@ function renderToRT(
   _quad.material = _passMat;
   const prevRT = renderer.getRenderTarget();
   const prevAutoClear = renderer.autoClear;
-  renderer.autoClear = true;
-  renderer.setRenderTarget(rt);
-  renderer.render(_quad, _cam);
-  renderer.setRenderTarget(prevRT);
-  renderer.autoClear = prevAutoClear;
+  try {
+    renderer.autoClear = true;
+    renderer.setRenderTarget(rt);
+    renderer.render(_quad, _cam);
+  } finally {
+    renderer.setRenderTarget(prevRT);
+    renderer.autoClear = prevAutoClear;
+  }
   return rt;
 }
 

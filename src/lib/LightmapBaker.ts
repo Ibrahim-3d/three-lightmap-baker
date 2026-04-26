@@ -122,8 +122,8 @@ export class LightmapBakeResult {
       lightmapper: Lightmapper;
       composite: CompositeResult;
       refinement: PostProcessResult | null;
-      positionTexture: Texture;
-      normalTexture: Texture;
+      atlasDispose: () => void;
+      matTexDispose: () => void;
     },
   ) {}
 
@@ -167,6 +167,8 @@ export class LightmapBakeResult {
     this.internals.refinement?.dispose();
     this.internals.composite.dispose();
     this.internals.lightmapper.dispose();
+    this.internals.matTexDispose();
+    this.internals.atlasDispose();
   }
 }
 
@@ -355,8 +357,11 @@ export class LightmapBaker {
       lightmapper,
       composite,
       refinement,
-      positionTexture: atlas.positionTexture,
-      normalTexture: atlas.normalTexture,
+      atlasDispose: atlas.dispose,
+      matTexDispose: () => {
+        matTex.albedoTexture.dispose();
+        matTex.emissiveTexture.dispose();
+      },
     });
   }
 }

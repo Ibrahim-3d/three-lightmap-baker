@@ -204,6 +204,9 @@ export class CornellBoxExample {
   positionTexture!: Texture;
   normalTexture!: Texture;
   lightmapTarget!: WebGLMultipleRenderTargets;
+  // Disposers for the per-bake GPU resources that aren't owned by the lightmapper/composite.
+  private atlasDispose: (() => void) | null = null;
+  private matTexDispose: (() => void) | null = null;
   lightmapper: Lightmapper | null = null;
 
   /** View-time composite of MRT direct+indirect+AO. Eagerly allocated at bake start. */
@@ -713,7 +716,10 @@ export class CornellBoxExample {
     await generateAtlas(this.meshes);
 
     // 2. Render position + normal G-buffers in lightmap UV space
+    // Dispose previous atlas RTs before allocating new ones (re-bake path).
+    this.atlasDispose?.();
     const atlas = renderAtlas(this.renderer, this.meshes, res, true);
+    this.atlasDispose = atlas.dispose;
     this.positionTexture = atlas.positionTexture;
     this.normalTexture = atlas.normalTexture;
 
@@ -728,8 +734,13 @@ export class CornellBoxExample {
     const bvh = new MeshBVH(merged);
 
     // 3b. Build per-triangle material lookup tables — keyed by post-BVH triangle index.
+    this.matTexDispose?.();
     const perTri = extractPerTriangleMaterials(merged, this.meshes);
     const matTex = buildMaterialTextures(perTri);
+    this.matTexDispose = (): void => {
+      matTex.albedoTexture.dispose();
+      matTex.emissiveTexture.dispose();
+    };
 
     // Sanity sample the first 4 triangles. With BVH spatial sort the first
     // triangle is whichever happened to land first in tree order (NOT

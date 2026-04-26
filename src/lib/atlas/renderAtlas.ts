@@ -1,4 +1,5 @@
 import {
+  Color,
   DoubleSide,
   FloatType,
   Mesh,
@@ -106,24 +107,41 @@ const offsets = [
   { x: 0, y: 0 },
 ];
 
+export type AtlasResult = {
+  positionTexture: Texture;
+  normalTexture: Texture;
+  /** Releases the two RTs that back positionTexture/normalTexture. */
+  dispose: () => void;
+};
+
 export const renderAtlas = (
   renderer: WebGLRenderer,
   meshs: Mesh[],
   resolution: number,
   dialate: boolean = true,
-) => {
+): AtlasResult => {
+  // Save renderer state up-front; restore in `finally` so a throw mid-render does not
+  // leave autoClear / clearColor / renderTarget in a corrupted state for the caller.
+  const prevAutoClear = renderer.autoClear;
+  const prevRT = renderer.getRenderTarget();
+  const prevClearColor = new Color();
+  renderer.getClearColor(prevClearColor);
+  const prevClearAlpha = renderer.getClearAlpha();
+
+  const rts: WebGLRenderTarget[] = [];
+
   const renderWithShader = (material: ShaderMaterial): Texture => {
     const target = new WebGLRenderTarget(resolution, resolution, {
       type: FloatType,
       magFilter: NearestFilter,
       minFilter: NearestFilter,
     });
-    // Create orthographic camera with large clip area to prevent clipping the geometry
-    // I'm don't know a better way to do this :(
+    rts.push(target);
+
+    // Camera is local — no GPU resources, no dispose needed.
     const orthographicCamera = new OrthographicCamera(-100, 100, -100, 100, -100, 200);
     orthographicCamera.updateMatrix();
 
-    // Re-create objects with util material - Maybe we could just change the material on the fly?
     const lightMapMeshes = new Object3D();
     lightMapMeshes.matrixWorldAutoUpdate = false;
 
@@ -133,10 +151,9 @@ export const renderAtlas = (
       lightMapMeshes.add(lightMapMesh);
     }
 
-    // Setup renderer
     renderer.autoClear = false;
     renderer.setRenderTarget(target);
-    renderer.setClearColor(0, 0);
+    renderer.setClearColor(0x000000, 0);
     renderer.clear();
 
     // SAFETY: `offset` uniform is created on the materials at construction.
@@ -155,16 +172,24 @@ export const renderAtlas = (
     offsetU.value.y = 0;
     renderer.render(lightMapMeshes, orthographicCamera);
 
-    renderer.setRenderTarget(null);
-
     return target.texture;
   };
 
-  const positionTexture = renderWithShader(worldPositionMaterial);
-  const normalTexture = renderWithShader(normalMaterial);
+  try {
+    const positionTexture = renderWithShader(worldPositionMaterial);
+    const normalTexture = renderWithShader(normalMaterial);
 
-  return {
-    positionTexture,
-    normalTexture,
-  };
+    return {
+      positionTexture,
+      normalTexture,
+      dispose: () => {
+        for (const rt of rts) rt.dispose();
+        rts.length = 0;
+      },
+    };
+  } finally {
+    renderer.setRenderTarget(prevRT);
+    renderer.autoClear = prevAutoClear;
+    renderer.setClearColor(prevClearColor, prevClearAlpha);
+  }
 };
