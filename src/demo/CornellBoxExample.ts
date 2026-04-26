@@ -236,8 +236,13 @@ export class CornellBoxExample {
   /** Disposer for the SHARED per-tri material DataTextures (one per bake). */
   private matTexDispose: (() => void) | null = null;
 
-  /** Lazy-allocated TexelDensityMaterial for the "Texel Density" debug layer. */
-  private texelDensityMat: TexelDensityMaterial | null = null;
+  /**
+   * Per-mesh TexelDensityMaterial cache for the "Texel Density" debug layer.
+   * One material per mesh so each can carry its own effective target
+   * (`global texelsPerMeter × perMesh.scaleInLightmap`). Allows the slider
+   * to update the viz without re-baking.
+   */
+  private texelDensityMats: Map<Mesh, TexelDensityMaterial> = new Map();
   /** Caches each mesh's original material so we can restore it when leaving a swap layer. */
   private originalMaterials = new WeakMap<Mesh, Material>();
 
@@ -425,7 +430,7 @@ export class CornellBoxExample {
         label: 'Density (px/m)',
       })
       .on('change', (e) => {
-        this.texelDensityMat?.setTexelsPerMeter(this.options.texelsPerMeter);
+        this.refreshTexelDensityMaterials();
         this.maybeBake(e);
       });
     bakeFolder
@@ -673,6 +678,8 @@ export class CornellBoxExample {
       meshFolder.addInput(entry, 'exclude', { label: 'Exclude' }).on('change', this.maybeBake);
       // Density multiplier — feeds binPackMeshes(perMeshScale). 2.0 means "give this
       // mesh 2x more atlas area per square meter" (i.e. quadruple the texels).
+      // The viz updates immediately on every drag step (no bake required) so the
+      // user sees the target shift; the actual bake re-runs on slider release.
       meshFolder
         .addInput(entry, 'scaleInLightmap', {
           label: 'Density ×',
@@ -680,7 +687,10 @@ export class CornellBoxExample {
           max: 4.0,
           step: 0.25,
         })
-        .on('change', this.maybeBake);
+        .on('change', (e) => {
+          this.refreshTexelDensityMaterials();
+          this.maybeBake(e);
+        });
     }
   }
 
@@ -1303,20 +1313,14 @@ export class CornellBoxExample {
   private applyRenderMode() {
     const layer = LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0]!;
 
-    // Material-swap layers (e.g. "Texel Density"). Restore originals on switch-away.
+    // Material-swap layer (Texel Density). One material per mesh so each can
+    // carry its own effective target = global × per-mesh density multiplier.
     if (layer.id === 'texelDensity') {
-      if (!this.texelDensityMat) {
-        this.texelDensityMat = new TexelDensityMaterial({
-          texelsPerMeter: this.options.texelsPerMeter,
-          lightmapSize: this.options.lightMapSize,
-        });
-      } else {
-        this.texelDensityMat.setLightmapSize(this.options.lightMapSize);
-        this.texelDensityMat.setTexelsPerMeter(this.options.texelsPerMeter);
-      }
+      this.refreshTexelDensityMaterials();
       for (const m of this.meshes) {
         if (!this.originalMaterials.has(m)) this.originalMaterials.set(m, m.material);
-        m.material = this.texelDensityMat as unknown as SceneObj['material'];
+        const tdm = this.texelDensityMats.get(m);
+        if (tdm) m.material = tdm as unknown as SceneObj['material'];
       }
       this.visualLight.visible = false;
       return;
@@ -1525,6 +1529,45 @@ export class CornellBoxExample {
     aoEnabled?: boolean;
   }): void {
     for (const g of this.bakeGroups) g.composite.refresh(overrides);
+  }
+
+  /**
+   * Sync the per-mesh TexelDensityMaterial cache with the current mesh list +
+   * options. Each mesh's effective target = global texelsPerMeter × its
+   * per-mesh scale (default 1.0). Lazy-creates materials on first sight,
+   * disposes materials whose mesh is gone, and updates uniforms in place.
+   *
+   * Cheap to call — no GPU work beyond uniform writes. Triggered on:
+   *  - Texel Density layer activation (initial mount)
+   *  - Per-mesh density slider change (real-time viz update without bake)
+   *  - Global texelsPerMeter slider change
+   *  - lightMapSize change
+   */
+  private refreshTexelDensityMaterials(): void {
+    const live = new Set<Mesh>(this.meshes);
+    // Drop entries for meshes no longer in the scene.
+    for (const m of this.texelDensityMats.keys()) {
+      if (!live.has(m)) {
+        this.texelDensityMats.get(m)?.dispose();
+        this.texelDensityMats.delete(m);
+      }
+    }
+    // Create / update per-mesh.
+    for (const m of this.meshes) {
+      const scale = this.options.perMesh[m.uuid]?.scaleInLightmap ?? 1.0;
+      const target = this.options.texelsPerMeter * scale;
+      let mat = this.texelDensityMats.get(m);
+      if (!mat) {
+        mat = new TexelDensityMaterial({
+          texelsPerMeter: target,
+          lightmapSize: this.options.lightMapSize,
+        });
+        this.texelDensityMats.set(m, mat);
+      } else {
+        mat.setTexelsPerMeter(target);
+        mat.setLightmapSize(this.options.lightMapSize);
+      }
+    }
   }
 
   /**
