@@ -761,7 +761,7 @@ export class CornellBoxExample {
       return `tri#${tri} mesh#${meshIdx} albedo=(${r.toFixed(3)}, ${g.toFixed(3)}, ${b.toFixed(3)})`;
     };
     if (DEBUG)
-      console.log(
+      console.info(
         `[baker] material textures built: ${perTri.totalTriangles} triangles, ${matTex.side}x${matTex.side} texture\n` +
           `[baker] post-BVH samples: ${sample(0)}; ${sample(1)}; ${sample(Math.floor(perTri.totalTriangles / 2))}; ${sample(perTri.totalTriangles - 1)}\n` +
           `[baker] per-mesh triangle counts (input order): [${perTri.perMeshTriangleCounts.join(', ')}]`,
@@ -919,11 +919,12 @@ export class CornellBoxExample {
     const t0 = performance.now();
     try {
       await exportLightmap(this.renderer, tex, res, basename, fmt);
-      console.log(
+      console.info(
         `[baker] exported ${basename}.${fmt} (${res}×${res}) in ${(performance.now() - t0).toFixed(0)}ms`,
       );
     } catch (e) {
       console.error('[baker] export failed:', e);
+      throw e;
     }
   }
 
@@ -1016,7 +1017,7 @@ export class CornellBoxExample {
           this.options.etaSec = 0;
 
           const elapsed = (performance.now() - this.bakeStartTime) / 1000;
-          console.log(`[baker] done in ${elapsed.toFixed(2)}s`);
+          console.info(`[baker] done in ${elapsed.toFixed(2)}s`);
           this.progressText.innerText =
             `Baking complete! ${elapsed.toFixed(1)}s\n` + `Running post-process...`;
 

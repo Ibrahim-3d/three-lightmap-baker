@@ -1,6 +1,8 @@
 import { BufferAttribute, Mesh } from 'three';
 import { UVUnwrapper } from 'xatlas-three';
 
+const DEBUG = import.meta.env.DEV;
+
 const unwrapper = new UVUnwrapper({ BufferAttribute: BufferAttribute });
 
 enum ProgressCategory {
@@ -10,9 +12,9 @@ enum ProgressCategory {
   BuildOutputMeshes,
 }
 
-export const loadXAtlasThree = async () => {
-  const onProgress = (mode: number, progress: number) => {
-    console.log(`🗺️ XAtlas ${ProgressCategory[mode]} ${progress}%`);
+export const loadXAtlasThree = async (): Promise<void> => {
+  const onProgress = (mode: number, progress: number): void => {
+    if (DEBUG) console.info(`[baker] xatlas ${ProgressCategory[mode]} ${progress}%`);
   };
   await unwrapper.loadLibrary(
     onProgress,
@@ -20,10 +22,10 @@ export const loadXAtlasThree = async () => {
     'https://cdn.jsdelivr.net/npm/xatlasjs@0.1.0/dist/xatlas.js',
   );
 
-  console.log('Loaded');
+  if (DEBUG) console.info('[baker] xatlas loaded');
 };
 
-export const generateAtlas = async (meshs: Mesh[]) => {
+export const generateAtlas = async (meshs: Mesh[]): Promise<void> => {
   const geometry = meshs.map((mesh) => mesh.geometry);
 
   // Crucial: xatlas defaults are padding=0 and resolution=2048. With renderAtlas's
