@@ -39,7 +39,22 @@ export type LightmapperMaterialOptions = {
   directLightEnabled: boolean;
   indirectLightEnabled: boolean;
   ambientLightEnabled: boolean;
+  /**
+   * Maximum distance an AO ray's first hit can be before it stops contributing
+   * occlusion. Hits beyond this distance count as "no occluder". Also the
+   * divisor for the falloff curve. Effective unit: scene world units.
+   */
   ambientDistance: number;
+  /**
+   * Multiplier on the AO darkness amount. 1.0 = physical, >1 = stronger
+   * crevice darkening, <1 = softer. Clamped 0..3.
+   */
+  aoIntensity: number;
+  /**
+   * Exponent of the distance-falloff curve. 1.0 = linear (pre-7D behavior),
+   * >1 sharpens contact shadows, <1 softens them. Sane range 0.5..4.0.
+   */
+  aoExponent: number;
 };
 
 export class LightmapperMaterial extends ShaderMaterial {
@@ -73,6 +88,8 @@ export class LightmapperMaterial extends ShaderMaterial {
         indirectLightEnabled: { value: options.indirectLightEnabled },
         ambientLightEnabled: { value: options.ambientLightEnabled },
         ambientDistance: { value: options.ambientDistance },
+        aoIntensity: { value: options.aoIntensity },
+        aoExponent: { value: options.aoExponent },
       },
 
       vertexShader: /* glsl */ `
@@ -142,6 +159,8 @@ export class LightmapperMaterial extends ShaderMaterial {
                 uniform bool indirectLightEnabled;
                 uniform bool ambientLightEnabled;
                 uniform float ambientDistance;
+                uniform float aoIntensity;
+                uniform float aoExponent;
                 uniform float opacity;
 
                 uniform BVH bvh;
@@ -399,8 +418,18 @@ export class LightmapperMaterial extends ShaderMaterial {
                                                                     faceIndices, faceNormal, dist);
 
                                 if (ambientLightEnabled) {
-                                    totalAO += hit ? clamp(dist / ambientDistance, 0.0, 1.0)
-                                                   : 1.0;
+                                    // Distance-falloff AO. occ ∈ [0,1] is the un-intensified
+                                    // occlusion strength (1 at contact, 0 at maxDistance,
+                                    // shaped by aoExponent). Visibility = 1 - intensified occ.
+                                    // At aoIntensity=1, aoExponent=1 this reduces to the
+                                    // pre-7D linear formula clamp(dist/ambientDistance, 0, 1).
+                                    if (hit && dist < ambientDistance) {
+                                        float t = clamp(dist / ambientDistance, 0.0, 1.0);
+                                        float occ = 1.0 - pow(t, aoExponent);
+                                        totalAO += 1.0 - clamp(occ * aoIntensity, 0.0, 1.0);
+                                    } else {
+                                        totalAO += 1.0;
+                                    }
                                 }
                             }
                         }

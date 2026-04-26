@@ -100,7 +100,12 @@ export type GIOptions = {
 };
 export type AOOptions = {
   enabled?: boolean;
+  /** AO max distance — first hits beyond this are treated as "no occluder". Default 0.5. */
   distance?: number;
+  /** Darkness multiplier on the final occlusion amount. Default 1.0. Sane 0..3. */
+  intensity?: number;
+  /** Falloff curve exponent. 1.0 = linear (pre-7D). Default 1.5. Sane 0.5..4.0. */
+  exponent?: number;
 };
 
 const toLinearColor = (c: Color | string | number | undefined, fallback: number): Color =>
@@ -255,6 +260,8 @@ export class LightmapBaker {
       ao: {
         enabled: opts.ao?.enabled ?? true,
         distance: opts.ao?.distance ?? 0.5,
+        intensity: opts.ao?.intensity ?? 1.0,
+        exponent: opts.ao?.exponent ?? 1.5,
       },
       refinementOptions: {
         ...DEFAULT_REFINEMENT,
@@ -341,6 +348,8 @@ export class LightmapBaker {
       skyColor,
       skyIntensity: this.opts.gi.skyIntensity,
       ambientDistance: this.opts.ao.distance,
+      aoIntensity: this.opts.ao.intensity,
+      aoExponent: this.opts.ao.exponent,
       ambientLightEnabled: this.opts.ao.enabled,
       directLightEnabled: this.opts.light.enabled,
       indirectLightEnabled: this.opts.gi.enabled,

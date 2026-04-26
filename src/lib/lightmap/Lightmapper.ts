@@ -31,7 +31,12 @@ export type RaycastOptions = {
   directLightEnabled: boolean;
   indirectLightEnabled: boolean;
   ambientLightEnabled: boolean;
+  /** AO max distance (also the falloff divisor). World units. */
   ambientDistance: number;
+  /** AO darkness multiplier. Default 1.0. Sane range 0..3. */
+  aoIntensity: number;
+  /** AO falloff curve exponent. 1.0 = linear (pre-7D). Default 1.5. Range 0.5..4.0. */
+  aoExponent: number;
 
   /** Per-triangle albedo lookup, indexed by global triangle index. Task 03. */
   albedoTexture: Texture;
@@ -95,6 +100,8 @@ export const generateLightmapper = (
     indirectLightEnabled: options.indirectLightEnabled,
     ambientLightEnabled: options.ambientLightEnabled,
     ambientDistance: options.ambientDistance,
+    aoIntensity: options.aoIntensity,
+    aoExponent: options.aoExponent,
   });
 
   const renderTarget = new WebGLMultipleRenderTargets(options.resolution, options.resolution, 3, {

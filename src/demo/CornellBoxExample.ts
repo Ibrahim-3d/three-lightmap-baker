@@ -233,6 +233,8 @@ export class CornellBoxExample {
     indirectLightEnabled: true,
     ambientLightEnabled: true,
     ambientDistance: 0.5,
+    aoIntensity: 1.0,
+    aoExponent: 1.5,
     lightSize: 2.9,
     // Linear-space HDR intensity multiplier for the bake's point light.
     lightIntensity: 2.0,
@@ -460,6 +462,12 @@ export class CornellBoxExample {
         step: 0.05,
         label: 'Max Distance',
       })
+      .on('change', () => this.bake());
+    aoFolder
+      .addInput(this.options, 'aoIntensity', { min: 0, max: 3, step: 0.05, label: 'Intensity' })
+      .on('change', () => this.bake());
+    aoFolder
+      .addInput(this.options, 'aoExponent', { min: 0.5, max: 4, step: 0.1, label: 'Exponent' })
       .on('change', () => this.bake());
 
     // --- Refinement folder ---
@@ -858,6 +866,8 @@ export class CornellBoxExample {
       skyColor: skyColorLinear,
       skyIntensity: this.options.skyIntensity,
       ambientDistance: this.options.ambientDistance,
+      aoIntensity: this.options.aoIntensity,
+      aoExponent: this.options.aoExponent,
       ambientLightEnabled: this.options.ambientLightEnabled,
       directLightEnabled: this.options.directLightEnabled,
       indirectLightEnabled: this.options.indirectLightEnabled,
