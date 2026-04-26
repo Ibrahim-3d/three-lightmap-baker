@@ -200,9 +200,10 @@ export class CornellBoxExample {
   cornellRoot: Object3D | null = null;
   meshes: SceneObj[] = [];
 
-  positionTexture: Texture;
-  normalTexture: Texture;
-  lightmapTarget: WebGLMultipleRenderTargets;
+  // Initialized in startBake() — every read site is gated on bake having run.
+  positionTexture!: Texture;
+  normalTexture!: Texture;
+  lightmapTarget!: WebGLMultipleRenderTargets;
   lightmapper: Lightmapper | null = null;
 
   /** View-time composite of MRT direct+indirect+AO. Eagerly allocated at bake start. */
@@ -700,7 +701,6 @@ export class CornellBoxExample {
     // Show progress widget and record start time
     this.progressContainer.style.display = 'block';
     this.bakeStartTime = performance.now();
-    this.options.postStatus = 'baking...';
 
     const res = this.options.lightMapSize;
 
@@ -736,12 +736,18 @@ export class CornellBoxExample {
     // necessarily the floor). Log mesh tag + albedo so a wrong-mesh mapping
     // is immediately visible during a bake.
     const indexArr = merged.index!.array as Uint16Array | Uint32Array;
-    const meshIdxArr = merged.attributes.meshIndex.array as Float32Array;
-    const sample = (tri: number) => {
-      const v0 = indexArr[tri * 3];
-      const meshIdx = meshIdxArr[v0] | 0;
+    const meshIdxAttr = merged.attributes.meshIndex;
+    if (!meshIdxAttr) throw new Error('[baker] merged geometry missing meshIndex attribute');
+    const meshIdxArr = meshIdxAttr.array as Float32Array;
+    const sample = (tri: number): string => {
+      // SAFETY: tri ∈ [0, totalTriangles); indexArr length == totalTriangles*3.
+      const v0 = indexArr[tri * 3] ?? 0;
+      const meshIdx = (meshIdxArr[v0] ?? 0) | 0;
       const o = tri * 3;
-      return `tri#${tri} mesh#${meshIdx} albedo=(${perTri.albedo[o].toFixed(3)}, ${perTri.albedo[o + 1].toFixed(3)}, ${perTri.albedo[o + 2].toFixed(3)})`;
+      const r = perTri.albedo[o] ?? 0;
+      const g = perTri.albedo[o + 1] ?? 0;
+      const b = perTri.albedo[o + 2] ?? 0;
+      return `tri#${tri} mesh#${meshIdx} albedo=(${r.toFixed(3)}, ${g.toFixed(3)}, ${b.toFixed(3)})`;
     };
     if (DEBUG)
       console.log(
@@ -887,7 +893,7 @@ export class CornellBoxExample {
 
   /** Export whatever the active layer is currently displaying. */
   private async exportCurrent() {
-    const layer = LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0];
+    const layer = (LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0]!);
     const tex = layer.getLightMap(this.layerContext());
     if (!tex) {
       console.warn(`[baker] export: layer "${layer.id}" has no exportable texture`);
@@ -936,7 +942,7 @@ export class CornellBoxExample {
 
   /** Apply the active layer to every mesh. Registry lookup, no per-layer if/else. */
   private applyRenderMode() {
-    const layer = LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0];
+    const layer = (LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0]!);
     const ctx = this.layerContext();
     const lm = layer.getLightMap(ctx);
 
@@ -961,10 +967,11 @@ export class CornellBoxExample {
   }
 
   private looping = false;
-  private fpsElement: HTMLDivElement;
-  private progressContainer: HTMLDivElement;
-  private progressBar: HTMLDivElement;
-  private progressText: HTMLDivElement;
+  // Initialized by buildOverlayUI() invoked from the constructor.
+  private fpsElement!: HTMLDivElement;
+  private progressContainer!: HTMLDivElement;
+  private progressBar!: HTMLDivElement;
+  private progressText!: HTMLDivElement;
   private bakeStartTime: number = 0;
 
   private startLoop() {
@@ -1007,6 +1014,7 @@ export class CornellBoxExample {
           const rt = this.lightmapper.renderTarget;
           for (let i = 0; i < 3; i++) {
             const tex = rt.texture[i];
+            if (!tex) continue; // SAFETY: WebGLMultipleRenderTargets always has 3 textures here
             tex.generateMipmaps = true;
             tex.minFilter = LinearMipMapLinearFilter;
             this.renderer.initTexture(tex);
@@ -1045,7 +1053,7 @@ export class CornellBoxExample {
       // 2D atlas viewer overlay — track the active layer's texture each frame.
       this.atlasViewer.visible = this.options.atlasViewerEnabled;
       if (this.atlasViewer.visible) {
-        const layer = LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0];
+        const layer = (LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0]!);
         const tex = layer.getLightMap(this.layerContext()) ?? this.composite?.texture ?? null;
         this.atlasViewer.setTexture(tex);
         this.atlasViewer.setLayerLabel(layer.label);

@@ -108,10 +108,11 @@ export class AtlasViewer {
   }
 
   setTexture(tex: Texture | null): void {
-    this.mat.uniforms.map.value = tex;
+    // SAFETY: `map` and `sRGB` uniforms are constructed in the ShaderMaterial above.
+    if (this.mat.uniforms.map) this.mat.uniforms.map.value = tex;
   }
   setSRGB(v: boolean): void {
-    this.mat.uniforms.sRGB.value = v;
+    if (this.mat.uniforms.sRGB) this.mat.uniforms.sRGB.value = v;
   }
   setSize(px: number): void {
     this.size = px;
@@ -224,7 +225,7 @@ export class AtlasViewer {
     this.positionHeader(renderer.domElement.getBoundingClientRect());
 
     if (this.collapsed) return;
-    if (!this.mat.uniforms.map.value) return;
+    if (!this.mat.uniforms.map?.value) return;
 
     const dpr = renderer.getPixelRatio();
     const w = renderer.domElement.width;

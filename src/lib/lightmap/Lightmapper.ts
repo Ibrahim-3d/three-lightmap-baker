@@ -1,7 +1,6 @@
 import {
   Color,
   LinearFilter,
-  LinearMipMapLinearFilter,
   FloatType,
   Matrix4,
   Mesh,
@@ -13,7 +12,7 @@ import {
   WebGLMultipleRenderTargets,
   WebGLRenderer,
 } from 'three';
-import { MeshBVH, MeshBVHOptions } from 'three-mesh-bvh';
+import { MeshBVH } from 'three-mesh-bvh';
 import { LightmapperMaterial } from './LightmapperMaterial';
 
 export type RaycastOptions = {
@@ -112,18 +111,21 @@ export const generateLightmapper = (
   let totalSamples = 0;
   const target = options.targetSamples | 0;
 
+  // SAFETY: these uniform names are constructed in LightmapperMaterial; presence is invariant.
+  const sampleIndexU = raycastMaterial.uniforms.sampleIndex;
+  const opacityU = raycastMaterial.uniforms.opacity;
+  if (!sampleIndexU || !opacityU)
+    throw new Error('[baker] LightmapperMaterial missing required uniforms');
+
   const render = (): LightmapperRender => {
     if (target > 0 && totalSamples >= target) return { samples: totalSamples, done: true };
 
     const autoClear = renderer.autoClear;
     renderer.autoClear = false;
     renderer.setRenderTarget(renderTarget);
-    raycastMaterial.uniforms.sampleIndex.value = totalSamples;
+    sampleIndexU.value = totalSamples;
     // Correct progressive average math: Opacity = 1 / (n + 1)
-    // Frame 0: 1/1 = 1.0
-    // Frame 1: 1/2 = 0.5
-    // Frame 2: 1/3 = 0.33...
-    raycastMaterial.uniforms.opacity.value = 1 / (totalSamples + 1);
+    opacityU.value = 1 / (totalSamples + 1);
     renderer.render(raycastMesh, orthographicCamera);
     renderer.setRenderTarget(null);
     renderer.autoClear = autoClear;
@@ -144,11 +146,10 @@ export const generateLightmapper = (
 
   renderer.setRenderTarget(null);
 
-  const textures = {
-    direct: renderTarget.texture[0],
-    indirect: renderTarget.texture[1],
-    ao: renderTarget.texture[2],
-  };
+  const [direct, indirect, ao] = renderTarget.texture;
+  if (!direct || !indirect || !ao)
+    throw new Error('[baker] WebGLMultipleRenderTargets did not allocate 3 textures');
+  const textures = { direct, indirect, ao };
 
   return {
     renderTarget,

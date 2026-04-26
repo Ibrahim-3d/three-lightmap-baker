@@ -1,59 +1,35 @@
-import { NoBlending, ShaderMaterial } from 'three';
+import { NoBlending, ShaderMaterial, Texture } from 'three';
 
-export class MaterialBase extends ShaderMaterial {
-  constructor(shader) {
-    super(shader);
+export type DenoiseMaterialOptions = {
+  map: Texture;
+  sigma?: number;
+  threshold?: number;
+  kSigma?: number;
+};
 
-    for (const key in this.uniforms) {
-      Object.defineProperty(this, key, {
-        get() {
-          return this.uniforms[key].value;
-        },
-
-        set(v) {
-          this.uniforms[key].value = v;
-        },
-      });
-    }
-  }
-
-  // sets the given named define value and sets "needsUpdate" to true if it's different
-  setDefine(name, value = undefined) {
-    if (value === undefined || value === null) {
-      if (name in this.defines) {
-        delete this.defines[name];
-        this.needsUpdate = true;
-      }
-    } else {
-      if (this.defines[name] !== value) {
-        this.defines[name] = value;
-        this.needsUpdate = true;
-      }
-    }
-  }
-}
-
-export class DenoiseMaterial extends MaterialBase {
-  constructor(parameters) {
+/**
+ * Bilateral denoiser (BrutPitt's smartDeNoise). GLSL 1.0 ES — kept on this version
+ * deliberately because the algorithm uses `texture2D` and reads-on-loop that have
+ * no measurable benefit from GLSL3 conversion, and Phase 7 fork preserves it.
+ *
+ * SAFETY: this material is the ONE exception to the project's GLSL3 rule; the rest
+ * of the pipeline writes/reads via this shader using a standard Texture handoff.
+ */
+export class DenoiseMaterial extends ShaderMaterial {
+  constructor(options: DenoiseMaterialOptions) {
     super({
       blending: NoBlending,
-
       transparent: false,
-
       depthWrite: false,
-
       depthTest: false,
-
       defines: {
         USE_SLIDER: 0,
       },
-
       uniforms: {
-        sigma: { value: 5.0 },
-        threshold: { value: 0.03 },
-        kSigma: { value: 1.0 },
-
-        map: { value: null },
+        sigma: { value: options.sigma ?? 5.0 },
+        threshold: { value: options.threshold ?? 0.03 },
+        kSigma: { value: options.kSigma ?? 1.0 },
+        map: { value: options.map },
       },
 
       vertexShader: /* glsl */ `
@@ -71,16 +47,7 @@ export class DenoiseMaterial extends MaterialBase {
       fragmentShader: /* glsl */ `
 				//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 				//  Copyright (c) 2018-2019 Michele Morrone
-				//  All rights reserved.
-				//
-				//  https://michelemorrone.eu - https://BrutPitt.com
-				//
-				//  me@michelemorrone.eu - brutpitt@gmail.com
-				//  twitter: @BrutPitt - github: BrutPitt
-				//
-				//  https://github.com/BrutPitt/glslSmartDeNoise/
-				//
-				//  This software is distributed under the terms of the BSD 2-Clause license
+				//  https://github.com/BrutPitt/glslSmartDeNoise/  (BSD 2-Clause)
 				//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 				uniform sampler2D map;
 				uniform float sigma;
@@ -89,13 +56,6 @@ export class DenoiseMaterial extends MaterialBase {
 				varying vec2 vUv;
 				#define INV_SQRT_OF_2PI 0.39894228040143267793994605993439
 				#define INV_PI 0.31830988618379067153776752674503
-				// Parameters:
-				//	 sampler2D tex	 - sampler image / texture
-				//	 vec2 uv		   - actual fragment coord
-				//	 float sigma  >  0 - sigma Standard Deviation
-				//	 float kSigma >= 0 - sigma coefficient
-				//		 kSigma * sigma  -->  radius of the circular kernel
-				//	 float threshold   - edge sharpening threshold
 				vec4 smartDeNoise( sampler2D tex, vec2 uv, float sigma, float kSigma, float threshold ) {
 					float radius = round( kSigma * sigma );
 					float radQ = radius * radius;
@@ -110,7 +70,7 @@ export class DenoiseMaterial extends MaterialBase {
 					vec2 size = vec2( textureSize( tex, 0 ) );
 					vec2 d;
 					for ( d.x = - radius; d.x <= radius; d.x ++ ) {
-						float pt = sqrt( radQ - d.x * d.x );
+						float pt = sqrt( max( 0.0, radQ - d.x * d.x ) );
 						for ( d.y = - pt; d.y <= pt; d.y ++ ) {
 							float blurFactor = exp( - dot( d, d ) * invSigmaQx2 ) * invSigmaQx2PI;
 							vec4 walkPx = texture2D( tex, uv + d / size );
@@ -121,7 +81,7 @@ export class DenoiseMaterial extends MaterialBase {
 							aBuff += deltaFactor * walkPx;
 						}
 					}
-					return aBuff / zBuff;
+					return aBuff / max( zBuff, 1e-5 );
 				}
 				void main() {
 					// Internal RT pass: stay in linear space. Downstream MeshStandardMaterial.lightMap
@@ -130,7 +90,5 @@ export class DenoiseMaterial extends MaterialBase {
 				}
 			`,
     });
-
-    this.setValues(parameters);
   }
 }

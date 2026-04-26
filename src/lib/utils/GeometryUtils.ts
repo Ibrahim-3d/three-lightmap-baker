@@ -28,7 +28,9 @@ export const mergeGeometry = (meshes: Mesh[]): BufferGeometry => {
     g.deleteAttribute('color');
     g.applyMatrix4(mesh.matrixWorld);
 
-    const vCount = g.attributes.position.count;
+    const posAttr = g.attributes.position;
+    if (!posAttr) throw new Error('[baker] mesh geometry has no position attribute');
+    const vCount = posAttr.count;
     const meshIdxArr = new Float32Array(vCount);
     meshIdxArr.fill(meshIdx);
     g.setAttribute('meshIndex', new BufferAttribute(meshIdxArr, 1));
@@ -55,7 +57,9 @@ export interface PerTriangleMaterials {
 const triangleCount = (mesh: Mesh): number => {
   const g = mesh.geometry;
   if (g.index) return g.index.count / 3;
-  return g.attributes.position.count / 3;
+  const pos = g.attributes.position;
+  if (!pos) throw new Error('[baker] mesh geometry missing position attribute');
+  return pos.count / 3;
 };
 
 type MatColors = { aR: number; aG: number; aB: number; eR: number; eG: number; eB: number };
@@ -70,7 +74,8 @@ const readMaterialColors = (material: Material | Material[]): MatColors => {
     console.warn(
       '[baker] material array detected; using slot 0 only — per-face material groups not yet supported',
     );
-    return material.length ? readMaterialColors(material[0]) : WHITE_FALLBACK;
+    const slot0 = material[0];
+    return slot0 ? readMaterialColors(slot0) : WHITE_FALLBACK;
   }
 
   const m = material as MeshStandardMaterial & MeshBasicMaterial;
@@ -145,8 +150,10 @@ export const extractPerTriangleMaterials = (
     // and look up its mesh tag. All three vertices of a triangle share the same
     // meshIndex by construction (every vertex in a per-mesh chunk got tagged
     // uniformly), so any of them works.
-    const v0 = indexArr[tri * 3];
-    const meshIdx = meshIdxArr[v0] | 0;
+    // SAFETY: tri < totalTriangles = indexAttr.count/3, so tri*3 < indexArr.length;
+    // v0 is a vertex index < meshIdxArr.length by mergeGeometry's invariant.
+    const v0 = indexArr[tri * 3] ?? 0;
+    const meshIdx = (meshIdxArr[v0] ?? 0) | 0;
     const c = meshColors[meshIdx] ?? WHITE_FALLBACK;
     const o = tri * 3;
     albedo[o] = c.aR;

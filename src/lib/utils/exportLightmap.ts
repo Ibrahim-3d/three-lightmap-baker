@@ -60,7 +60,10 @@ function renderToRT(
     minFilter: LinearFilter,
     magFilter: LinearFilter,
   });
-  _passMat.uniforms.map.value = source;
+  // SAFETY: `map` uniform is created above; presence is invariant.
+  const mapU = _passMat.uniforms.map;
+  if (!mapU) throw new Error('[baker] export passthrough material missing `map` uniform');
+  mapU.value = source;
   _quad.material = _passMat;
   const prevRT = renderer.getRenderTarget();
   const prevAutoClear = renderer.autoClear;
@@ -109,9 +112,10 @@ export async function exportPNG(
       const si = srcRow + x * 4;
       const di = dstRow + x * 4;
       // Reinhard tonemap, then sRGB encode (2.2 approximation — cheap and good enough for preview).
-      const r = Math.max(float[si], 0);
-      const g = Math.max(float[si + 1], 0);
-      const b = Math.max(float[si + 2], 0);
+      // SAFETY: si is bounded by srcRow + (resolution-1)*4 < float.length.
+      const r = Math.max(float[si] ?? 0, 0);
+      const g = Math.max(float[si + 1] ?? 0, 0);
+      const b = Math.max(float[si + 2] ?? 0, 0);
       u8[di] = Math.pow(r / (1 + r), 1 / 2.2) * 255;
       u8[di + 1] = Math.pow(g / (1 + g), 1 / 2.2) * 255;
       u8[di + 2] = Math.pow(b / (1 + b), 1 / 2.2) * 255;

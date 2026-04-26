@@ -38,14 +38,15 @@ export const buildMaterialTextures = (perTri: PerTriangleMaterials): MaterialTex
   for (let i = 0; i < N; i++) {
     const src = i * 3;
     const dst = i * 4;
-    albedoData[dst] = perTri.albedo[src];
-    albedoData[dst + 1] = perTri.albedo[src + 1];
-    albedoData[dst + 2] = perTri.albedo[src + 2];
+    // SAFETY: src/dst are bounded by N*3 < albedo.length and texelCount*4 = albedoData.length
+    albedoData[dst] = perTri.albedo[src] ?? 0;
+    albedoData[dst + 1] = perTri.albedo[src + 1] ?? 0;
+    albedoData[dst + 2] = perTri.albedo[src + 2] ?? 0;
     albedoData[dst + 3] = 1.0;
 
-    emissiveData[dst] = perTri.emissive[src];
-    emissiveData[dst + 1] = perTri.emissive[src + 1];
-    emissiveData[dst + 2] = perTri.emissive[src + 2];
+    emissiveData[dst] = perTri.emissive[src] ?? 0;
+    emissiveData[dst + 1] = perTri.emissive[src + 1] ?? 0;
+    emissiveData[dst + 2] = perTri.emissive[src + 2] ?? 0;
     emissiveData[dst + 3] = 1.0;
   }
 

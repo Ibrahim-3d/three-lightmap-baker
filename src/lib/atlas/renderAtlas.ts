@@ -139,16 +139,20 @@ export const renderAtlas = (
     renderer.setClearColor(0, 0);
     renderer.clear();
 
+    // SAFETY: `offset` uniform is created on the materials at construction.
+    const offsetU = material.uniforms.offset as { value: { x: number; y: number } } | undefined;
+    if (!offsetU) throw new Error('[baker] atlas material missing `offset` uniform');
+
     if (dialate) {
       for (const offset of offsets) {
-        material.uniforms.offset.value.x = offset.x * (1 / resolution);
-        material.uniforms.offset.value.y = offset.y * (1 / resolution);
+        offsetU.value.x = offset.x * (1 / resolution);
+        offsetU.value.y = offset.y * (1 / resolution);
         renderer.render(lightMapMeshes, orthographicCamera);
       }
     }
 
-    material.uniforms.offset.value.x = 0;
-    material.uniforms.offset.value.y = 0;
+    offsetU.value.x = 0;
+    offsetU.value.y = 0;
     renderer.render(lightMapMeshes, orthographicCamera);
 
     renderer.setRenderTarget(null);

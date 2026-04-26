@@ -53,14 +53,17 @@ export const runComposite = (
   const quad = new Mesh(new PlaneGeometry(2, 2), mat);
   const cam = new OrthographicCamera();
 
+  // SAFETY: uniforms are constructed in CompositeMaterial; presence is invariant.
+  const u = mat.uniforms as Record<string, { value: unknown }>;
+
   const refresh = (
     overrides?: Partial<{ directIntensity: number; giIntensity: number; aoEnabled: boolean }>,
-  ) => {
-    if (overrides?.directIntensity !== undefined)
-      mat.uniforms.directIntensity.value = overrides.directIntensity;
-    if (overrides?.giIntensity !== undefined)
-      mat.uniforms.giIntensity.value = overrides.giIntensity;
-    if (overrides?.aoEnabled !== undefined) mat.uniforms.aoEnabled.value = overrides.aoEnabled;
+  ): void => {
+    if (overrides?.directIntensity !== undefined && u.directIntensity)
+      u.directIntensity.value = overrides.directIntensity;
+    if (overrides?.giIntensity !== undefined && u.giIntensity)
+      u.giIntensity.value = overrides.giIntensity;
+    if (overrides?.aoEnabled !== undefined && u.aoEnabled) u.aoEnabled.value = overrides.aoEnabled;
 
     const prev = renderer.getRenderTarget();
     const autoClear = renderer.autoClear;

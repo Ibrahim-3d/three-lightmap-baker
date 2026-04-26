@@ -46,7 +46,7 @@ export const runPostProcess = async (
   opts: PostProcessOptions,
   onProgress?: (percent: number) => void,
 ): Promise<PostProcessResult> => {
-  const makeRT = () =>
+  const makeRT = (): WebGLRenderTarget =>
     new WebGLRenderTarget(resolution, resolution, {
       type: FloatType,
       minFilter: LinearMipMapLinearFilter,
@@ -56,7 +56,7 @@ export const runPostProcess = async (
   const rtA = makeRT();
   const rtB = makeRT();
 
-  const draw = (mat: ShaderMaterial, target: WebGLRenderTarget) => {
+  const draw = (mat: ShaderMaterial, target: WebGLRenderTarget): void => {
     fsQuad.material = mat;
     renderer.setRenderTarget(target);
     renderer.render(fsQuad, fsCam);
@@ -72,8 +72,12 @@ export const runPostProcess = async (
   const totalPasses = Math.max(0, opts.dilationIterations) + (opts.denoiseEnabled ? 1 : 0);
   let completedPasses = 0;
 
+  // SAFETY: `map` uniform is constructed in DilationMaterial; presence is invariant.
+  const dilateMapU = dilate.uniforms.map;
+  if (!dilateMapU) throw new Error('[baker] DilationMaterial missing `map` uniform');
+
   for (let i = 0; i < Math.max(0, opts.dilationIterations); i++) {
-    dilate.uniforms.map.value = input;
+    dilateMapU.value = input;
     draw(dilate, write);
     input = write.texture;
     // swap
@@ -93,7 +97,7 @@ export const runPostProcess = async (
       sigma: opts.denoiseSigma,
       threshold: opts.denoiseThreshold,
       kSigma: opts.denoiseKSigma,
-    }) as unknown as ShaderMaterial;
+    });
     draw(denoise, write);
     input = write.texture;
     denoise.dispose();
@@ -125,16 +129,18 @@ export const runPostProcess = async (
       g = 0,
       b = 0;
     for (let i = 0; i < 16; i++) {
-      r += buf[i * 4];
-      g += buf[i * 4 + 1];
-      b += buf[i * 4 + 2];
+      r += buf[i * 4] ?? 0;
+      g += buf[i * 4 + 1] ?? 0;
+      b += buf[i * 4 + 2] ?? 0;
     }
-    const fmt = (n: number) => (n / 16).toFixed(4);
-    console.log(
-      `[baker] refinement: dilations=${opts.dilationIterations}, denoise=${opts.denoiseEnabled ? 'on' : 'off'} ` +
-        `(sigma=${opts.denoiseSigma}, threshold=${opts.denoiseThreshold}, kSigma=${opts.denoiseKSigma}) — ` +
-        `center 4x4 avg rgb = (${fmt(r)}, ${fmt(g)}, ${fmt(b)})`,
-    );
+    if (import.meta.env.DEV) {
+      const fmt = (n: number): string => (n / 16).toFixed(4);
+      console.info(
+        `[baker] refinement: dilations=${opts.dilationIterations}, denoise=${opts.denoiseEnabled ? 'on' : 'off'} ` +
+          `(sigma=${opts.denoiseSigma}, threshold=${opts.denoiseThreshold}, kSigma=${opts.denoiseKSigma}) — ` +
+          `center 4x4 avg rgb = (${fmt(r)}, ${fmt(g)}, ${fmt(b)})`,
+      );
+    }
   }
 
   return {
