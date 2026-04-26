@@ -2,6 +2,7 @@ import {
   Color,
   DoubleSide,
   FloatType,
+  GLSL3,
   Mesh,
   NearestFilter,
   Object3D,
@@ -14,27 +15,37 @@ import {
   Texture,
 } from 'three';
 
-const worldPositionVertexShader = `
+/*
+ * Atlas G-buffer shaders — GLSL3.
+ *
+ * Vertex shader rasterizes geometry in UV2 space (gl_Position = uv2*2 - 1).
+ * Fragment shader writes either the world-space position (with a=1 chart-mask)
+ * or the world-space normal into a FloatType RT — these textures form the
+ * lookup table the bake fragment shader reads to seed each ray.
+ */
+
+const worldPositionVertexShader = /* glsl */ `
     uniform vec2 offset;
-    attribute vec2 uv2;
-    varying vec4 vWorldPosition;
+    in vec2 uv2;
+    out vec4 vWorldPosition;
 
     void main() {
-        vWorldPosition = modelMatrix * vec4(position, 1.0) ;
-
-        gl_Position = vec4((uv2 + offset) * 2.0 - 1.0, 0.0, 1.0); 
+        vWorldPosition = modelMatrix * vec4(position, 1.0);
+        gl_Position = vec4((uv2 + offset) * 2.0 - 1.0, 0.0, 1.0);
     }
 `;
 
-const worldPositionFragmentShader = `
-    varying vec4 vWorldPosition;
+const worldPositionFragmentShader = /* glsl */ `
+    in vec4 vWorldPosition;
+    out vec4 fragColor;
 
     void main() {
-        gl_FragColor = vWorldPosition;
+        fragColor = vWorldPosition;
     }
 `;
 
 const worldPositionMaterial = new ShaderMaterial({
+  glslVersion: GLSL3,
   vertexShader: worldPositionVertexShader,
   fragmentShader: worldPositionFragmentShader,
   side: DoubleSide,
@@ -44,28 +55,31 @@ const worldPositionMaterial = new ShaderMaterial({
   },
 });
 
-const normalVertexShader = `
-    varying vec4 vNormal;
-    attribute vec2 uv2;
+const normalVertexShader = /* glsl */ `
+    out vec4 vNormal;
+    in vec2 uv2;
     uniform vec2 offset;
 
     void main() {
         vNormal = modelMatrix * vec4(normal, 0.0);
-
         gl_Position = vec4((uv2 + offset) * 2.0 - 1.0, 0.0, 1.0);
     }
 `;
 
-const normalFragmentShader = `
-    varying vec4 vWorldPosition; 
-    varying vec4 vNormal;
+const normalFragmentShader = /* glsl */ `
+    in vec4 vNormal;
+    out vec4 fragColor;
 
     void main() {
-        gl_FragColor = normalize(vNormal);
+        // Guard against zero-length normals (degenerate geometry) — produces (0,0,0,0)
+        // so the bake shader can detect the miss instead of generating NaN.
+        float len = length(vNormal.xyz);
+        fragColor = len > 1e-6 ? vec4(vNormal.xyz / len, vNormal.w) : vec4(0.0);
     }
 `;
 
 const normalMaterial = new ShaderMaterial({
+  glslVersion: GLSL3,
   vertexShader: normalVertexShader,
   fragmentShader: normalFragmentShader,
   side: DoubleSide,

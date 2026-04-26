@@ -1,5 +1,6 @@
 import {
   FloatType,
+  GLSL3,
   LinearFilter,
   Mesh,
   NoBlending,
@@ -27,14 +28,25 @@ import { EXRExporter } from 'three/examples/jsm/exporters/EXRExporter.js';
 
 const _quad = new Mesh(new PlaneGeometry(2, 2));
 const _cam = new OrthographicCamera();
+/*
+ * Export Passthrough — GLSL3 fragment shader.
+ *
+ * Input  : `map` (any FloatType source texture).
+ * Output : `fragColor` — straight texel copy.
+ *
+ * Used to materialize any chain-of-RT lightmap into a fresh FloatType RT before
+ * encoding to PNG/EXR/raw. NDC pass-through vertex avoids the default
+ * OrthographicCamera near-plane clip that has bitten denoise/dilation in the past.
+ */
 const _passMat = new ShaderMaterial({
+  glslVersion: GLSL3,
   blending: NoBlending,
   transparent: false,
   depthWrite: false,
   depthTest: false,
   uniforms: { map: { value: null as Texture | null } },
   vertexShader: /* glsl */ `
-        varying vec2 vUv;
+        out vec2 vUv;
         void main() {
             vUv = uv;
             gl_Position = vec4(position, 1.0);
@@ -42,9 +54,10 @@ const _passMat = new ShaderMaterial({
     `,
   fragmentShader: /* glsl */ `
         uniform sampler2D map;
-        varying vec2 vUv;
+        in vec2 vUv;
+        out vec4 fragColor;
         void main() {
-            gl_FragColor = texture2D(map, vUv);
+            fragColor = texture(map, vUv);
         }
     `,
 });

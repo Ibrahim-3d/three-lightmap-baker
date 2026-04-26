@@ -1,4 +1,5 @@
 import {
+  GLSL3,
   Mesh,
   NoBlending,
   OrthographicCamera,
@@ -63,6 +64,7 @@ export class AtlasViewer {
     this.corner = opts.corner ?? 'br';
 
     this.mat = new ShaderMaterial({
+      glslVersion: GLSL3,
       blending: NoBlending,
       transparent: false,
       depthTest: false,
@@ -73,7 +75,7 @@ export class AtlasViewer {
         border: { value: 0.006 },
       },
       vertexShader: /* glsl */ `
-                varying vec2 vUv;
+                out vec2 vUv;
                 void main() {
                     vUv = uv;
                     // NDC pass-through — bypass camera matrices to dodge the
@@ -85,18 +87,19 @@ export class AtlasViewer {
                 uniform sampler2D map;
                 uniform bool sRGB;
                 uniform float border;
-                varying vec2 vUv;
+                in vec2 vUv;
+                out vec4 fragColor;
                 void main() {
                     // Thin light frame so the panel reads against any 3D background.
                     if (vUv.x < border || vUv.x > 1.0 - border ||
                         vUv.y < border || vUv.y > 1.0 - border) {
-                        gl_FragColor = vec4(0.85, 0.85, 0.85, 1.0);
+                        fragColor = vec4(0.85, 0.85, 0.85, 1.0);
                         return;
                     }
-                    vec4 t = texture2D(map, vUv);
+                    vec4 t = texture(map, vUv);
                     vec3 c = max(t.rgb, vec3(0.0));
                     if (sRGB) c = pow(c, vec3(1.0 / 2.2));
-                    gl_FragColor = vec4(c, 1.0);
+                    fragColor = vec4(c, 1.0);
                 }
             `,
     });

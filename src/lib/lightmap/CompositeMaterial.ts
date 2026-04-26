@@ -59,11 +59,12 @@ export class CompositeMaterial extends ShaderMaterial {
                     vec3 a = aoEnabled ? texture(aoTex, vUv).rgb : vec3(1.0);
                     
                     vec3 lit = (d + i) * a;
-                    
+
                     // Subtle contrast boost / gamma correction
                     // This prevents the "washed out" look of pure linear float textures.
-                    lit = pow(lit, vec3(1.0 / 1.1)); 
-                    
+                    // Guard against negative inputs that would make pow() return NaN.
+                    lit = pow(max(lit, vec3(0.0)), vec3(1.0 / 1.1));
+
                     outColor = vec4(lit, 1.0);
                 }
             `,

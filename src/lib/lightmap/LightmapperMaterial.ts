@@ -87,6 +87,21 @@ export class LightmapperMaterial extends ShaderMaterial {
             `,
 
       fragmentShader: /* glsl */ `
+                /*
+                 * Lightmap Bake — Fragment Shader (GLSL3).
+                 *
+                 * Input :
+                 *   - positions / normals : G-buffer textures keyed by lightmap UV (vUv)
+                 *   - bvh                 : MeshBVH uniform struct of the merged scene
+                 *   - albedoTex / emissiveTex (W×W float)  : per-triangle material lookup
+                 *
+                 * Output (MRT, per-texel) :
+                 *   directOut    : direct lighting from the point light (NEE, with N.L)
+                 *   indirectOut  : 1-bounce GI + sky on miss (cosine-weighted hemisphere sampling)
+                 *   aoOut        : 1.0 - smoothed near-field occlusion (radius = ambientDistance)
+                 *
+                 * Progressive accumulation is done by the renderer via opacity = 1/(n+1).
+                 */
                 precision highp float;
                 precision highp sampler2D;
                 precision highp isampler2D;
@@ -183,7 +198,8 @@ export class LightmapperMaterial extends ShaderMaterial {
                     float ang1 = (rand.x + 1.0) * 3.1415; // [-1..1) -> [0..2*PI)
                     float u = rand.y; // [-1..1), cos and acos(2v-1) cancel each other out, so we arrive at [-1..1)
                     float u2 = u * u;
-                    float sqrt1MinusU2 = sqrt(1.0 - u2);
+                    // max(0,...) guards against negative arg from floating-point round-off when |u| ≈ 1.
+                    float sqrt1MinusU2 = sqrt(max(0.0, 1.0 - u2));
                     float x = sqrt1MinusU2 * cos(ang1);
                     float y = sqrt1MinusU2 * sin(ang1);
                     float z = u;
@@ -256,7 +272,7 @@ export class LightmapperMaterial extends ShaderMaterial {
                                     vec3 shadowOrigin = hitPos + hitNormal * 0.001;
 
                                     vec3  toLight     = lightPosition - shadowOrigin;
-                                    float distToLight = length(toLight);
+                                    float distToLight = max(length(toLight), 1e-5);
                                     vec3  L           = toLight / distToLight;
                                     float cosL        = max(0.0, dot(hitNormal, L));
 
