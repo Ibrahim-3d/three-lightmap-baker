@@ -294,12 +294,27 @@ export class CornellBoxExample {
     // --- Export (Task 06 Phase 1) ---
     exportFormat: 'png' as ExportFormat, // 'png' | 'exr' | 'bin'
 
+    /**
+     * Per-mesh overrides keyed by mesh.uuid.
+     * - resolution: null = use global lightMapSize; a number = override for that mesh.
+     * - exclude: if true, mesh is skipped from UV unwrap + bake (but stays in BVH for GI/shadows).
+     *
+     * NOTE: resolution override is "preview" only in the demo — the demo's bake() uses a single
+     * shared renderAtlas call and does not split into per-group pipelines. Only `exclude` is
+     * fully honoured. Resolution-override deferred to a future session when the demo is rewired
+     * to the high-level LightmapBaker class (which does implement full grouping).
+     */
+    perMesh: {} as Record<string, { resolution: number | null; exclude: boolean }>,
+
     // --- Atlas viewer (2D corner overlay) ---
     atlasViewerEnabled: true,
     atlasViewerSize: 256,
     atlasViewerCorner: 'br' as AtlasViewerCorner, // 'tl' | 'tr' | 'bl' | 'br'
     atlasViewerSRGB: true,
   };
+
+  /** Tweakpane folder for per-mesh controls — rebuilt each time the scene changes. */
+  private perMeshFolder: ReturnType<Pane['addFolder']> | null = null;
 
   private atlasViewer: AtlasViewer = (() => {
     const v = new AtlasViewer({ size: 256, corner: 'br', sRGB: true });
@@ -604,6 +619,40 @@ export class CornellBoxExample {
     this.rebuildScene();
   }
 
+  /**
+   * Rebuild the Per-Mesh tweakpane folder to match the current mesh list.
+   * Called after every scene rebuild. Only `exclude` is fully wired in the demo
+   * (resolution override is preview-only — see options.perMesh JSDoc).
+   */
+  private buildPerMeshUI(): void {
+    this.perMeshFolder?.dispose();
+    const folder = this.pane.addFolder({ title: 'Per-Mesh (preview)', expanded: false });
+    this.perMeshFolder = folder;
+
+    for (const mesh of this.meshes) {
+      const uuid = mesh.uuid;
+      if (!this.options.perMesh[uuid]) {
+        this.options.perMesh[uuid] = { resolution: null, exclude: false };
+      }
+      const entry = this.options.perMesh[uuid]!;
+      const label = mesh.name || uuid.slice(0, 8);
+
+      const meshFolder = folder.addFolder({ title: label, expanded: false });
+      meshFolder.addInput(entry, 'exclude', { label: 'Exclude' }).on('change', () => this.bake());
+      // Resolution override shown as a monitor/label — deferred, not wired to grouping.
+      meshFolder.addInput(entry, 'resolution', {
+        label: 'Resolution (deferred)',
+        options: {
+          Default: null as unknown as number,
+          '256': 256,
+          '512': 512,
+          '1024': 1024,
+          '2048': 2048,
+        },
+      });
+    }
+  }
+
   private initUI() {
     this.fpsElement = document.createElement('div');
     this.fpsElement.style.position = 'absolute';
@@ -773,6 +822,13 @@ export class CornellBoxExample {
     this.buildClassicBlocks();
     if (this.options.preset === 'advanced') this.buildAdvancedExtras();
 
+    // Prune stale perMesh entries from previous scene build.
+    const liveUUIDs = new Set(this.meshes.map((m) => m.uuid));
+    for (const k of Object.keys(this.options.perMesh)) {
+      if (!liveUUIDs.has(k)) delete this.options.perMesh[k];
+    }
+
+    this.buildPerMeshUI();
     await this.bake();
     this.startLoop();
   }
@@ -792,13 +848,22 @@ export class CornellBoxExample {
     // we bake before the render loop has had a chance to do it implicitly.
     this.scene.updateMatrixWorld(true);
 
-    // 1. Unwrap UV2 atlas
-    await generateAtlas(this.meshes);
+    // Meshes flagged exclude:true are skipped from atlas + bake but stay in the BVH
+    // so they still cast shadows and contribute GI for other meshes.
+    const bakeMeshes = this.meshes.filter((m) => !(this.options.perMesh[m.uuid]?.exclude === true));
+    if (!bakeMeshes.length) {
+      console.warn('[baker] all meshes excluded — nothing to bake');
+      this.progressContainer.style.display = 'none';
+      return;
+    }
 
-    // 2. Render position + normal G-buffers in lightmap UV space
+    // 1. Unwrap UV2 atlas
+    await generateAtlas(bakeMeshes);
+
+    // 2. Render position + normal G-buffers in lightmap UV space (bake-eligible meshes only).
     // Dispose previous atlas RTs before allocating new ones (re-bake path).
     this.atlasDispose?.();
-    const atlas = renderAtlas(this.renderer, this.meshes, res, true);
+    const atlas = renderAtlas(this.renderer, bakeMeshes, res, true);
     this.atlasDispose = atlas.dispose;
     this.positionTexture = atlas.positionTexture;
     this.normalTexture = atlas.normalTexture;
@@ -1089,7 +1154,9 @@ export class CornellBoxExample {
     for (const m of this.meshes) {
       const mat = m.material as MeshStandardMaterial & { _originalMap?: Texture | null };
       mat.map = layer.showAlbedo ? (mat._originalMap ?? null) : null;
-      mat.lightMap = lm;
+      // Excluded meshes have no UV2/lightmap — always clear their lightMap slot.
+      const isExcluded = this.options.perMesh[m.uuid]?.exclude === true;
+      mat.lightMap = isExcluded ? null : lm;
       if (mat.lightMap) {
         mat.lightMap.channel = 2;
         mat.lightMap.needsUpdate = true;

@@ -30,14 +30,14 @@ import { BakeError, BakeErrorPhase } from './errors';
  *  1. Constructor takes a `WebGLRenderer`. The spec omits this; in practice the baker
  *     can't run without a GL context, and creating a headless one would mean the user's
  *     scene textures wouldn't be in our context. Caller passes their renderer.
- *  2. `result.lightmaps` is `Map<Mesh, Texture>` where every entry points to the SAME
- *     atlas texture. Spec implies per-mesh textures; our atlas pipeline produces one
- *     shared atlas. The Map shape lets callers iterate per mesh as the spec expects.
+ *  2. `result.lightmaps` returns a `Map<Mesh, Texture>` where each mesh maps to its
+ *     group's atlas texture. With `perMesh` grouping, meshes in different resolution
+ *     groups get different textures. Without `perMesh`, all entries share one texture.
  *  3. `bounces` [1,4] controls GI path depth. Clamped on construction. Russian Roulette
  *     terminates low-throughput paths after bounce 2 for performance.
  *  4. `result.export(path, ...)` triggers a browser download. The `path` argument is
  *     interpreted as a filename hint (last path segment); browsers can't write to
- *     directories.
+ *     directories. With per-mesh grouping each group is exported as a separate file.
  */
 
 export type BakePhase = 'uv-unwrap' | 'geometry' | 'bake' | 'refine';
@@ -51,7 +51,7 @@ export type BakeHooks = {
 
 export type BakeStats = {
   meshCount: number;
-  /** Resolution × resolution — atlas texel count. */
+  /** Resolution × resolution — atlas texel count (summed across all groups). */
   texelCount: number;
   /** Estimate: samples × castsPerFrame × texelCount. */
   raysTraced: number;
@@ -80,6 +80,18 @@ export type LightmapBakerOptions = {
   ao?: AOOptions;
   /** UV2 filtering at view time. Default 'linear'. */
   filtering?: 'linear' | 'nearest';
+  /**
+   * Per-mesh overrides. Keys are mesh UUIDs (mesh.uuid).
+   * - resolution: lightmap side length for this mesh. Default = global resolution.
+   * - exclude:    if true, mesh is skipped entirely (no UV unwrap, no lightmap).
+   *               Excluded meshes still appear in the BVH so they cast shadows
+   *               and contribute to GI for other meshes.
+   *
+   * Note: `scaleInLightmap` from the original spec is NOT implemented — xatlas-three
+   * does not expose per-mesh chart weighting in our integration. Use `resolution`
+   * to control quality per mesh.
+   */
+  perMesh?: Record<string, { resolution?: number; exclude?: boolean }>;
 };
 
 export type LightOptions = {
@@ -149,6 +161,19 @@ function validateOptions(opts: LightmapBakerOptions): void {
 
   if (opts.ao?.distance !== undefined && opts.ao.distance < 0)
     throw new BakeError(`ao.distance must be >= 0, got ${opts.ao.distance}`, 'validation');
+
+  // Validate per-mesh resolution overrides.
+  for (const [uuid, override] of Object.entries(opts.perMesh ?? {})) {
+    const r = override.resolution;
+    if (r === undefined) continue;
+    if (!Number.isFinite(r) || r < 128 || r > 4096)
+      throw new BakeError(`perMesh[${uuid}].resolution must be 128-4096, got ${r}`, 'validation');
+    if (!isPowerOfTwo(r))
+      throw new BakeError(
+        `perMesh[${uuid}].resolution must be a power of two, got ${r}`,
+        'validation',
+      );
+  }
 }
 
 const DEFAULT_REFINEMENT: PostProcessOptions = {
@@ -159,45 +184,50 @@ const DEFAULT_REFINEMENT: PostProcessOptions = {
   denoiseKSigma: 1.0,
 };
 
+type GroupInternals = {
+  lightmapper: Lightmapper;
+  composite: CompositeResult;
+  refinement: PostProcessResult | null;
+  atlasDispose: () => void;
+  resolution: number;
+};
+
 /** Result of a successful bake. Owns the GPU resources — call `dispose()` to release. */
 export class LightmapBakeResult {
   constructor(
     private readonly renderer: WebGLRenderer,
-    private readonly meshes: Mesh[],
-    public readonly texture: Texture,
-    public readonly resolution: number,
+    private readonly meshLightmaps: Map<Mesh, Texture>,
+    private readonly meshResolutions: Map<Mesh, number>,
     public readonly stats: BakeStats,
     private readonly internals: {
-      lightmapper: Lightmapper;
-      composite: CompositeResult;
-      refinement: PostProcessResult | null;
-      atlasDispose: () => void;
+      groups: GroupInternals[];
       matTexDispose: () => void;
     },
   ) {}
 
-  /** All entries point to the same shared atlas Texture (atlas pipeline produces one). */
+  /**
+   * Returns the per-mesh lightmap textures. Meshes in the same resolution group
+   * share a texture. Excluded meshes are not present in the map.
+   */
   get lightmaps(): Map<Mesh, Texture> {
-    const m = new Map<Mesh, Texture>();
-    for (const mesh of this.meshes) m.set(mesh, this.texture);
-    return m;
+    return new Map(this.meshLightmaps);
   }
 
-  /** Mounts the atlas as `mat.lightMap` on every baked mesh (channel = 2). */
+  /** Mounts each mesh's atlas texture as `mat.lightMap` (channel = 2). */
   apply(): void {
-    for (const mesh of this.meshes) {
+    for (const [mesh, tex] of this.meshLightmaps) {
       const mat = mesh.material as MeshStandardMaterial;
       if (!mat) continue;
-      mat.lightMap = this.texture;
-      this.texture.channel = 2;
+      mat.lightMap = tex;
+      tex.channel = 2;
       mat.lightMapIntensity = 1;
       mat.needsUpdate = true;
     }
   }
 
   /**
-   * Trigger a browser download of the atlas. `pathOrName` is treated as a filename
-   * hint — only the basename is used (browsers can't pick directories).
+   * Trigger browser downloads of all group atlases. `pathOrName` is used as a
+   * basename hint; each group appends `_groupN` when there are multiple groups.
    */
   async export(
     pathOrName: string = 'lightmap',
@@ -209,26 +239,35 @@ export class LightmapBakeResult {
         .replace(/[\/\\]+$/, '')
         .split(/[\/\\]/)
         .pop() || 'lightmap';
-    await exportLightmap(this.renderer, this.texture, this.resolution, base, fmt);
+    const groups = this.internals.groups;
+    for (let i = 0; i < groups.length; i++) {
+      const g = groups[i]!;
+      const finalTex = g.refinement?.texture ?? g.composite.texture;
+      const name = groups.length > 1 ? `${base}_group${i}` : base;
+      await exportLightmap(this.renderer, finalTex, g.resolution, name, fmt);
+    }
   }
 
   dispose(): void {
-    this.internals.refinement?.dispose();
-    this.internals.composite.dispose();
-    this.internals.lightmapper.dispose();
+    for (const g of this.internals.groups) {
+      g.refinement?.dispose();
+      g.composite.dispose();
+      g.lightmapper.dispose();
+      g.atlasDispose();
+    }
     this.internals.matTexDispose();
-    this.internals.atlasDispose();
   }
 }
 
 export class LightmapBaker {
   private opts: Required<
-    Omit<LightmapBakerOptions, 'light' | 'gi' | 'ao' | 'refinementOptions'>
+    Omit<LightmapBakerOptions, 'light' | 'gi' | 'ao' | 'refinementOptions' | 'perMesh'>
   > & {
     light: Required<LightOptions>;
     gi: Required<GIOptions>;
     ao: Required<AOOptions>;
     refinementOptions: PostProcessOptions;
+    perMesh: Record<string, { resolution?: number; exclude?: boolean }>;
   };
 
   constructor(
@@ -244,6 +283,7 @@ export class LightmapBaker {
       resolution: opts.resolution ?? 1024,
       denoise: opts.denoise ?? true,
       filtering: opts.filtering ?? 'linear',
+      perMesh: opts.perMesh ?? {},
       light: {
         position: opts.light?.position ?? new Vector3(0, 10, 0),
         color: opts.light?.color ?? 0xffffff,
@@ -274,9 +314,8 @@ export class LightmapBaker {
   async bake(scene: Scene | Object3D, hooks: BakeHooks = {}): Promise<LightmapBakeResult> {
     const t0 = performance.now();
 
-    // Pre-flight scene + GL context checks before allocating any GPU resources.
-    const meshes = collectBakeMeshes(scene);
-    if (!meshes.length)
+    const allMeshes = collectBakeMeshes(scene);
+    if (!allMeshes.length)
       throw new BakeError(
         'no bake-eligible meshes in scene (need Mesh + MeshStandardMaterial-like)',
         'validation',
@@ -295,37 +334,40 @@ export class LightmapBaker {
       if (hooks.signal?.aborted) throw new BakeError('aborted by signal', phase);
     };
 
-    // --- 1. UV unwrap ---
+    // Partition meshes into excluded / groups keyed by effective resolution.
+    const { excluded, groups } = partitionMeshes(
+      allMeshes,
+      this.opts.perMesh,
+      this.opts.resolution,
+    );
+
+    // --- 1. UV unwrap (only non-excluded meshes need UV2) ---
     const tUV0 = performance.now();
     hooks.onProgress?.('uv-unwrap', 0);
-    await generateAtlas(meshes);
+    // Unwrap all groups at once so xatlas sees the full non-excluded set.
+    const bakeMeshes = [...groups.values()].flat();
+    await generateAtlas(bakeMeshes);
     hooks.onProgress?.('uv-unwrap', 1);
     checkAbort('unwrap');
     const tUV1 = performance.now();
 
-    // --- 2. Geometry: G-buffers + BVH + per-tri materials ---
+    // --- 2. Geometry: BVH + per-tri materials (SHARED — includes excluded meshes) ---
     const tG0 = performance.now();
     hooks.onProgress?.('geometry', 0);
-    const atlas = renderAtlas(this.renderer, meshes, this.opts.resolution, true);
-    hooks.onProgress?.('geometry', 0.4);
 
-    const merged = mergeGeometry(meshes);
-    const bvh = new MeshBVH(merged); // mutates merged.index in place — BVH leaf order
-    hooks.onProgress?.('geometry', 0.7);
+    // BVH is built from ALL meshes (including excluded) so they cast shadows / contribute GI.
+    const merged = mergeGeometry(allMeshes);
+    const bvh = new MeshBVH(merged); // mutates merged.index in place
+    hooks.onProgress?.('geometry', 0.5);
 
-    const perTri = extractPerTriangleMaterials(merged, meshes);
+    const perTri = extractPerTriangleMaterials(merged, allMeshes);
     const matTex = buildMaterialTextures(perTri);
     hooks.onProgress?.('geometry', 1);
     checkAbort('geometry');
     const tG1 = performance.now();
 
-    // --- 3. Bake (RAF-driven progressive accumulation) ---
-    const tB0 = performance.now();
-    hooks.onProgress?.('bake', 0);
+    // --- 3. Build shared light list ---
     const skyColor = toLinearColor(this.opts.gi.skyColor, 0xffffff);
-
-    // Build light list: collect from scene, then fall back to the LightOptions
-    // synthetic point light if no scene lights found (or if direct is disabled).
     let sceneLights: PackedLight[] = collectLightsFromScene(scene);
     if (sceneLights.length === 0 && this.opts.light.enabled) {
       const lightColor = toLinearColor(this.opts.light.color, 0xffffff);
@@ -340,83 +382,89 @@ export class LightmapBaker {
       ];
     }
 
-    const raycastOpts: RaycastOptions = {
-      resolution: this.opts.resolution,
-      casts: this.opts.castsPerFrame,
-      filterMode: this.opts.filtering === 'linear' ? LinearFilter : NearestFilter,
-      lights: sceneLights,
-      skyColor,
-      skyIntensity: this.opts.gi.skyIntensity,
-      ambientDistance: this.opts.ao.distance,
-      aoIntensity: this.opts.ao.intensity,
-      aoExponent: this.opts.ao.exponent,
-      ambientLightEnabled: this.opts.ao.enabled,
-      directLightEnabled: this.opts.light.enabled,
-      indirectLightEnabled: this.opts.gi.enabled,
-      albedoTexture: matTex.albedoTexture,
-      emissiveTexture: matTex.emissiveTexture,
-      materialTextureSize: matTex.side,
-      targetSamples: this.opts.samples,
-      bounces: this.opts.bounces,
-    };
-    const lightmapper = generateLightmapper(
-      this.renderer,
-      atlas.positionTexture,
-      atlas.normalTexture,
-      bvh,
-      raycastOpts,
-    );
+    // --- 4. Per-group bake ---
+    const tB0 = performance.now();
+    const groupResolutions = [...groups.keys()];
+    const groupResults: GroupInternals[] = [];
+    const meshLightmaps = new Map<Mesh, Texture>();
+    const meshResolutions = new Map<Mesh, number>();
 
-    await new Promise<void>((resolve, reject) => {
-      const tick = (): void => {
-        if (hooks.signal?.aborted) {
-          reject(new BakeError('aborted by signal', 'bake'));
-          return;
-        }
-        const r = lightmapper.render();
-        hooks.onProgress?.('bake', this.opts.samples > 0 ? r.samples / this.opts.samples : 1);
-        if (r.done) {
-          resolve();
-          return;
-        }
-        requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
-    });
+    // Track excluded meshes: they get no lightmap entry.
+    // (They're kept separate so callers know to handle them differently.)
+    void excluded; // intentionally unused beyond BVH; suppress lint
+
+    for (let gi = 0; gi < groupResolutions.length; gi++) {
+      const res = groupResolutions[gi]!;
+      const groupMeshes = groups.get(res)!;
+
+      hooks.onProgress?.('bake', gi / groupResolutions.length);
+      checkAbort('bake');
+
+      const atlas = renderAtlas(this.renderer, groupMeshes, res, true);
+
+      const raycastOpts: RaycastOptions = buildRaycastOpts(
+        this.opts,
+        res,
+        sceneLights,
+        skyColor,
+        matTex,
+      );
+
+      const lightmapper = generateLightmapper(
+        this.renderer,
+        atlas.positionTexture,
+        atlas.normalTexture,
+        bvh,
+        raycastOpts,
+      );
+
+      await runLightmapperUntilDone(lightmapper, this.opts.samples, hooks, (p) =>
+        hooks.onProgress?.('bake', (gi + p) / groupResolutions.length),
+      );
+
+      const composite = runComposite(this.renderer, lightmapper.textures, res, {
+        directIntensity: 1.0,
+        giIntensity: this.opts.gi.intensity,
+        aoEnabled: this.opts.ao.enabled,
+      });
+      composite.refresh();
+
+      let refinement: PostProcessResult | null = null;
+      if (this.opts.denoise || this.opts.refinementOptions.dilationIterations > 0) {
+        refinement = await runPostProcess(
+          this.renderer,
+          composite.texture,
+          atlas.positionTexture,
+          res,
+          this.opts.refinementOptions,
+        );
+      }
+
+      const finalTex = refinement?.texture ?? composite.texture;
+      groupResults.push({
+        lightmapper,
+        composite,
+        refinement,
+        atlasDispose: atlas.dispose,
+        resolution: res,
+      });
+
+      for (const m of groupMeshes) {
+        meshLightmaps.set(m, finalTex);
+        meshResolutions.set(m, res);
+      }
+    }
     const tB1 = performance.now();
 
-    // --- 4. View-time composite (direct + indirect*gi) * ao ---
-    const composite = runComposite(this.renderer, lightmapper.textures, this.opts.resolution, {
-      directIntensity: 1.0,
-      giIntensity: this.opts.gi.intensity,
-      aoEnabled: this.opts.ao.enabled,
-    });
-    composite.refresh();
-
-    // --- 5. Refinement (optional dilation + denoise) ---
     const tR0 = performance.now();
-    let refinement: PostProcessResult | null = null;
-    if (this.opts.denoise || this.opts.refinementOptions.dilationIterations > 0) {
-      hooks.onProgress?.('refine', 0);
-      refinement = await runPostProcess(
-        this.renderer,
-        composite.texture,
-        atlas.positionTexture,
-        this.opts.resolution,
-        this.opts.refinementOptions,
-        (p) => hooks.onProgress?.('refine', p),
-      );
-      hooks.onProgress?.('refine', 1);
-    }
+    hooks.onProgress?.('refine', 1);
     const tR1 = performance.now();
 
-    const finalTex = refinement?.texture ?? composite.texture;
-
+    const totalTexels = groupResolutions.reduce((s, r) => s + r * r, 0);
     const stats: BakeStats = {
-      meshCount: meshes.length,
-      texelCount: this.opts.resolution * this.opts.resolution,
-      raysTraced:
-        this.opts.samples * this.opts.castsPerFrame * this.opts.resolution * this.opts.resolution,
+      meshCount: bakeMeshes.length,
+      texelCount: totalTexels,
+      raysTraced: this.opts.samples * this.opts.castsPerFrame * totalTexels,
       duration: {
         uvUnwrap: tUV1 - tUV0,
         geometry: tG1 - tG0,
@@ -426,11 +474,8 @@ export class LightmapBaker {
       },
     };
 
-    return new LightmapBakeResult(this.renderer, meshes, finalTex, this.opts.resolution, stats, {
-      lightmapper,
-      composite,
-      refinement,
-      atlasDispose: atlas.dispose,
+    return new LightmapBakeResult(this.renderer, meshLightmaps, meshResolutions, stats, {
+      groups: groupResults,
       matTexDispose: () => {
         matTex.albedoTexture.dispose();
         matTex.emissiveTexture.dispose();
@@ -438,6 +483,10 @@ export class LightmapBaker {
     });
   }
 }
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 /** Walks the scene; returns Meshes whose material has `lightMap` (i.e. MeshStandard-like). */
 function collectBakeMeshes(scene: Scene | Object3D): Mesh[] {
@@ -449,4 +498,87 @@ function collectBakeMeshes(scene: Scene | Object3D): Mesh[] {
     if (mats.some((m) => m && 'lightMap' in m)) out.push(mesh);
   });
   return out;
+}
+
+/**
+ * Partition meshes into excluded and resolution-keyed groups.
+ * Defaults for omitted perMesh entries: { exclude: false, resolution: globalRes }.
+ */
+function partitionMeshes(
+  meshes: Mesh[],
+  perMesh: Record<string, { resolution?: number; exclude?: boolean }>,
+  globalRes: number,
+): { excluded: Mesh[]; groups: Map<number, Mesh[]> } {
+  const excluded: Mesh[] = [];
+  const groups = new Map<number, Mesh[]>();
+  for (const m of meshes) {
+    const override = perMesh[m.uuid] ?? {};
+    if (override.exclude === true) {
+      excluded.push(m);
+      continue;
+    }
+    const res = override.resolution ?? globalRes;
+    if (!groups.has(res)) groups.set(res, []);
+    groups.get(res)!.push(m);
+  }
+  // Ensure at least one group (all meshes at globalRes) when no overrides apply.
+  if (groups.size === 0 && excluded.length < meshes.length) {
+    groups.set(
+      globalRes,
+      meshes.filter((m) => !perMesh[m.uuid]?.exclude),
+    );
+  }
+  return { excluded, groups };
+}
+
+function buildRaycastOpts(
+  opts: LightmapBaker['opts'],
+  resolution: number,
+  lights: PackedLight[],
+  skyColor: Color,
+  matTex: { albedoTexture: Texture; emissiveTexture: Texture; side: number },
+): RaycastOptions {
+  return {
+    resolution,
+    casts: opts.castsPerFrame,
+    filterMode: opts.filtering === 'linear' ? LinearFilter : NearestFilter,
+    lights,
+    skyColor,
+    skyIntensity: opts.gi.skyIntensity,
+    ambientDistance: opts.ao.distance,
+    aoIntensity: opts.ao.intensity,
+    aoExponent: opts.ao.exponent,
+    ambientLightEnabled: opts.ao.enabled,
+    directLightEnabled: opts.light.enabled,
+    indirectLightEnabled: opts.gi.enabled,
+    albedoTexture: matTex.albedoTexture,
+    emissiveTexture: matTex.emissiveTexture,
+    materialTextureSize: matTex.side,
+    targetSamples: opts.samples,
+    bounces: opts.bounces,
+  };
+}
+
+function runLightmapperUntilDone(
+  lightmapper: Lightmapper,
+  targetSamples: number,
+  hooks: BakeHooks,
+  onProgress: (p: number) => void,
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const tick = (): void => {
+      if (hooks.signal?.aborted) {
+        reject(new BakeError('aborted by signal', 'bake'));
+        return;
+      }
+      const r = lightmapper.render();
+      onProgress(targetSamples > 0 ? r.samples / targetSamples : 1);
+      if (r.done) {
+        resolve();
+        return;
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
 }
