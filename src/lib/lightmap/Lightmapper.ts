@@ -45,6 +45,8 @@ export type RaycastOptions = {
 
   /** Stop accumulating once this many frames have been rendered (frames × casts = samples/texel). 0 = unlimited. */
   targetSamples: number;
+  /** Number of indirect light bounces. Clamped [1,4]. Default 1. */
+  bounces: number;
 };
 
 export type LightmapperRender = { samples: number; done: boolean };
@@ -80,6 +82,7 @@ export const generateLightmapper = (
     emissiveTex: options.emissiveTexture,
     materialTextureSize: options.materialTextureSize,
     casts: options.casts,
+    bounces: options.bounces ?? 1,
     lightPosition: options.lightPosition,
     lightSize: options.lightSize,
     lightColor: options.lightColor,

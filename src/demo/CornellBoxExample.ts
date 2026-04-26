@@ -169,9 +169,10 @@ const presets = {
  * `targetSamples` is **frames**, not samples-per-texel. With `casts` rays per frame the
  * actual samples-per-texel ≈ targetSamples × casts. The label below shows that product.
  *
- * NOTE: bounces stays at 1 across all presets — multi-bounce was deferred from Sessions 4/5
- * (no GLSL recursion + N² ray cost). The "bounces" column in the spec is preserved here as
- * a UI hint only; bumping it has no current effect.
+ * Bounces are NOT in the preset table on purpose: they're an independent quality knob
+ * exposed as its own slider (1–4, default 2), so users can crank bounces without
+ * relinquishing their preferred resolution/casts/sample budget. The runtime cost scales
+ * linearly with bounces (path-traced loop, not exponential).
  */
 const QUALITY_PRESETS = {
   Custom: null,
@@ -224,6 +225,7 @@ export class CornellBoxExample {
     casts: 5,
     // Frames to accumulate before pausing. Effective samples-per-texel = targetSamples × casts.
     targetSamples: 256,
+    bounces: 2,
     filterMode: 'linear',
     directLightEnabled: true,
     indirectLightEnabled: true,
@@ -364,6 +366,13 @@ export class CornellBoxExample {
         step: 16,
         label: 'Target Frames',
       })
+      .on('change', () => {
+        this.options.quality = 'Custom';
+        this.pane.refresh();
+        this.bake();
+      });
+    bakeFolder
+      .addInput(this.options, 'bounces', { min: 1, max: 4, step: 1, label: 'Bounces' })
       .on('change', () => {
         this.options.quality = 'Custom';
         this.pane.refresh();
@@ -800,6 +809,7 @@ export class CornellBoxExample {
       emissiveTexture: matTex.emissiveTexture,
       materialTextureSize: matTex.side,
       targetSamples: this.options.targetSamples,
+      bounces: this.options.bounces,
     };
     // Free GPU resources from any prior bake before re-allocating. Composite/post
     // hold refs into the OLD MRT textures, so dispose them BEFORE the lightmapper

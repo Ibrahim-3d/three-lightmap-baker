@@ -21,6 +21,7 @@ export type LightmapperMaterialOptions = {
   materialTextureSize: number;
 
   casts: number;
+  bounces: number;
 
   lightPosition: Vector3;
   lightSize: number;
@@ -63,6 +64,7 @@ export class LightmapperMaterial extends ShaderMaterial {
         materialTextureSize: { value: options.materialTextureSize },
         invModelMatrix: { value: options.invModelMatrix },
         casts: { value: options.casts },
+        bounces: { value: options.bounces },
         lightPosition: { value: options.lightPosition },
         lightSize: { value: options.lightSize },
         lightColor: { value: options.lightColor },
@@ -97,7 +99,7 @@ export class LightmapperMaterial extends ShaderMaterial {
                  *
                  * Output (MRT, per-texel) :
                  *   directOut    : direct lighting from the point light (NEE, with N.L)
-                 *   indirectOut  : 1-bounce GI + sky on miss (cosine-weighted hemisphere sampling)
+                 *   indirectOut  : N-bounce GI + sky on miss (cosine-weighted hemisphere sampling)
                  *   aoOut        : 1.0 - smoothed near-field occlusion (radius = ambientDistance)
                  *
                  * Progressive accumulation is done by the renderer via opacity = 1/(n+1).
@@ -120,7 +122,10 @@ export class LightmapperMaterial extends ShaderMaterial {
                 uniform sampler2D emissiveTex;
                 uniform float materialTextureSize;
 
+                #define MAX_BOUNCES 4
+
                 uniform int casts;
+                uniform int bounces;
 
                 uniform vec3 lightPosition;
                 uniform float lightSize;
@@ -221,6 +226,75 @@ export class LightmapperMaterial extends ShaderMaterial {
                     return x * b1 + y * b2 + sqrt( 1.0 - uv.x ) * n;
                 }
 
+                /**
+                 * N-bounce path tracer. Called once per hemisphere cast.
+                 * b=0 semantics match the old single-bounce NEE block exactly.
+                 *
+                 * faceNormal from three-mesh-bvh is already side-flipped (norm = side*normalize(norm)).
+                 * Do NOT re-flip — re-flipping pushes shadow origins INTO surfaces.
+                 */
+                vec3 tracePath(
+                    vec3 ro, vec3 rd,
+                    bool hit, uvec4 fi, vec3 fn, float fd
+                ) {
+                    vec3  throughput = vec3(1.0);
+                    vec3  radiance   = vec3(0.0);
+                    // Reusable scratch for bvhIntersectFirstHit out-params.
+                    vec3  bary = vec3(0.0);
+                    float sideVal = 1.0;
+
+                    for (int b = 0; b < MAX_BOUNCES; b++) {
+                        if (b >= bounces) break;
+
+                        if (!hit) {
+                            // Miss — sky only on b==0 to avoid double-counting.
+                            if (b == 0) radiance += throughput * skyColor * skyIntensity;
+                            break;
+                        }
+
+                        vec3 hitAlbedo   = readTriangleMaterial(albedoTex,   fi.w);
+                        vec3 hitEmissive = readTriangleMaterial(emissiveTex, fi.w);
+                        vec3 hitPos      = ro + rd * fd;
+                        // faceNormal already flipped by three-mesh-bvh — do NOT re-flip.
+                        vec3 hitNormal   = fn;
+                        vec3 hitOrigin   = hitPos + hitNormal * 0.001;
+
+                        // (a) Emissive — cosθ/PDF cancel under cosine-weighted sampling.
+                        radiance += throughput * hitEmissive;
+
+                        // (b) NEE shadow ray to point light.
+                        vec3  toLight     = lightPosition - hitOrigin;
+                        float distToLight = max(length(toLight), 1e-5);
+                        vec3  L           = toLight / distToLight;
+                        float cosL        = max(0.0, dot(hitNormal, L));
+                        if (cosL > 0.0) {
+                            uvec4 sfi = uvec4(0u); vec3 sfn = vec3(0.0,0.0,1.0); float sd = 0.0;
+                            bool shadowHit = bvhIntersectFirstHit(bvh, hitOrigin, L, sfi, sfn, bary, sideVal, sd);
+                            if (!shadowHit || sd >= distToLight - 0.001) {
+                                // Drop 1/PI to match pre-Task-07 energy-balance (same order as direct).
+                                radiance += throughput * hitAlbedo * cosL * lightColor * lightIntensity;
+                            }
+                        }
+
+                        // (c) Throughput — cos/PDF cancel under cosine-weighted hemisphere.
+                        throughput *= hitAlbedo;
+
+                        // (d) Russian Roulette after bounce 2 (unbiased: terminate with prob 1-p).
+                        if (b >= 2) {
+                            float p = clamp(max(throughput.r, max(throughput.g, throughput.b)), 0.0, 1.0);
+                            if (rand() > p) break;
+                            throughput /= max(p, 1e-4);
+                        }
+
+                        // (e) Next bounce — cosine-weighted hemisphere from hit normal.
+                        ro  = hitOrigin;
+                        rd  = getHemisphereSample(hitNormal, rand4().xy);
+                        fd  = 0.0;
+                        hit = bvhIntersectFirstHit(bvh, ro, rd, fi, fn, bary, sideVal, fd);
+                    }
+                    return radiance;
+                }
+
                 void main() {
                     vec4 position = texture(positions, vUv);
                     vec4 normal = texture(normals, vUv);
@@ -249,57 +323,12 @@ export class LightmapperMaterial extends ShaderMaterial {
                             if(dot(rayDirection, newDirection) > 0.0) {
                                 bool hit = bvhIntersectFirstHit( bvh, rayOrigin, newDirection, faceIndices, faceNormal, barycoord, side, dist );
 
-                                // Task 04 — 1-bounce GI on the indirect channel.
-                                //   miss: contribute skyColor*skyIntensity (0 by default = closed scene).
-                                //   hit:  (a) emissive direct visibility, cosθ/PDF cancels, so += hitEmissive.
-                                //         (b) NEE shadow ray to lightPosition for albedo-tinted color bleed.
-                                if (indirectLightEnabled && !hit) {
-                                    totalIndirectLight += skyColor * skyIntensity;
-                                }
-                                if (indirectLightEnabled && hit) {
-                                    vec3 hitAlbedo   = readTriangleMaterial(albedoTex,   faceIndices.w);
-                                    vec3 hitEmissive = readTriangleMaterial(emissiveTex, faceIndices.w);
-
-                                    totalIndirectLight += hitEmissive;
-
-                                    vec3 hitPos    = rayOrigin + newDirection * dist;
-                                    // three-mesh-bvh internally does norm = side * normalize(norm)
-                                    // so faceNormal is ALREADY flipped to face the ray origin.
-                                    // Re-flipping here would push shadowOrigin INTO the surface
-                                    // and kill backface NEE contributions (ceiling, sphere
-                                    // interior, knot, ...).
-                                    vec3 hitNormal = faceNormal;
-                                    vec3 shadowOrigin = hitPos + hitNormal * 0.001;
-
-                                    vec3  toLight     = lightPosition - shadowOrigin;
-                                    float distToLight = max(length(toLight), 1e-5);
-                                    vec3  L           = toLight / distToLight;
-                                    float cosL        = max(0.0, dot(hitNormal, L));
-
-                                    if (cosL > 0.0) {
-                                        uvec4 sFaceIndices = uvec4(0u);
-                                        vec3  sFaceNormal  = vec3(0.0, 0.0, 1.0);
-                                        vec3  sBary        = vec3(0.0);
-                                        float sSide        = 1.0;
-                                        float sDist        = 0.0;
-                                        bool shadowHit = bvhIntersectFirstHit(
-                                            bvh, shadowOrigin, L,
-                                            sFaceIndices, sFaceNormal, sBary, sSide, sDist );
-
-                                        // Light visible if nothing blocks before the light position.
-                                        if (!shadowHit || sDist >= distToLight - 0.001) {
-                                            // Energy-balance hack: the direct loop adds
-                                            //   lightColor*lightIntensity
-                                            // per visible cast WITHOUT a matching cos/PI at the
-                                            // receiver, so a strict Lambertian BRDF (albedo/PI * cos)
-                                            // on the bounce is ~PI x dimmer than direct under the
-                                            // 0.5 mix - colour bleed becomes invisible. Keeping
-                                            // cos(N_hit . L) (geometrically meaningful) but
-                                            // dropping 1/PI puts both channels on the same order
-                                            // of magnitude. giIntensity then provides fine control.
-                                            totalIndirectLight += hitAlbedo * cosL * lightColor * lightIntensity;
-                                        }
-                                    }
+                                // N-bounce path tracer on the indirect channel.
+                                // bounces=1 matches the old single-bounce NEE behavior exactly:
+                                //   miss  → skyColor*skyIntensity
+                                //   hit b=0 → hitEmissive + NEE-tint (same as before)
+                                if (indirectLightEnabled) {
+                                    totalIndirectLight += tracePath(rayOrigin, newDirection, hit, faceIndices, faceNormal, dist);
                                 }
 
                                 if (ambientLightEnabled) {

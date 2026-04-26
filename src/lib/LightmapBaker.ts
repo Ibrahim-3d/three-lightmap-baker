@@ -32,9 +32,8 @@ import { BakeError, BakeErrorPhase } from './errors';
  *  2. `result.lightmaps` is `Map<Mesh, Texture>` where every entry points to the SAME
  *     atlas texture. Spec implies per-mesh textures; our atlas pipeline produces one
  *     shared atlas. The Map shape lets callers iterate per mesh as the spec expects.
- *  3. `bounces > 1` is accepted but currently no-op — the bake shader is hardcoded
- *     1-bounce (multi-bounce GI in WebGL2 GLSL needs a hand-unrolled loop or multi-pass
- *     scheme; deferred). A console.warn fires on construction for bounces > 1.
+ *  3. `bounces` [1,4] controls GI path depth. Clamped on construction. Russian Roulette
+ *     terminates low-throughput paths after bounce 2 for performance.
  *  4. `result.export(path, ...)` triggers a browser download. The `path` argument is
  *     interpreted as a filename hint (last path segment); browsers can't write to
  *     directories.
@@ -64,7 +63,7 @@ export type LightmapBakerOptions = {
   samples?: number;
   /** Rays per texel per frame. Default 5. */
   castsPerFrame?: number;
-  /** Bounces. Accepted but >1 is no-op; warned. Default 1. */
+  /** GI bounce depth [1,4]. Default 1 (single-bounce NEE, same as pre-Task-07). */
   bounces?: number;
   /** Atlas resolution. Default 1024. */
   resolution?: number;
@@ -229,16 +228,10 @@ export class LightmapBaker {
   ) {
     validateOptions(opts);
 
-    if ((opts.bounces ?? 1) > 1) {
-      console.warn(
-        '[baker] bounces > 1 accepted but currently no-op — shader is hardcoded 1-bounce. ' +
-          'Multi-bounce is deferred (no GLSL recursion in WebGL2; needs a multi-pass scheme).',
-      );
-    }
     this.opts = {
       samples: opts.samples ?? 96,
       castsPerFrame: opts.castsPerFrame ?? 5,
-      bounces: opts.bounces ?? 1,
+      bounces: Math.min(4, Math.max(1, opts.bounces ?? 1)),
       resolution: opts.resolution ?? 1024,
       denoise: opts.denoise ?? true,
       filtering: opts.filtering ?? 'linear',
@@ -339,6 +332,7 @@ export class LightmapBaker {
       emissiveTexture: matTex.emissiveTexture,
       materialTextureSize: matTex.side,
       targetSamples: this.opts.samples,
+      bounces: this.opts.bounces,
     };
     const lightmapper = generateLightmapper(
       this.renderer,
