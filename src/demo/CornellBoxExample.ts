@@ -1,4 +1,5 @@
 import {
+  Box3,
   BoxGeometry,
   Color,
   DoubleSide,
@@ -24,6 +25,8 @@ import {
 import { MeshBVH } from 'three-mesh-bvh';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls';
+import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader';
+import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Pane } from 'tweakpane';
 import {
   generateAtlas,
@@ -616,6 +619,15 @@ export class CornellBoxExample {
     sceneFolder
       .addInput(this.options, 'preset', { options: presets, label: 'Complexity' })
       .on('change', () => this.rebuildScene());
+    sceneFolder.addButton({ title: 'Import GLB...' }).on('click', () => {
+      // Reset value so re-selecting the same file fires `change` again.
+      this.glbFileInput.value = '';
+      this.glbFileInput.click();
+    });
+    sceneFolder.addButton({ title: 'Reset to Cornell' }).on('click', () => this.rebuildScene());
+    sceneFolder
+      .addButton({ title: 'Export Scene as GLB' })
+      .on('click', () => void this.exportSceneGLB());
 
     this.initUI();
     this.rebuildScene();
@@ -707,6 +719,17 @@ export class CornellBoxExample {
     this.progressText.style.marginTop = '8px';
     this.progressText.style.whiteSpace = 'pre';
     this.progressContainer.appendChild(this.progressText);
+
+    // Hidden file picker for GLB/GLTF imports — triggered by the "Import GLB..." button.
+    this.glbFileInput = document.createElement('input');
+    this.glbFileInput.type = 'file';
+    this.glbFileInput.accept = '.glb,.gltf';
+    this.glbFileInput.style.display = 'none';
+    this.glbFileInput.addEventListener('change', () => {
+      const f = this.glbFileInput.files?.[0];
+      if (f) void this.importGLB(f);
+    });
+    document.body.appendChild(this.glbFileInput);
   }
 
   updateSize() {
@@ -814,6 +837,145 @@ export class CornellBoxExample {
     accent.position.set(-3.5, 0.6, 2.8);
     accent.rotation.y = 0.45;
     this.addMesh(accent);
+  }
+
+  /**
+   * Import a GLB/GLTF file and replace the active scene with its meshes.
+   * Bake-eligible meshes (those with a MeshStandardMaterial-like material) are
+   * indexed (xatlas + extractPerTriangleMaterials require it), tagged into
+   * `this.meshes`, and offered to the bake pipeline. Camera and the primary
+   * light are auto-fit to the scene's bounding box.
+   */
+  private async importGLB(file: File): Promise<void> {
+    const buffer = await file.arrayBuffer();
+    const loader = new GLTFLoader();
+    let gltf: GLTF;
+    try {
+      gltf = await new Promise<GLTF>((resolve, reject) => {
+        loader.parse(buffer, '', resolve, reject);
+      });
+    } catch (err) {
+      console.error('[baker] GLB parse failed:', err);
+      return;
+    }
+
+    // Tear down current bake-owned GPU resources before swapping geometry.
+    this.lightmapper?.dispose();
+    this.lightmapper = null;
+    this.composite?.dispose();
+    this.composite = null;
+    this.refinement?.dispose();
+    this.refinement = null;
+    this.atlasDispose?.();
+    this.atlasDispose = null;
+    this.matTexDispose?.();
+    this.matTexDispose = null;
+
+    // Replace cornellRoot with the imported scene.
+    if (this.cornellRoot) this.scene.remove(this.cornellRoot);
+    this.cornellRoot = new Object3D();
+    this.scene.add(this.cornellRoot);
+    this.cornellRoot.add(gltf.scene);
+    this.meshes = [];
+
+    // Walk the imported scene; collect bake-eligible meshes and ensure indexed
+    // geometry (mergeVertices both dedupes and creates an index buffer when
+    // missing — required by extractPerTriangleMaterials).
+    gltf.scene.traverse((obj: Object3D) => {
+      const mesh = obj as Mesh;
+      if (!mesh.isMesh) return;
+      const mat = mesh.material;
+      if (Array.isArray(mat) || !mat || !('lightMap' in mat)) return;
+      if (!mesh.geometry.index) mesh.geometry = mergeVertices(mesh.geometry);
+      this.meshes.push(mesh as SceneObj);
+    });
+
+    if (!this.meshes.length) {
+      console.warn('[baker] imported GLB has no bake-eligible meshes (need MeshStandard*)');
+      return;
+    }
+
+    // Auto-fit camera + light to the imported scene's bounding box.
+    this.cornellRoot.updateMatrixWorld(true);
+    this.fitCameraAndLightToScene();
+
+    // perMesh state from prior scene is meaningless against new uuids — clear it.
+    this.options.perMesh = {};
+    this.buildPerMeshUI();
+    await this.bake();
+    this.startLoop();
+  }
+
+  /**
+   * Position camera + light based on the world-space bbox of `this.meshes`.
+   * Sets OrbitControls target to the scene center, places the light slightly
+   * above the bbox top, and pulls the camera back to a distance proportional
+   * to the longest axis.
+   */
+  private fitCameraAndLightToScene(): void {
+    const box = new Box3();
+    for (const m of this.meshes) box.expandByObject(m);
+    if (box.isEmpty()) return;
+
+    const size = box.getSize(new Vector3());
+    const center = box.getCenter(new Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z) || 1;
+
+    this.lightDummy.position.set(center.x, box.max.y + maxDim * 0.1, center.z);
+    this.camera.position.set(center.x, center.y, center.z + maxDim * 2.5);
+    this.controls.target.copy(center);
+    this.controls.update();
+  }
+
+  /**
+   * Apply the most-refined lightmap to each mesh's material, then export the
+   * full scene as a binary GLB with embedded textures. Each mesh receives the
+   * single lightmap RGBA dump from its current bake (the demo bakes one shared
+   * atlas, so all meshes share one lightMap texture in the export).
+   */
+  private async exportSceneGLB(): Promise<void> {
+    if (!this.meshes.length) {
+      console.warn('[baker] no meshes to export');
+      return;
+    }
+    const finalTex = this.refinement?.texture ?? this.composite?.texture;
+    if (!finalTex) {
+      console.warn('[baker] no baked lightmap available — bake first');
+      return;
+    }
+
+    // Mount the lightmap onto every mesh material before export. uv2 is already
+    // on the geometry from the last bake. lightMapIntensity = 1 so the receiving
+    // viewer (Three.js, Blender, etc.) shows the bake at unit strength.
+    for (const m of this.meshes) {
+      const mat = m.material as MeshStandardMaterial;
+      mat.lightMap = finalTex;
+      finalTex.channel = 2;
+      mat.lightMapIntensity = 1.0;
+      mat.needsUpdate = true;
+    }
+
+    const { GLTFExporter } = await import('three/examples/jsm/exporters/GLTFExporter');
+    const exporter = new GLTFExporter();
+    const result = await new Promise<ArrayBuffer>((resolve, reject) => {
+      exporter.parse(
+        this.cornellRoot!,
+        (data) => {
+          if (data instanceof ArrayBuffer) resolve(data);
+          else reject(new Error('expected binary GLB output'));
+        },
+        (err) => reject(err),
+        { binary: true, embedImages: true },
+      );
+    });
+
+    const blob = new Blob([result], { type: 'model/gltf-binary' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'scene-baked.glb';
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   private async rebuildScene() {
@@ -1184,6 +1346,7 @@ export class CornellBoxExample {
   private progressContainer!: HTMLDivElement;
   private progressBar!: HTMLDivElement;
   private progressText!: HTMLDivElement;
+  private glbFileInput!: HTMLInputElement;
   private bakeStartTime: number = 0;
   /**
    * Rolling window of `{samples, t}` checkpoints used by `estimateTimeRemaining`.
