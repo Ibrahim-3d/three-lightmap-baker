@@ -55,6 +55,11 @@ export class AtlasViewer {
   private headerEl: HTMLDivElement | null = null;
   /** Layer label shown in the header. Updated by the host each frame. */
   private layerLabel = '';
+  /**
+   * Multi-atlas mode. When set, render() lays them out in a grid filling the
+   * panel. When null, falls back to the single `mat.uniforms.map` texture.
+   */
+  private textures: Texture[] | null = null;
   private prevScissor = new Vector4();
   private prevViewport = new Vector4();
 
@@ -113,6 +118,16 @@ export class AtlasViewer {
   setTexture(tex: Texture | null): void {
     // SAFETY: `map` and `sRGB` uniforms are constructed in the ShaderMaterial above.
     if (this.mat.uniforms.map) this.mat.uniforms.map.value = tex;
+    this.textures = null; // single-texture path overrides multi
+  }
+
+  /**
+   * Render N textures in a grid (cols = ceil(sqrt(N)), rows = ceil(N/cols))
+   * filling the same `size`-px panel. Each cell is a square. Pass `[]` or null
+   * to revert to the single-texture `setTexture` path.
+   */
+  setTextures(texs: Texture[] | null): void {
+    this.textures = texs && texs.length > 0 ? texs : null;
   }
   setSRGB(v: boolean): void {
     if (this.mat.uniforms.sRGB) this.mat.uniforms.sRGB.value = v;
@@ -223,12 +238,13 @@ export class AtlasViewer {
       this.positionHeader(renderer.domElement.getBoundingClientRect());
       return;
     }
-
-    // Sync header position even when collapsed (header still visible).
     this.positionHeader(renderer.domElement.getBoundingClientRect());
-
     if (this.collapsed) return;
-    if (!this.mat.uniforms.map?.value) return;
+
+    // Multi-texture path takes precedence; otherwise fall back to single map uniform.
+    const multi = this.textures;
+    const single = this.mat.uniforms.map?.value as Texture | null | undefined;
+    if (!multi && !single) return;
 
     const dpr = renderer.getPixelRatio();
     const w = renderer.domElement.width;
@@ -236,24 +252,24 @@ export class AtlasViewer {
     const sz = Math.max(1, Math.floor(this.size * dpr));
     const m = Math.max(0, Math.floor(this.margin * dpr));
 
-    let x = 0,
-      y = 0;
+    let panelX = 0,
+      panelY = 0;
     switch (this.corner) {
       case 'tl':
-        x = m;
-        y = h - sz - m - Math.floor(HEADER_HEIGHT * dpr);
+        panelX = m;
+        panelY = h - sz - m - Math.floor(HEADER_HEIGHT * dpr);
         break;
       case 'tr':
-        x = w - sz - m;
-        y = h - sz - m - Math.floor(HEADER_HEIGHT * dpr);
+        panelX = w - sz - m;
+        panelY = h - sz - m - Math.floor(HEADER_HEIGHT * dpr);
         break;
       case 'bl':
-        x = m;
-        y = m;
+        panelX = m;
+        panelY = m;
         break;
       case 'br':
-        x = w - sz - m;
-        y = m;
+        panelX = w - sz - m;
+        panelY = m;
         break;
     }
 
@@ -264,10 +280,31 @@ export class AtlasViewer {
 
     try {
       renderer.setScissorTest(true);
-      renderer.setScissor(x, y, sz, sz);
-      renderer.setViewport(x, y, sz, sz);
       renderer.autoClear = false;
-      renderer.render(this.scene, this.cam);
+
+      if (multi) {
+        // Grid: cols × rows fitting all N. Each cell is square = floor(sz/cols).
+        const n = multi.length;
+        const cols = Math.ceil(Math.sqrt(n));
+        const rows = Math.ceil(n / cols);
+        const cell = Math.max(1, Math.floor(sz / Math.max(cols, rows)));
+        // Top-down rows (atlas 0 in top-left): in GL coords y grows up, so row 0
+        // sits at the top of the panel (panelY + sz - cell).
+        for (let i = 0; i < n; i++) {
+          const c = i % cols;
+          const r = Math.floor(i / cols);
+          const cx = panelX + c * cell;
+          const cy = panelY + sz - (r + 1) * cell;
+          if (this.mat.uniforms.map) this.mat.uniforms.map.value = multi[i] ?? null;
+          renderer.setScissor(cx, cy, cell, cell);
+          renderer.setViewport(cx, cy, cell, cell);
+          renderer.render(this.scene, this.cam);
+        }
+      } else if (single) {
+        renderer.setScissor(panelX, panelY, sz, sz);
+        renderer.setViewport(panelX, panelY, sz, sz);
+        renderer.render(this.scene, this.cam);
+      }
     } finally {
       renderer.setScissor(
         this.prevScissor.x,

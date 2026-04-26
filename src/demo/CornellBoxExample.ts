@@ -278,10 +278,21 @@ export class CornellBoxExample {
     pause: false,
     showGizmo: true,
 
+    // --- Bake control ---
+    /**
+     * Auto-rebake on slider release. When false, sliders just update state and
+     * the user must press "Bake Now" to apply. Useful when iterating multiple
+     * settings without paying for a re-bake on each one.
+     */
+    autoBake: true,
+
     // --- Refinement (Task 5) ---
-    autoApplyRefinement: true, // run dilation+denoise automatically when bake hits target
-    dilationIterations: 4, // 4px halo per spec
-    denoiseEnabled: true,
+    // Defaults OFF so the post-bake step doesn't make the bake feel "still running".
+    // Toggle Run Refinement manually after a satisfactory bake, or flip autoApply
+    // to chain it after every bake.
+    autoApplyRefinement: false,
+    dilationIterations: 1, // light gutter — bump to 4 if seams appear at chart borders
+    denoiseEnabled: false,
     denoiseSigma: 2.5, // spatial blur sigma (in texels)
     denoiseThreshold: 0.18, // range sigma — higher = more blurring across edges
     denoiseKSigma: 1.0, // kernel radius multiplier
@@ -399,13 +410,13 @@ export class CornellBoxExample {
         step: 128,
         label: 'Atlas Size',
       })
-      .on('change', () => {
+      .on('change', (e) => {
         this.options.quality = 'Custom';
         this.pane.refresh();
-        this.bake();
+        this.maybeBake(e);
       });
     // Density target — feeds the bin-packer (more density → more atlases) and
-    // also drives the "Texel Density" debug viz layer. Re-bake on change.
+    // also drives the "Texel Density" debug viz layer. Re-bake on slider release.
     bakeFolder
       .addInput(this.options, 'texelsPerMeter', {
         min: 1,
@@ -413,16 +424,16 @@ export class CornellBoxExample {
         step: 0.5,
         label: 'Density (px/m)',
       })
-      .on('change', () => {
+      .on('change', (e) => {
         this.texelDensityMat?.setTexelsPerMeter(this.options.texelsPerMeter);
-        this.bake();
+        this.maybeBake(e);
       });
     bakeFolder
       .addInput(this.options, 'casts', { min: 1, max: 16, step: 1, label: 'Casts/Frame' })
-      .on('change', () => {
+      .on('change', (e) => {
         this.options.quality = 'Custom';
         this.pane.refresh();
-        this.bake();
+        this.maybeBake(e);
       });
     bakeFolder
       .addInput(this.options, 'targetSamples', {
@@ -431,18 +442,19 @@ export class CornellBoxExample {
         step: 16,
         label: 'Target Frames',
       })
-      .on('change', () => {
+      .on('change', (e) => {
         this.options.quality = 'Custom';
         this.pane.refresh();
-        this.bake();
+        this.maybeBake(e);
       });
     bakeFolder
       .addInput(this.options, 'bounces', { min: 1, max: 4, step: 1, label: 'Bounces' })
-      .on('change', () => {
+      .on('change', (e) => {
         this.options.quality = 'Custom';
         this.pane.refresh();
-        this.bake();
+        this.maybeBake(e);
       });
+    bakeFolder.addInput(this.options, 'autoBake', { label: 'Auto-bake' });
     bakeFolder.addButton({ title: 'Bake Now' }).on('click', () => this.bake());
 
     const lightFolder = this.pane.addFolder({ title: 'Lighting & GI', expanded: false });
@@ -451,10 +463,10 @@ export class CornellBoxExample {
     const directFolder = lightFolder.addFolder({ title: 'Direct Light' });
     directFolder
       .addInput(this.options, 'directLightEnabled', { label: 'Enabled' })
-      .on('change', () => this.bake());
+      .on('change', this.maybeBake);
     directFolder
       .addInput(this.options, 'lightColor', { view: 'color', label: 'Color' })
-      .on('change', () => this.bake());
+      .on('change', this.maybeBake);
     directFolder
       .addInput(this.options, 'lightIntensity', {
         min: 0.0,
@@ -462,10 +474,10 @@ export class CornellBoxExample {
         step: 0.1,
         label: 'Bake Power',
       })
-      .on('change', () => this.bake());
+      .on('change', this.maybeBake);
     directFolder
       .addInput(this.options, 'lightSize', { min: 0.1, max: 5, step: 0.1, label: 'Source Size' })
-      .on('change', () => this.bake());
+      .on('change', this.maybeBake);
     directFolder
       .addInput(this.options, 'directIntensity', {
         min: 0.0,
@@ -480,7 +492,7 @@ export class CornellBoxExample {
     const giFolder = lightFolder.addFolder({ title: 'Global Illumination' });
     giFolder
       .addInput(this.options, 'indirectLightEnabled', { label: 'Enabled' })
-      .on('change', () => this.bake());
+      .on('change', this.maybeBake);
     giFolder
       .addInput(this.options, 'giIntensity', {
         min: 0.0,
@@ -491,7 +503,7 @@ export class CornellBoxExample {
       .on('change', () => this.refreshAllComposites({ giIntensity: this.options.giIntensity }));
     giFolder
       .addInput(this.options, 'skyColor', { view: 'color', label: 'Sky Color' })
-      .on('change', () => this.bake());
+      .on('change', this.maybeBake);
     giFolder
       .addInput(this.options, 'skyIntensity', {
         min: 0.0,
@@ -499,14 +511,14 @@ export class CornellBoxExample {
         step: 0.05,
         label: 'Sky Intensity',
       })
-      .on('change', () => this.bake());
+      .on('change', this.maybeBake);
 
     const aoFolder = lightFolder.addFolder({ title: 'Ambient Occlusion' });
     aoFolder
       .addInput(this.options, 'ambientLightEnabled', { label: 'Enabled' })
-      .on('change', () => {
+      .on('change', (e) => {
         this.refreshAllComposites({ aoEnabled: this.options.ambientLightEnabled });
-        this.bake();
+        this.maybeBake(e);
       });
     aoFolder
       .addInput(this.options, 'ambientDistance', {
@@ -515,13 +527,13 @@ export class CornellBoxExample {
         step: 0.05,
         label: 'Max Distance',
       })
-      .on('change', () => this.bake());
+      .on('change', this.maybeBake);
     aoFolder
       .addInput(this.options, 'aoIntensity', { min: 0, max: 3, step: 0.05, label: 'Intensity' })
-      .on('change', () => this.bake());
+      .on('change', this.maybeBake);
     aoFolder
       .addInput(this.options, 'aoExponent', { min: 0.5, max: 4, step: 0.1, label: 'Exponent' })
-      .on('change', () => this.bake());
+      .on('change', this.maybeBake);
 
     // --- Refinement folder ---
     const post = this.pane.addFolder({ title: 'Refinement', expanded: false });
@@ -559,16 +571,16 @@ export class CornellBoxExample {
     const secFolder = lightFolder.addFolder({ title: 'Secondary Light (Directional)' });
     secFolder
       .addInput(this.options, 'secondaryLightEnabled', { label: 'Enabled' })
-      .on('change', () => this.bake());
+      .on('change', this.maybeBake);
     secFolder
       .addInput(this.options, 'secondaryDirX', { min: -1, max: 1, step: 0.05, label: 'Dir X' })
-      .on('change', () => this.bake());
+      .on('change', this.maybeBake);
     secFolder
       .addInput(this.options, 'secondaryDirY', { min: -1, max: 1, step: 0.05, label: 'Dir Y' })
-      .on('change', () => this.bake());
+      .on('change', this.maybeBake);
     secFolder
       .addInput(this.options, 'secondaryDirZ', { min: -1, max: 1, step: 0.05, label: 'Dir Z' })
-      .on('change', () => this.bake());
+      .on('change', this.maybeBake);
     secFolder
       .addInput(this.options, 'secondaryIntensity', {
         min: 0,
@@ -576,10 +588,10 @@ export class CornellBoxExample {
         step: 0.1,
         label: 'Intensity',
       })
-      .on('change', () => this.bake());
+      .on('change', this.maybeBake);
     secFolder
       .addInput(this.options, 'secondaryColor', { view: 'color', label: 'Color' })
-      .on('change', () => this.bake());
+      .on('change', this.maybeBake);
 
     // --- Export folder (Task 06 Phase 1) ---
     const exportFolder = this.pane.addFolder({ title: 'Export', expanded: false });
@@ -658,7 +670,7 @@ export class CornellBoxExample {
       const label = mesh.name || uuid.slice(0, 8);
 
       const meshFolder = folder.addFolder({ title: label, expanded: false });
-      meshFolder.addInput(entry, 'exclude', { label: 'Exclude' }).on('change', () => this.bake());
+      meshFolder.addInput(entry, 'exclude', { label: 'Exclude' }).on('change', this.maybeBake);
       // Density multiplier — feeds binPackMeshes(perMeshScale). 2.0 means "give this
       // mesh 2x more atlas area per square meter" (i.e. quadruple the texels).
       meshFolder
@@ -668,7 +680,7 @@ export class CornellBoxExample {
           max: 4.0,
           step: 0.25,
         })
-        .on('change', () => this.bake());
+        .on('change', this.maybeBake);
     }
   }
 
@@ -1401,10 +1413,12 @@ export class CornellBoxExample {
         // Step every group; aggregate sample counts for the progress widget.
         let allDone = true;
         let minSamples = Infinity;
+        const perAtlasSamples: number[] = [];
         for (const g of this.bakeGroups) {
           const r = g.lightmapper.render();
           if (!r.done) allDone = false;
           if (r.samples < minSamples) minSamples = r.samples;
+          perAtlasSamples.push(r.samples);
         }
         if (!Number.isFinite(minSamples)) minSamples = 0;
 
@@ -1458,25 +1472,46 @@ export class CornellBoxExample {
         this.options.spp = spp;
         this.options.etaSec = Math.ceil(eta);
 
+        // Build per-atlas line: "[done 256, 187, 187]" or compact summary if many.
+        let atlasLine: string;
+        if (this.bakeGroups.length === 1) {
+          atlasLine = '';
+        } else if (this.bakeGroups.length <= 6) {
+          atlasLine =
+            '\nAtlases: [' +
+            perAtlasSamples
+              .map((s) => (s >= totalSamples ? `${totalSamples}✓` : String(s)))
+              .join(', ') +
+            ']';
+        } else {
+          const doneCount = perAtlasSamples.filter((s) => s >= totalSamples).length;
+          atlasLine = `\nAtlases: ${doneCount}/${this.bakeGroups.length} done`;
+        }
+
         this.progressText.innerText =
-          `Baking: ${minSamples}/${totalSamples} frames (${spp} spp, ${this.bakeGroups.length} atlas${this.bakeGroups.length === 1 ? '' : 'es'})\n` +
-          `Elapsed: ${elapsed.toFixed(1)}s | ETA: ${this.options.etaSec}s`;
+          `Baking: ${minSamples}/${totalSamples} frames (${spp} spp)\n` +
+          `Elapsed: ${elapsed.toFixed(1)}s | ETA: ${this.options.etaSec}s` +
+          atlasLine;
       }
 
       this.controls.update();
       this.renderer.render(this.scene, this.camera);
 
-      // Atlas viewer overlay — show the active layer's texture from atlas 0.
-      // (With multiple atlases this could become a per-atlas dropdown; deferred.)
+      // Atlas viewer overlay — show ALL atlases simultaneously in a grid.
       this.atlasViewer.visible = this.options.atlasViewerEnabled;
       if (this.atlasViewer.visible) {
         const layer = LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0]!;
-        const firstGroup = this.bakeGroups[0];
-        const tex = firstGroup
-          ? (layer.getLightMap({ group: firstGroup }) ?? firstGroup.composite.texture)
-          : null;
-        this.atlasViewer.setTexture(tex);
-        this.atlasViewer.setLayerLabel(layer.label);
+        if (this.bakeGroups.length === 0) {
+          this.atlasViewer.setTexture(null);
+        } else {
+          const texs: Texture[] = [];
+          for (const g of this.bakeGroups) {
+            texs.push(layer.getLightMap({ group: g }) ?? g.composite.texture);
+          }
+          this.atlasViewer.setTextures(texs);
+        }
+        const suffix = this.bakeGroups.length > 1 ? ` (${this.bakeGroups.length} atlases)` : '';
+        this.atlasViewer.setLayerLabel(layer.label + suffix);
       }
       this.atlasViewer.render(this.renderer);
     };
@@ -1491,4 +1526,17 @@ export class CornellBoxExample {
   }): void {
     for (const g of this.bakeGroups) g.composite.refresh(overrides);
   }
+
+  /**
+   * Bake gate for slider/input change events. Skips:
+   *  - Mid-drag updates (`e.last === false`) — Tweakpane fires `last:true` only
+   *    on slider release, so dragging through values doesn't kick off N bakes.
+   *  - Auto-bake disabled — user wants to fiddle multiple settings before
+   *    triggering a single re-bake via the "Bake Now" button.
+   */
+  private maybeBake = (e?: { last?: boolean }): void => {
+    if (e?.last === false) return;
+    if (!this.options.autoBake) return;
+    void this.bake();
+  };
 }

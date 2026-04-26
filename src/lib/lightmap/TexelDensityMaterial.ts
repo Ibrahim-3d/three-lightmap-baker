@@ -80,9 +80,13 @@ export class TexelDensityMaterial extends ShaderMaterial {
                     else if (ratio < 1.5) c = vec3(0.0, 1.0, 1.0);
                     else                  c = vec3(0.0, 0.0, 1.0);
 
-                    // Checker — one square per lightmap texel in UV2 space.
-                    vec2 cell = floor(vUv2 * uLightmapSize);
-                    float check = mod(cell.x + cell.y, 2.0);
+                    // Checker in WORLD space — each square is one TARGET texel
+                    // (size 1/uTexelsPerMeter world units). Triplanar XOR sum
+                    // covers all axes, so the checker stays consistent regardless
+                    // of UV mapping. Squares should look UNIFORMLY square across
+                    // the scene if density is on-target.
+                    vec3 wcell = floor(vWorldPos * uTexelsPerMeter);
+                    float check = mod(wcell.x + wcell.y + wcell.z, 2.0);
                     float bright = check > 0.5 ? 1.0 : 0.6;
 
                     fragColor = vec4(c * bright, 1.0);
