@@ -19,7 +19,6 @@ import {
   Texture,
   TorusKnotGeometry,
   Vector3,
-  WebGLMultipleRenderTargets,
   WebGLRenderer,
 } from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
@@ -29,7 +28,7 @@ import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Pane } from 'tweakpane';
 import {
-  generateAtlas,
+  generateAtlases,
   renderAtlas,
   generateLightmapper,
   Lightmapper,
@@ -47,6 +46,8 @@ import {
   AtlasViewerCorner,
   PackedLight,
   TexelDensityMaterial,
+  binPackMeshes,
+  BinAssignment,
 } from '../lib';
 import type { Material } from 'three';
 
@@ -58,23 +59,34 @@ const ROOM = 10;
 const HALF = ROOM / 2;
 
 /**
- * Layer registry — view-time mapping from a layer ID to the texture(s) it shows.
+ * One bake group = one atlas. Each group has its own xatlas pack, position +
+ * normal G-buffers, lightmapper instance, view-time composite RT, and (after
+ * refinement runs) a refinement RT. The BVH and per-tri material textures
+ * live OUTSIDE the group (shared across all groups so cross-group shadows
+ * and color bleed remain physically correct).
  *
- * Adding a new layer = one entry. The if/else chain in `applyRenderMode` is gone.
- * Phase A.2/A.3 will register additional entries (Direct, Indirect, Combined Dilated, …)
- * once MRT lands. For now this preserves the Session-6 behaviour through the registry.
+ * The bin-packer (binPackMeshes) decides how meshes split into groups: small
+ * meshes share an atlas, large ones get their own. Atlas resolution is the
+ * same across all groups (lightMapSize); what varies is how many of them.
  */
-type LayerContext = {
-  composite: Texture | null; // combined view (direct + indirect*gi) * ao — Phase A.3
-  direct: Texture | null; // MRT[0]
-  indirect: Texture | null; // MRT[1]
-  ao: Texture | null; // MRT[2]
-  raw: Texture | null; // alias for composite, back-compat
-  refinement: Texture | null; // refinement.texture (denoised final)
-  refinementDilated: Texture | null; // dilation-only stage — Refinement doesn't expose separately yet
-  positions: Texture | null;
-  normals: Texture | null;
+type BakeGroup = {
+  /** 0-indexed atlas slot from the bin-packer. */
+  atlasIdx: number;
+  meshes: Mesh[];
+  positionTexture: Texture;
+  normalTexture: Texture;
+  atlasDispose: () => void;
+  lightmapper: Lightmapper;
+  composite: CompositeResult;
+  refinement: RefinementResult | null;
 };
+
+/**
+ * Layer registry — view-time mapping from a layer ID to the texture(s) it shows.
+ * Now PER-GROUP: each mesh resolves to its own group, and the layer reads the
+ * per-group composite/lightmapper/refinement texture.
+ */
+type LayerContext = { group: BakeGroup };
 
 type Layer = {
   id: string;
@@ -87,59 +99,55 @@ type Layer = {
   group: 'output' | 'debug';
 };
 
-/**
- * Registry. Order = display order in the dropdown.
- * TODO Phase A.3 follow-up: expose dilated-only stage from PostProcess for a "Combined (Dilated)" layer.
- */
 const LAYERS: Layer[] = [
   {
     id: 'combined',
     label: 'Combined',
     group: 'output',
     showAlbedo: true,
-    getLightMap: (c) => c.refinement ?? c.composite,
+    getLightMap: (c) => c.group.refinement?.texture ?? c.group.composite.texture,
   },
   {
     id: 'combinedPost',
     label: 'Combined (Refined)',
     group: 'output',
     showAlbedo: true,
-    getLightMap: (c) => c.refinement ?? c.composite,
+    getLightMap: (c) => c.group.refinement?.texture ?? c.group.composite.texture,
   },
   {
     id: 'combinedRaw',
     label: 'Combined (Raw)',
     group: 'output',
     showAlbedo: true,
-    getLightMap: (c) => c.composite,
+    getLightMap: (c) => c.group.composite.texture,
   },
   {
     id: 'direct',
     label: 'Direct',
     group: 'output',
     showAlbedo: false,
-    getLightMap: (c) => c.direct,
+    getLightMap: (c) => c.group.lightmapper.textures.direct,
   },
   {
     id: 'indirect',
     label: 'Indirect (GI)',
     group: 'output',
     showAlbedo: false,
-    getLightMap: (c) => c.indirect,
+    getLightMap: (c) => c.group.lightmapper.textures.indirect,
   },
   {
     id: 'ao',
     label: 'Ambient Occlusion',
     group: 'output',
     showAlbedo: false,
-    getLightMap: (c) => c.ao,
+    getLightMap: (c) => c.group.lightmapper.textures.ao,
   },
   {
     id: 'lightmapRaw',
     label: 'Lightmap (Raw)',
     group: 'debug',
     showAlbedo: false,
-    getLightMap: (c) => c.composite,
+    getLightMap: (c) => c.group.composite.texture,
   },
   { id: 'albedo', label: 'Albedo', group: 'debug', showAlbedo: true, getLightMap: () => null },
   {
@@ -147,14 +155,14 @@ const LAYERS: Layer[] = [
     label: 'World Position',
     group: 'debug',
     showAlbedo: false,
-    getLightMap: (c) => c.positions,
+    getLightMap: (c) => c.group.positionTexture,
   },
   {
     id: 'normals',
     label: 'World Normal',
     group: 'debug',
     showAlbedo: false,
-    getLightMap: (c) => c.normals,
+    getLightMap: (c) => c.group.normalTexture,
   },
   {
     // Material-swap layer: replaces mesh material with TexelDensityMaterial.
@@ -216,19 +224,17 @@ export class CornellBoxExample {
   cornellRoot: Object3D | null = null;
   meshes: SceneObj[] = [];
 
-  // Initialized in startBake() — every read site is gated on bake having run.
-  positionTexture!: Texture;
-  normalTexture!: Texture;
-  lightmapTarget!: WebGLMultipleRenderTargets;
-  // Disposers for the per-bake GPU resources that aren't owned by the lightmapper/composite.
-  private atlasDispose: (() => void) | null = null;
+  /**
+   * One BakeGroup per atlas. The bin-packer (binPackMeshes) decides how meshes
+   * split — tiny scenes get one group, dense interiors many. Each group owns
+   * its own xatlas pack, position+normal G-buffers, lightmapper, composite RT,
+   * and (lazy) refinement RT.
+   */
+  private bakeGroups: BakeGroup[] = [];
+  /** Mesh → its bake group. Excluded meshes are absent from this map. */
+  private meshToGroup: Map<Mesh, BakeGroup> = new Map();
+  /** Disposer for the SHARED per-tri material DataTextures (one per bake). */
   private matTexDispose: (() => void) | null = null;
-  lightmapper: Lightmapper | null = null;
-
-  /** View-time composite of MRT direct+indirect+AO. Eagerly allocated at bake start. */
-  private composite: CompositeResult | null = null;
-  /** Result of the most recent refinement pass (dilation + denoise). Null until run. */
-  private refinement: RefinementResult | null = null;
 
   /** Lazy-allocated TexelDensityMaterial for the "Texel Density" debug layer. */
   private texelDensityMat: TexelDensityMaterial | null = null;
@@ -299,17 +305,13 @@ export class CornellBoxExample {
 
     /**
      * Per-mesh overrides keyed by mesh.uuid.
-     * - resolution: null = use global lightMapSize; a number = override for that mesh.
-     * - exclude: if true, mesh is skipped from UV unwrap + bake (but stays in BVH for GI/shadows).
-     *
-     * NOTE: resolution override is "preview" only in the demo — the demo's bake() uses a single
-     * shared renderAtlas call and does not split into per-group pipelines. Only `exclude` is
-     * fully honoured. Resolution-override deferred to a future session when the demo is rewired
-     * to the high-level LightmapBaker class (which does implement full grouping).
+     * - scaleInLightmap: density multiplier (1.0 = global texelsPerMeter, 2.0 = double,
+     *   0.5 = half). Feeds the bin-packer; meshes with higher scale claim more atlas
+     *   area, so use sparingly for hero objects.
+     * - exclude: if true, mesh is skipped from UV unwrap + bake (but stays in BVH for
+     *   GI / shadows of other meshes).
      */
-    // resolution=0 is the "use global lightMapSize" sentinel — kept as `number` (not
-    // `number | null`) so Tweakpane's homogeneous-options-type requirement is satisfied.
-    perMesh: {} as Record<string, { resolution: number; exclude: boolean }>,
+    perMesh: {} as Record<string, { scaleInLightmap: number; exclude: boolean }>,
 
     // --- Atlas viewer (2D corner overlay) ---
     atlasViewerEnabled: true,
@@ -388,7 +390,11 @@ export class CornellBoxExample {
         step: 0.5,
         label: 'Density Target (px/m)',
       })
-      .on('change', () => this.texelDensityMat?.setTexelsPerMeter(this.options.texelsPerMeter));
+      .on('change', () => {
+        this.texelDensityMat?.setTexelsPerMeter(this.options.texelsPerMeter);
+        // Density target also drives the bin-packer — re-bake to apply.
+        this.bake();
+      });
 
     const bakeFolder = this.pane.addFolder({ title: 'Bake Settings', expanded: false });
     (bakeFolder as any).element.classList.add('tp-bake');
@@ -468,7 +474,7 @@ export class CornellBoxExample {
         label: 'View Multiplier',
       })
       .on('change', () =>
-        this.composite?.refresh({ directIntensity: this.options.directIntensity }),
+        this.refreshAllComposites({ directIntensity: this.options.directIntensity }),
       );
 
     const giFolder = lightFolder.addFolder({ title: 'Global Illumination' });
@@ -482,7 +488,7 @@ export class CornellBoxExample {
         step: 0.05,
         label: 'Bounce Power',
       })
-      .on('change', () => this.composite?.refresh({ giIntensity: this.options.giIntensity }));
+      .on('change', () => this.refreshAllComposites({ giIntensity: this.options.giIntensity }));
     giFolder
       .addInput(this.options, 'skyColor', { view: 'color', label: 'Sky Color' })
       .on('change', () => this.bake());
@@ -499,7 +505,7 @@ export class CornellBoxExample {
     aoFolder
       .addInput(this.options, 'ambientLightEnabled', { label: 'Enabled' })
       .on('change', () => {
-        this.composite?.refresh({ aoEnabled: this.options.ambientLightEnabled });
+        this.refreshAllComposites({ aoEnabled: this.options.ambientLightEnabled });
         this.bake();
       });
     aoFolder
@@ -635,38 +641,34 @@ export class CornellBoxExample {
 
   /**
    * Rebuild the Per-Mesh tweakpane folder to match the current mesh list.
-   * Called after every scene rebuild. Only `exclude` is fully wired in the demo
-   * (resolution override is preview-only — see options.perMesh JSDoc).
+   * Called after every scene rebuild. `exclude` skips a mesh from the bake;
+   * `scaleInLightmap` is a density multiplier consumed by the bin-packer.
    */
   private buildPerMeshUI(): void {
     this.perMeshFolder?.dispose();
-    const folder = this.pane.addFolder({ title: 'Per-Mesh (preview)', expanded: false });
+    const folder = this.pane.addFolder({ title: 'Per-Mesh', expanded: false });
     this.perMeshFolder = folder;
 
     for (const mesh of this.meshes) {
       const uuid = mesh.uuid;
       if (!this.options.perMesh[uuid]) {
-        this.options.perMesh[uuid] = { resolution: 0, exclude: false };
+        this.options.perMesh[uuid] = { scaleInLightmap: 1.0, exclude: false };
       }
       const entry = this.options.perMesh[uuid]!;
       const label = mesh.name || uuid.slice(0, 8);
 
       const meshFolder = folder.addFolder({ title: label, expanded: false });
       meshFolder.addInput(entry, 'exclude', { label: 'Exclude' }).on('change', () => this.bake());
-      // Resolution override shown as a dropdown — deferred, not wired to grouping in
-      // the demo's bake pipeline (see options.perMesh JSDoc). 0 means "use global".
-      // Tweakpane requires all options values to share a single type, so we use 0 as
-      // the "Default" sentinel rather than null.
-      meshFolder.addInput(entry, 'resolution', {
-        label: 'Resolution (deferred)',
-        options: {
-          Default: 0,
-          '256': 256,
-          '512': 512,
-          '1024': 1024,
-          '2048': 2048,
-        },
-      });
+      // Density multiplier — feeds binPackMeshes(perMeshScale). 2.0 means "give this
+      // mesh 2x more atlas area per square meter" (i.e. quadruple the texels).
+      meshFolder
+        .addInput(entry, 'scaleInLightmap', {
+          label: 'Density ×',
+          min: 0.25,
+          max: 4.0,
+          step: 0.25,
+        })
+        .on('change', () => this.bake());
     }
   }
 
@@ -860,14 +862,7 @@ export class CornellBoxExample {
     }
 
     // Tear down current bake-owned GPU resources before swapping geometry.
-    this.lightmapper?.dispose();
-    this.lightmapper = null;
-    this.composite?.dispose();
-    this.composite = null;
-    this.refinement?.dispose();
-    this.refinement = null;
-    this.atlasDispose?.();
-    this.atlasDispose = null;
+    this.disposeAllGroups();
     this.matTexDispose?.();
     this.matTexDispose = null;
 
@@ -928,32 +923,28 @@ export class CornellBoxExample {
   }
 
   /**
-   * Apply the most-refined lightmap to each mesh's material, then export the
-   * full scene as a binary GLB with embedded textures. Each mesh receives the
-   * single lightmap RGBA dump from its current bake (the demo bakes one shared
-   * atlas, so all meshes share one lightMap texture in the export).
+   * Mount each mesh's per-group lightmap onto its material, then export the
+   * full scene as a binary GLB with embedded textures. With density-aware
+   * bin-packing the scene may have N atlases — each mesh receives the texture
+   * of its own group, so the exported GLB embeds N images and routes each
+   * mesh to the right one.
    */
   private async exportSceneGLB(): Promise<void> {
     if (!this.meshes.length) {
       console.warn('[baker] no meshes to export');
       return;
     }
-    const finalTex = this.refinement?.texture ?? this.composite?.texture;
-    if (!finalTex) {
+    if (!this.bakeGroups.length) {
       console.warn('[baker] no baked lightmap available — bake first');
       return;
     }
 
-    // Mount the lightmap onto every mesh material before export. uv2 is already
-    // on the geometry from the last bake. lightMapIntensity = 1 so the receiving
-    // viewer (Three.js, Blender, etc.) shows the bake at unit strength.
-    for (const m of this.meshes) {
-      const mat = m.material as MeshStandardMaterial;
-      mat.lightMap = finalTex;
-      finalTex.channel = 2;
-      mat.lightMapIntensity = 1.0;
-      mat.needsUpdate = true;
-    }
+    // applyRenderMode already mounts each mesh's group texture; re-run it on
+    // a "Combined" view to guarantee the export sees the most-refined output.
+    const previousLayer = this.options.layer;
+    this.options.layer = 'combined';
+    this.applyRenderMode();
+    this.options.layer = previousLayer;
 
     const { GLTFExporter } = await import('three/examples/jsm/exporters/GLTFExporter');
     const exporter = new GLTFExporter();
@@ -979,11 +970,11 @@ export class CornellBoxExample {
   }
 
   private async rebuildScene() {
+    this.disposeAllGroups();
     if (this.cornellRoot) this.scene.remove(this.cornellRoot);
     this.cornellRoot = new Object3D();
     this.scene.add(this.cornellRoot);
     this.meshes = [];
-    this.lightmapper = null;
 
     this.buildWalls();
     this.buildClassicBlocks();
@@ -1000,23 +991,33 @@ export class CornellBoxExample {
     this.startLoop();
   }
 
+  /** Tear down all bake groups (lightmappers, composites, refinements, atlases). */
+  private disposeAllGroups(): void {
+    for (const g of this.bakeGroups) {
+      g.refinement?.dispose();
+      g.composite.dispose();
+      g.lightmapper.dispose();
+      g.atlasDispose();
+    }
+    this.bakeGroups = [];
+    this.meshToGroup.clear();
+  }
+
   private async bake() {
     if (!this.meshes.length) return;
 
-    // Show progress widget and record start time
     this.progressContainer.style.display = 'block';
     this.bakeStartTime = performance.now();
     this.bakeBatchHistory = [];
 
     const res = this.options.lightMapSize;
 
-    // CRITICAL: renderAtlas reads each mesh's modelMatrix and mergeGeometry calls
-    // applyMatrix4(matrixWorld). Both require an explicit world-matrix flush since
-    // we bake before the render loop has had a chance to do it implicitly.
+    // renderAtlas reads modelMatrix and mergeGeometry calls applyMatrix4(matrixWorld);
+    // both need an explicit world-matrix flush before the bake's first frame.
     this.scene.updateMatrixWorld(true);
 
-    // Meshes flagged exclude:true are skipped from atlas + bake but stay in the BVH
-    // so they still cast shadows and contribute GI for other meshes.
+    // Excluded meshes don't bake but DO live in the BVH so their geometry casts
+    // shadows + contributes to other meshes' GI.
     const bakeMeshes = this.meshes.filter((m) => !(this.options.perMesh[m.uuid]?.exclude === true));
     if (!bakeMeshes.length) {
       console.warn('[baker] all meshes excluded — nothing to bake');
@@ -1024,28 +1025,41 @@ export class CornellBoxExample {
       return;
     }
 
-    // 1. Unwrap UV2 atlas
-    await generateAtlas(bakeMeshes);
+    // --- 1. Density-aware bin pack ----------------------------------------
+    const perMeshScale: Record<string, number> = {};
+    for (const m of bakeMeshes) {
+      const s = this.options.perMesh[m.uuid]?.scaleInLightmap;
+      if (s !== undefined && s !== 1.0) perMeshScale[m.uuid] = s;
+    }
+    const assignments: BinAssignment[] = binPackMeshes(bakeMeshes, {
+      atlasResolution: res,
+      texelsPerMeter: this.options.texelsPerMeter,
+      perMeshScale,
+    });
+    const numAtlases = assignments.reduce((mx, a) => Math.max(mx, a.atlasIdx + 1), 0);
+    const meshesByBin: Mesh[][] = Array.from({ length: numAtlases }, () => []);
+    for (const a of assignments) meshesByBin[a.atlasIdx]!.push(a.mesh);
 
-    // 2. Render position + normal G-buffers in lightmap UV space (bake-eligible meshes only).
-    // Dispose previous atlas RTs before allocating new ones (re-bake path).
-    this.atlasDispose?.();
-    const atlas = renderAtlas(this.renderer, bakeMeshes, res, true);
-    this.atlasDispose = atlas.dispose;
-    this.positionTexture = atlas.positionTexture;
-    this.normalTexture = atlas.normalTexture;
+    if (DEBUG) {
+      const totalArea = assignments.reduce((s, a) => s + a.surfaceArea, 0);
+      console.info(
+        `[baker] bin-pack: ${assignments.length} meshes → ${numAtlases} atlas${numAtlases === 1 ? '' : 'es'} @ ${res}² (${this.options.texelsPerMeter} texels/m, ${totalArea.toFixed(2)}m² total)`,
+      );
+      for (let i = 0; i < numAtlases; i++) {
+        const bin = assignments.filter((a) => a.atlasIdx === i);
+        const fill = bin.reduce((s, a) => s + a.uvFraction, 0);
+        console.info(
+          `[baker]   atlas ${i}: ${bin.length} meshes, ${(fill * 100).toFixed(1)}% fill`,
+        );
+      }
+    }
 
-    // 3. Build BVH over merged scene geometry.
-    // CRITICAL: new MeshBVH(merged) mutates merged.index in place to build a
-    // spatially-sorted tree. The shader's faceIndices.w returns indices into
-    // this REORDERED buffer — so the per-triangle material table MUST be
-    // built AFTER BVH construction (and walks merged.index in its post-sort
-    // order). Vertices are not reordered, only the index buffer, so the
-    // per-vertex `meshIndex` tag added by mergeGeometry survives intact.
+    // --- 2. Per-bin xatlas pack (writes uv2 to each mesh) ------------------
+    await generateAtlases(meshesByBin);
+
+    // --- 3. Shared BVH + per-tri materials (across ALL meshes inc. excluded) ---
     const merged = mergeGeometry(this.meshes);
     const bvh = new MeshBVH(merged);
-
-    // 3b. Build per-triangle material lookup tables — keyed by post-BVH triangle index.
     this.matTexDispose?.();
     const perTri = extractPerTriangleMaterials(merged, this.meshes);
     const matTex = buildMaterialTextures(perTri);
@@ -1054,50 +1068,27 @@ export class CornellBoxExample {
       matTex.emissiveTexture.dispose();
     };
 
-    // Sanity sample the first 4 triangles. With BVH spatial sort the first
-    // triangle is whichever happened to land first in tree order (NOT
-    // necessarily the floor). Log mesh tag + albedo so a wrong-mesh mapping
-    // is immediately visible during a bake.
-    const indexArr = merged.index!.array as Uint16Array | Uint32Array;
-    const meshIdxAttr = merged.attributes.meshIndex;
-    if (!meshIdxAttr) throw new Error('[baker] merged geometry missing meshIndex attribute');
-    const meshIdxArr = meshIdxAttr.array as Float32Array;
-    const sample = (tri: number): string => {
-      // SAFETY: tri ∈ [0, totalTriangles); indexArr length == totalTriangles*3.
-      const v0 = indexArr[tri * 3] ?? 0;
-      const meshIdx = (meshIdxArr[v0] ?? 0) | 0;
-      const o = tri * 3;
-      const r = perTri.albedo[o] ?? 0;
-      const g = perTri.albedo[o + 1] ?? 0;
-      const b = perTri.albedo[o + 2] ?? 0;
-      return `tri#${tri} mesh#${meshIdx} albedo=(${r.toFixed(3)}, ${g.toFixed(3)}, ${b.toFixed(3)})`;
-    };
     if (DEBUG)
       console.info(
-        `[baker] material textures built: ${perTri.totalTriangles} triangles, ${matTex.side}x${matTex.side} texture\n` +
-          `[baker] post-BVH samples: ${sample(0)}; ${sample(1)}; ${sample(Math.floor(perTri.totalTriangles / 2))}; ${sample(perTri.totalTriangles - 1)}\n` +
-          `[baker] per-mesh triangle counts (input order): [${perTri.perMeshTriangleCounts.join(', ')}]`,
+        `[baker] material textures: ${perTri.totalTriangles} triangles, ${matTex.side}×${matTex.side}; ` +
+          `per-mesh tri counts [${perTri.perMeshTriangleCounts.join(', ')}]`,
       );
 
-    // Linear-space Color from the sRGB hex picker.
+    // --- 4. Light list (linear-space, sRGB picker → linear) ---------------
     const lightColorLinear = new Color(this.options.lightColor).convertSRGBToLinear();
     const skyColorLinear = new Color(this.options.skyColor).convertSRGBToLinear();
-
-    // Mirror the bake intensity onto the realtime PointLight so Standard mode roughly
-    // tracks the bake. The 30× factor is a heuristic match (visualLight uses inverse-
-    // square decay; the bake's 1.0-per-cast unit is unitless).
     this.visualLight.color.copy(lightColorLinear);
     this.visualLight.intensity = 30 * this.options.lightIntensity;
 
-    // Build light list for the bake. Primary = point light at lightDummy.position.
-    const primaryLight: PackedLight = {
-      type: 'point',
-      position: this.lightDummy.position.clone(),
-      direction: new Vector3(0, -1, 0),
-      color: lightColorLinear.clone().multiplyScalar(this.options.lightIntensity),
-      params: [this.options.lightSize, 0, 0, 0],
-    };
-    const lights: PackedLight[] = [primaryLight];
+    const lights: PackedLight[] = [
+      {
+        type: 'point',
+        position: this.lightDummy.position.clone(),
+        direction: new Vector3(0, -1, 0),
+        color: lightColorLinear.clone().multiplyScalar(this.options.lightIntensity),
+        params: [this.options.lightSize, 0, 0, 0],
+      },
+    ];
     if (this.options.secondaryLightEnabled) {
       const secColor = new Color(this.options.secondaryColor)
         .convertSRGBToLinear()
@@ -1116,9 +1107,7 @@ export class CornellBoxExample {
       });
     }
 
-    // 4. Spawn progressive lightmapper
-    const opts: RaycastOptions = {
-      resolution: res,
+    const baseOpts: Omit<RaycastOptions, 'resolution'> = {
       casts: this.options.casts,
       filterMode: this.options.filterMode === 'linear' ? LinearFilter : NearestFilter,
       lights,
@@ -1136,46 +1125,45 @@ export class CornellBoxExample {
       targetSamples: this.options.targetSamples,
       bounces: this.options.bounces,
     };
-    // Free GPU resources from any prior bake before re-allocating. Composite/post
-    // hold refs into the OLD MRT textures, so dispose them BEFORE the lightmapper
-    // (which owns the underlying RT) is overwritten.
-    this.composite?.dispose();
-    this.composite = null;
-    this.refinement?.dispose();
-    this.refinement = null;
-    this.lightmapper?.dispose();
 
-    this.lightmapper = generateLightmapper(
-      this.renderer,
-      this.positionTexture,
-      this.normalTexture,
-      bvh,
-      opts,
-    );
-    this.lightmapTarget = this.lightmapper.renderTexture;
-
-    // Phase A.3: eagerly allocate view-time composite (direct*directIntensity + indirect*giIntensity)*ao.
-    this.composite = runComposite(
-      this.renderer,
-      this.lightmapper.textures,
-      this.options.lightMapSize,
-      {
+    // --- 5. Per-bin renderAtlas + lightmapper + composite ------------------
+    this.disposeAllGroups();
+    for (let bi = 0; bi < numAtlases; bi++) {
+      const binMeshes = meshesByBin[bi]!;
+      const atlas = renderAtlas(this.renderer, binMeshes, res, true);
+      const lightmapper = generateLightmapper(
+        this.renderer,
+        atlas.positionTexture,
+        atlas.normalTexture,
+        bvh,
+        { ...baseOpts, resolution: res },
+      );
+      const composite = runComposite(this.renderer, lightmapper.textures, res, {
         directIntensity: this.options.directIntensity,
         giIntensity: this.options.giIntensity,
         aoEnabled: this.options.ambientLightEnabled,
-      },
-    );
+      });
+      const group: BakeGroup = {
+        atlasIdx: bi,
+        meshes: binMeshes,
+        positionTexture: atlas.positionTexture,
+        normalTexture: atlas.normalTexture,
+        atlasDispose: atlas.dispose,
+        lightmapper,
+        composite,
+        refinement: null,
+      };
+      this.bakeGroups.push(group);
+      for (const m of binMeshes) this.meshToGroup.set(m, group);
+      lightmapper.render(); // first sample
+    }
 
-    // Reset readouts. Pause flag flipped on by the render loop once
-    // `lightmapper.render()` reports `done = true` (frame count reaches
-    // options.targetSamples). post + composite already disposed above.
     this.options.refinementStatus = 'idle';
     this.options.samples = 0;
     this.options.spp = 0;
     this.options.etaSec = 0;
     this.options.pause = false;
     this.pane.refresh();
-    this.lightmapper.render();
     this.applyRenderMode();
   }
 
@@ -1190,62 +1178,84 @@ export class CornellBoxExample {
     this.bake();
   }
 
+  /**
+   * Run the dilation+denoise refinement on every bake group. Each group's
+   * refinement RT chains off its own composite output and uses its own
+   * position G-buffer as the chart mask.
+   */
   private async applyRefinement() {
-    if (!this.lightmapper || !this.positionTexture) return;
+    if (!this.bakeGroups.length) return;
     this.options.refinementStatus = 'running';
     this.pane.refresh();
-
-    this.refinement?.dispose();
-    // Phase A.3: post-process chains off the composite (not raw direct) so denoising
-    // operates on the already-combined (direct+indirect*gi)*ao signal.
-    const src = this.composite!.texture;
     const res = this.options.lightMapSize;
 
-    this.refinement = await runRefinement(
-      this.renderer,
-      src,
-      this.positionTexture,
-      res,
-      this.options,
-      (progress) => {
-        this.progressBar.style.width = `${Math.min(100, progress * 100)}%`;
-        this.progressText.innerText =
-          `Refinement: ${Math.round(progress * 100)}%\n` + `Dilation & Bilateral Denoise...`;
-      },
-    );
+    for (let i = 0; i < this.bakeGroups.length; i++) {
+      const g = this.bakeGroups[i]!;
+      g.refinement?.dispose();
+      g.refinement = await runRefinement(
+        this.renderer,
+        g.composite.texture,
+        g.positionTexture,
+        res,
+        this.options,
+        (progress) => {
+          // Per-group progress; aggregate by averaging across already-finished groups.
+          const overall = (i + progress) / this.bakeGroups.length;
+          this.progressBar.style.width = `${Math.min(100, overall * 100)}%`;
+          this.progressText.innerText =
+            `Refinement: atlas ${i + 1}/${this.bakeGroups.length} ` +
+            `(${Math.round(progress * 100)}%)\nDilation & Bilateral Denoise...`;
+        },
+      );
+    }
+
     this.options.refinementStatus =
       this.options.dilationIterations > 0 || this.options.denoiseEnabled ? 'applied' : 'skipped';
     this.pane.refresh();
     this.applyRenderMode();
 
-    this.progressText.innerText = `Baking & Refinement complete!\n` + `Ready.`;
-
-    // Hide progress widget after a delay
+    this.progressText.innerText = `Baking & Refinement complete!\nReady.`;
     setTimeout(() => {
       this.progressContainer.style.display = 'none';
     }, 3000);
   }
 
-  /** Export the "deliverable" lightmap — refinement if available, else composite. */
+  /**
+   * Export each atlas's final lightmap as a separate file.
+   * Filenames: `lightmap_<stage>_<res>_atlas<i>.{png,exr,bin}` when there are
+   * multiple atlases, or just `lightmap_<stage>_<res>` when there's one.
+   */
   private async exportFinal() {
-    const tex = this.refinement?.texture ?? this.composite?.texture ?? null;
-    if (!tex) {
+    if (!this.bakeGroups.length) {
       console.warn('[baker] export: no bake to export — bake first');
       return;
     }
-    const stage = this.refinement ? 'refined' : 'composite';
-    await this.runExport(tex, `lightmap_${stage}_${this.options.lightMapSize}`);
+    const stage = this.bakeGroups[0]!.refinement ? 'refined' : 'composite';
+    for (let i = 0; i < this.bakeGroups.length; i++) {
+      const g = this.bakeGroups[i]!;
+      const tex = g.refinement?.texture ?? g.composite.texture;
+      const suffix = this.bakeGroups.length > 1 ? `_atlas${i}` : '';
+      await this.runExport(tex, `lightmap_${stage}_${this.options.lightMapSize}${suffix}`);
+    }
   }
 
-  /** Export whatever the active layer is currently displaying. */
+  /** Export the active layer's texture from each atlas. */
   private async exportCurrent() {
     const layer = LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0]!;
-    const tex = layer.getLightMap(this.layerContext());
-    if (!tex) {
-      console.warn(`[baker] export: layer "${layer.id}" has no exportable texture`);
+    if (!this.bakeGroups.length) {
+      console.warn('[baker] export: no bake to export — bake first');
       return;
     }
-    await this.runExport(tex, `lightmap_${layer.id}_${this.options.lightMapSize}`);
+    let exported = 0;
+    for (let i = 0; i < this.bakeGroups.length; i++) {
+      const g = this.bakeGroups[i]!;
+      const tex = layer.getLightMap({ group: g });
+      if (!tex) continue;
+      const suffix = this.bakeGroups.length > 1 ? `_atlas${i}` : '';
+      await this.runExport(tex, `lightmap_${layer.id}_${this.options.lightMapSize}${suffix}`);
+      exported++;
+    }
+    if (!exported) console.warn(`[baker] export: layer "${layer.id}" has no exportable texture`);
   }
 
   private async runExport(tex: Texture, basename: string) {
@@ -1263,35 +1273,23 @@ export class CornellBoxExample {
     }
   }
 
-  /** Revert display to the raw progressive lightmap (drops refinement result). */
+  /** Revert display to raw composite (drops every group's refinement result). */
   private showUnrefined() {
-    this.refinement?.dispose();
-    this.refinement = null;
+    for (const g of this.bakeGroups) {
+      g.refinement?.dispose();
+      g.refinement = null;
+    }
     this.options.refinementStatus = 'idle';
     this.pane.refresh();
     this.applyRenderMode();
   }
 
-  /** Resolve the current LayerContext from cached textures. */
-  private layerContext(): LayerContext {
-    return {
-      composite: this.composite?.texture ?? null,
-      direct: this.lightmapper?.textures.direct ?? null,
-      indirect: this.lightmapper?.textures.indirect ?? null,
-      ao: this.lightmapper?.textures.ao ?? null,
-      raw: this.composite?.texture ?? null,
-      refinement: this.refinement?.texture ?? null,
-      refinementDilated: null, // Refinement currently only exposes final; leave for future
-      positions: this.positionTexture ?? null,
-      normals: this.normalTexture ?? null,
-    };
-  }
-
-  /** Apply the active layer to every mesh. Registry lookup, no per-layer if/else. */
+  /**
+   * Apply the active layer to every mesh — each mesh resolves to its own bake
+   * group, so meshes in different atlases mount different textures.
+   */
   private applyRenderMode() {
     const layer = LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0]!;
-    const ctx = this.layerContext();
-    const lm = layer.getLightMap(ctx);
 
     // Material-swap layers (e.g. "Texel Density"). Restore originals on switch-away.
     if (layer.id === 'texelDensity') {
@@ -1321,9 +1319,11 @@ export class CornellBoxExample {
     for (const m of this.meshes) {
       const mat = m.material as MeshStandardMaterial & { _originalMap?: Texture | null };
       mat.map = layer.showAlbedo ? (mat._originalMap ?? null) : null;
-      // Excluded meshes have no UV2/lightmap — always clear their lightMap slot.
-      const isExcluded = this.options.perMesh[m.uuid]?.exclude === true;
-      mat.lightMap = isExcluded ? null : lm;
+
+      // Excluded mesh OR no group yet (pre-bake): no lightmap.
+      const group = this.meshToGroup.get(m);
+      const lm = group ? layer.getLightMap({ group }) : null;
+      mat.lightMap = lm;
       if (mat.lightMap) {
         mat.lightMap.channel = 2;
         mat.lightMap.needsUpdate = true;
@@ -1332,11 +1332,7 @@ export class CornellBoxExample {
       mat.needsUpdate = true;
     }
 
-    // Light marker disc never takes a lightmap.
     (this.lightMarker.material as MeshBasicMaterial).color = new Color(0xffffff);
-
-    // The realtime point light is only meaningful when the lightmap is OFF
-    // (i.e. when we're showing pure Albedo with no baked irradiance).
     this.visualLight.visible = layer.id === 'albedo';
   }
 
@@ -1401,79 +1397,98 @@ export class CornellBoxExample {
         lastTime = now;
       }
 
-      if (this.lightmapper && !this.options.pause) {
-        const r = this.lightmapper.render();
-        if (r.done) {
+      if (this.bakeGroups.length && !this.options.pause) {
+        // Step every group; aggregate sample counts for the progress widget.
+        let allDone = true;
+        let minSamples = Infinity;
+        for (const g of this.bakeGroups) {
+          const r = g.lightmapper.render();
+          if (!r.done) allDone = false;
+          if (r.samples < minSamples) minSamples = r.samples;
+        }
+        if (!Number.isFinite(minSamples)) minSamples = 0;
+
+        if (allDone) {
           this.options.pause = true;
           this.options.etaSec = 0;
-
           const elapsed = (performance.now() - this.bakeStartTime) / 1000;
-          console.info(`[baker] done in ${elapsed.toFixed(2)}s`);
-          this.progressText.innerText =
-            `Baking complete! ${elapsed.toFixed(1)}s\n` + `Running post-process...`;
+          console.info(
+            `[baker] done in ${elapsed.toFixed(2)}s (${this.bakeGroups.length} atlas${this.bakeGroups.length === 1 ? '' : 'es'})`,
+          );
+          this.progressText.innerText = `Baking complete! ${elapsed.toFixed(1)}s\nRunning post-process...`;
 
-          // Manual mipmap generation at the end to keep the progressive loop fast.
-          // Swapping to LinearMipMapLinearFilter enables hardware mipmap sampling.
-          const rt = this.lightmapper.renderTarget;
-          for (let i = 0; i < 3; i++) {
-            const tex = rt.texture[i];
-            if (!tex) continue; // SAFETY: WebGLMultipleRenderTargets always has 3 textures here
-            tex.generateMipmaps = true;
-            tex.minFilter = LinearMipMapLinearFilter;
-            this.renderer.initTexture(tex);
+          // Generate mipmaps on every group's MRT outputs at end-of-bake; swap min
+          // filter to LinearMipMapLinear so the lightmap can sample at any LOD.
+          for (const g of this.bakeGroups) {
+            const rt = g.lightmapper.renderTarget;
+            for (let i = 0; i < 3; i++) {
+              const tex = rt.texture[i];
+              if (!tex) continue;
+              tex.generateMipmaps = true;
+              tex.minFilter = LinearMipMapLinearFilter;
+              this.renderer.initTexture(tex);
+            }
+            g.composite.texture.needsUpdate = true;
           }
-          if (this.composite?.texture) this.composite.texture.needsUpdate = true;
-
           this.pane.refresh();
           if (this.options.autoApplyRefinement) void this.applyRefinement();
-          return; // Stop processing this frame
+          return;
         }
 
-        // Phase A.3: refresh composite every frame so layer views reflect latest accumulation.
-        this.composite?.refresh();
+        // Refresh composite per group so layer views reflect the latest accumulation.
+        for (const g of this.bakeGroups) g.composite.refresh();
 
-        // Update Progress Widget
         const totalSamples = this.options.targetSamples;
-        const progress = totalSamples > 0 ? r.samples / totalSamples : 0;
+        const progress = totalSamples > 0 ? minSamples / totalSamples : 0;
         this.progressBar.style.width = `${Math.min(100, progress * 100)}%`;
 
         const elapsed = (performance.now() - this.bakeStartTime) / 1000;
 
-        // Append to rolling history only when sample count actually advanced;
-        // RAF can fire at >60Hz on high-refresh displays without a new sample.
-        const now = performance.now();
+        const tNow = performance.now();
         const tail = this.bakeBatchHistory[this.bakeBatchHistory.length - 1];
-        if (!tail || tail.samples !== r.samples) {
-          this.bakeBatchHistory.push({ samples: r.samples, t: now });
+        if (!tail || tail.samples !== minSamples) {
+          this.bakeBatchHistory.push({ samples: minSamples, t: tNow });
           if (this.bakeBatchHistory.length > CornellBoxExample.BAKE_ETA_WINDOW) {
             this.bakeBatchHistory.shift();
           }
         }
-        const eta = this.estimateTimeRemaining(r.samples, totalSamples);
-
-        const spp = r.samples * this.options.casts;
-        this.options.samples = r.samples;
+        const eta = this.estimateTimeRemaining(minSamples, totalSamples);
+        const spp = minSamples * this.options.casts;
+        this.options.samples = minSamples;
         this.options.spp = spp;
         this.options.etaSec = Math.ceil(eta);
 
         this.progressText.innerText =
-          `Baking: ${r.samples}/${totalSamples} frames (${spp} spp)\n` +
+          `Baking: ${minSamples}/${totalSamples} frames (${spp} spp, ${this.bakeGroups.length} atlas${this.bakeGroups.length === 1 ? '' : 'es'})\n` +
           `Elapsed: ${elapsed.toFixed(1)}s | ETA: ${this.options.etaSec}s`;
       }
 
       this.controls.update();
       this.renderer.render(this.scene, this.camera);
 
-      // 2D atlas viewer overlay — track the active layer's texture each frame.
+      // Atlas viewer overlay — show the active layer's texture from atlas 0.
+      // (With multiple atlases this could become a per-atlas dropdown; deferred.)
       this.atlasViewer.visible = this.options.atlasViewerEnabled;
       if (this.atlasViewer.visible) {
         const layer = LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0]!;
-        const tex = layer.getLightMap(this.layerContext()) ?? this.composite?.texture ?? null;
+        const firstGroup = this.bakeGroups[0];
+        const tex = firstGroup
+          ? (layer.getLightMap({ group: firstGroup }) ?? firstGroup.composite.texture)
+          : null;
         this.atlasViewer.setTexture(tex);
         this.atlasViewer.setLayerLabel(layer.label);
       }
       this.atlasViewer.render(this.renderer);
     };
     tick();
+  }
+
+  /** Push uniform overrides into every group's view-time composite. */
+  private refreshAllComposites(overrides: {
+    directIntensity?: number;
+    giIntensity?: number;
+    aoEnabled?: boolean;
+  }): void {
+    for (const g of this.bakeGroups) g.composite.refresh(overrides);
   }
 }
