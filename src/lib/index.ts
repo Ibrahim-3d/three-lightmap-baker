@@ -33,6 +33,10 @@ export { mergeGeometry, extractPerTriangleMaterials } from './utils/GeometryUtil
 export type { PerTriangleMaterials } from './utils/GeometryUtils';
 export { buildMaterialTextures } from './utils/MaterialTextures';
 
+// --- Density-aware atlas bin-packing (Stage 1 — multiple-atlas pipeline) ---
+export { computeMeshSurfaceArea, binPackMeshes } from './utils/Packing';
+export type { BinPackOptions, BinAssignment } from './utils/Packing';
+
 // --- Export (PNG / EXR / Float32 dump) ---
 export { exportLightmap, exportPNG, exportEXR, exportRaw } from './utils/exportLightmap';
 export type { ExportFormat } from './utils/exportLightmap';
