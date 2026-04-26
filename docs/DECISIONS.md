@@ -58,3 +58,58 @@ Every non-trivial technical decision is recorded here. Format:
   - Permanent proprietary: rejected — open-source after validation provides developer relations value and community maintenance
   - Published demo without source: acceptable intermediate step for portfolio purposes
 - **Consequences:** No community contributions during development. All maintenance is solo. But competitive advantage preserved during the critical 0→1 phase.
+
+## D-005: Russian Roulette starts at bounce 2, not bounce 0
+
+- **Date:** 2026-04-26
+- **Status:** accepted
+- **Context:** Multi-bounce GI added in 7B. RR is the standard unbiased path-termination technique. Question: when does it kick in?
+- **Decision:** RR only for `b >= 2`. Bounces 0 and 1 always run to completion.
+- **Alternatives considered:**
+  - RR from bounce 0: rejected — at low sample counts (Cornell Draft preset ≈128 spp), early termination of nearly every primary cast washes out direct color bleed entirely. Variance explodes.
+  - No RR (always run to MAX_BOUNCES): rejected — wastes work on dim throughput chains, biases output unless the loop is truly bounded.
+- **Consequences:** Slightly more bias at very high bounce counts (RR kicks in less often than pure unbiased), but the bake's other approximations (1/PI dropping, no MIS) already trade bias for stability. Acceptable.
+
+## D-006: 1/PI dropped from NEE BRDF — energy balance vs the non-physical direct loop
+
+- **Date:** 2026-04-26
+- **Status:** accepted (carried forward from S5; documented here on the multi-bounce / multi-light rewrite)
+- **Context:** A strict Lambertian BRDF is `albedo / PI * cos(N·L)` for the bounce term. The standalone direct-light loop, however, contributes `lightColor * intensity * cos(N·L)` per visible cast — no `1/PI`, no distance falloff. If the bounce term divides by PI but the direct term doesn't, color bleed becomes ~PI× dimmer than direct under the 0.5 mix, and crushes below visibility.
+- **Decision:** Drop the `1/PI` factor from NEE on BOTH the per-bounce hit AND the standalone direct loop. Both contribute `albedo * cos(N·L) * lightColor * intensity`. `giIntensity` (composite-time) provides fine adjustment.
+- **Alternatives considered:**
+  - Add `1/PI` to the direct loop: rejected — would dim the existing well-tuned default presets and require all light intensities to be re-multiplied.
+  - Use full physical units (candela, lumens, etc.) end-to-end: rejected — overcomplicated for an artistic baker.
+- **Consequences:** The bake is non-physical in absolute units but internally consistent. Per-light-type emission terms (spot cone falloff, area one-sided gate) compose cleanly because the cos*albedo factor is shared.
+
+## D-007: Multi-light storage as DataTexture, not uniform array
+
+- **Date:** 2026-04-26
+- **Status:** accepted
+- **Context:** 7C added support for an arbitrary number of lights. Choices: uniform array (`uniform Light lights[N]`) or DataTexture lookup.
+- **Decision:** Pack lights into a 4-wide × N-tall RGBA float DataTexture. Shader reads per-light texels by row index.
+- **Alternatives considered:**
+  - Uniform array: rejected — bound by `gl_MaxFragmentUniformVectors` (driver-dependent, often 256 vec4s total across ALL uniforms). Recompiling the shader for different light counts wastes warm-up time.
+  - SSBO / uniform buffer: rejected — WebGL2 ES has no SSBO; uniform buffers add complexity for marginal benefit at the small light counts we expect.
+- **Consequences:** 3 texture fetches per light per NEE call. Texels for one light are adjacent → cache friendly. Scales to dozens of lights without shader recompile. Cost: light DataTexture is uploaded on every bake; trivially small even at 100 lights (~6KB).
+
+## D-008: Per-mesh resolution groups share ONE BVH, not per-group BVHs
+
+- **Date:** 2026-04-26
+- **Status:** accepted
+- **Context:** 7F supports running separate bakes per resolution group (different meshes get different lightmap sizes). Question: does each group also build its own BVH, or do they share?
+- **Decision:** Single BVH built from the merged geometry of ALL meshes (including excluded ones). Each per-resolution-group bake reuses the shared BVH; only the atlas G-buffers + lightmapper + composite + refinement are per-group.
+- **Alternatives considered:**
+  - Per-group BVH built from only that group's meshes: rejected — shadow / GI rays would miss occluders in other groups, breaking cross-mesh contact shadows and color bleed.
+  - Per-group BVH including all meshes (rebuild N times): rejected — wasted work; BVH construction is O(n log n) and can dominate at moderate scene sizes.
+- **Consequences:** Excluded meshes still cast shadows for other meshes (they're in the BVH but skipped from atlas). All groups see the same scene geometry → physically correct cross-mesh GI. Single BVH allocation = lower peak memory.
+
+## D-009: Texel density as a material-swap layer (not a lightmap-overlay layer)
+
+- **Date:** 2026-04-26
+- **Status:** accepted
+- **Context:** 7E adds a "Texel Density" debug visualization. The Layer registry was originally designed for swapping the `lightMap` texture only; texel density needs to draw a checker pattern *instead of* the mesh's normal shading.
+- **Decision:** Extend the layer system with a "swap material" path. `applyRenderMode` special-cases the `texelDensity` layer ID, swaps each mesh's material to a shared `TexelDensityMaterial` instance, and caches the original material in a `WeakMap<Mesh, Material>` so it can be restored on switch-away.
+- **Alternatives considered:**
+  - Bake a density texture and mount as `lightMap`: rejected — derivative-based density (`dFdx`/`dFdy`) is screen-space; baking it offline gives a flat-color density per mesh rather than a per-pixel ratio against the actual rendered density.
+  - Separate "viz scene" rendered to a different RT: rejected — overkill; reusing the main scene + swapping materials is cheaper.
+- **Consequences:** The Layer registry now has two "kinds" of layers (lightmap-mounting and material-swapping). Future swap-style layers (e.g. wireframe, normals viz) follow the same pattern. WeakMap usage means cached originals are GC'd if a mesh is removed from the scene.

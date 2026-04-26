@@ -24,17 +24,17 @@
 | BakeError + validation | ✅ Done (b40e339) |
 | GLSL3 + shader guards | ✅ Done (bed1f19) |
 
-### Remaining carryovers (folded into Task 07 below)
+### Carryovers resolved in Session 8 (Task 07)
 
-- `estimateTimeRemaining()` — stub, needs implementation
-- Atlas-pass normal uses `mat3(modelMatrix)` instead of inverse-transpose — breaks under non-uniform scale
-- sRGB hex picker → linear shader mismatch
+- ✅ `estimateTimeRemaining()` — rolling-average implementation
+- ✅ Atlas-pass normal uses inverse-transpose (renderAtlas.ts)
+- ✅ sRGB hex picker → linear shader: verified already in place at both call sites
 
 ### Extended tasks
 
 | Task | Status |
 |---|---|
-| 07 — Multi-light + multi-bounce + production polish (merged) | ⬜ Starting now |
+| 07 — Multi-light + multi-bounce + production polish (merged) | ✅ Done | Sub-phases 7A–7F shipped Session 8 |
 | 08 — WebGL timeout protection | ⬜ |
 | 10 — Lightmap downscaling | ⬜ |
 | 11 — Light probes (SH) | ⬜ |
@@ -389,3 +389,58 @@ But Task 03's `extractPerTriangleMaterials` built the per-triangle albedo+emissi
 - Phase 8: `npm run check` passes — typecheck clean, format clean, lint 0 errors (28 informational warnings, none in lib/lightmap path)
 - All changes are behavioral no-ops in the bake pipeline (algorithm and math unchanged)
 - Type-aware ESLint rule set dropped — strict TypeScript is the safety net; type-aware rules fired hundreds of times on Tweakpane any-typed bindings with no real value
+
+### Session 8 — 2026-04-26
+
+**Task completed** — Task 07 (multi-light + multi-bounce + production polish), executed as six commit-isolated sub-phases (7A–7F). All sub-phases green on `npm run check` + `npm run build` throughout.
+
+**Preflight commit** (`9e696eb` — chore: sync progress.md with actual repo state): Status table updated to reflect Tasks 05/06/09/13 as already complete via earlier commits; stale carryover notes folded into Task 07.
+
+**What changed**
+
+| File | Change |
+|---|---|
+| `src/lib/atlas/renderAtlas.ts` | 7A — vertex shader normal transform changed from `mat3(modelMatrix) * normal` to `transpose(inverse(mat3(modelMatrix))) * normal`; keeps normals perpendicular to surface under non-uniform scale (e.g. imported GLB with stretched axes). Alpha preserved at 0 to match wire format. |
+| `src/lib/lightmap/LightmapperMaterial.ts` | 7A — `estimateTimeRemaining()` uses a 16-sample ring buffer (`bakeBatchHistory: { samples, t }[]`) reset on each bake start; pushes only when sample count advances (RAF can fire faster than samples produce). Replaces the naive `elapsed/progress - elapsed` formula that jumped wildly in the first second. |
+| `src/lib/lightmap/LightmapperMaterial.ts` | 7B — single-bounce hit branch replaced with `tracePath()`, a hand-unrolled bounce loop bounded by `#define MAX_BOUNCES 4` and a runtime `bounces` uniform. Per bounce: emissive direct, NEE shadow ray, throughput multiply, Russian Roulette for b≥2 with `1e-4` divisor guard. `bounces=1` is byte-identical to the prior single-bounce path. |
+| `src/lib/lightmap/Lightmapper.ts` | 7B — `bounces` added to `RaycastOptions`. |
+| `src/lib/LightmapBaker.ts` | 7B — clamps `bounces` to [1,4] and forwards into `RaycastOptions`. Removed stale JSDoc note about "bounces>1 no-op". |
+| `src/demo/CornellBoxExample.ts` | 7B — bounces slider in Bake folder, default 2, range [1,4] step 1. QUALITY_PRESETS comment updated; bounces stays an independent slider, not folded into preset rows. |
+| `src/lib/lightmap/Lights.ts` (NEW, ~150 LOC) | 7C — `PackedLight` type; `collectLightsFromScene` (walks scene tree, converts `THREE.PointLight`/`DirectionalLight`/`SpotLight`/`RectAreaLight`); `buildLightTexture` (4-wide × N-tall RGBA float `DataTexture`: row 0 = pos+type, row 1 = dir+param0, row 2 = color+param1, row 3 = params2+3); `disposeLightTexture`. |
+| `src/lib/lightmap/LightmapperMaterial.ts` | 7C — dropped 4 single-light uniforms (`lightPosition`/`lightSize`/`lightColor`/`lightIntensity`); added `lightsTex`, `lightCount`, `MAX_LIGHTS=16` define. New GLSL helpers: `sampleLight(li, hitPos, hitN, rnd) → LightSample` (per-type position + direction + falloff) and `sampleAllLightsNEE(hitPos, hitN, hitAlbedo)` (loops `lightCount`, fires one shadow ray each). The `L.y > 0` downward-emission gate removed — it was guarding against a marker mesh not in the BVH, so served no purpose; ceiling undersides near the light are now correctly lit. |
+| `src/lib/lightmap/Lightmapper.ts` | 7C — `RaycastOptions.lights: PackedLight[]` replaces the four single-light fields. Light texture built and disposed inside `generateLightmapper`. |
+| `src/lib/LightmapBaker.ts` | 7C — collects scene lights via `collectLightsFromScene`; falls back to a synthetic point from `LightOptions` if none present. |
+| `src/demo/CornellBoxExample.ts` | 7C — primary point light from `lightDummy` + optional secondary directional via "Lights" folder (off by default). |
+| `src/lib/lightmap/LightmapperMaterial.ts` | 7D — AO falloff formula changed from `clamp(dist/ambientDistance, 0, 1)` to `1 - clamp((1 - pow(t, aoExponent)) * aoIntensity, 0, 1)` where `t = clamp(dist/ambientDistance, 0, 1)`. At `intensity=1, exponent=1` collapses to the pre-7D linear behavior — existing bakes that don't touch the new sliders are byte-equivalent. |
+| `src/lib/LightmapBaker.ts` | 7D — `aoIntensity` (default 1.0, range 0–3) and `aoExponent` (default 1.5, range 0.5–4) added to public `AOOptions`. |
+| `src/demo/CornellBoxExample.ts` | 7D — `aoIntensity` and `aoExponent` sliders in Ambient Occlusion folder. |
+| `src/lib/lightmap/TexelDensityMaterial.ts` (NEW) | 7E — Unity/Unreal-style checker debug shader. Checker in UV2 space, colored by how actual texel density compares to a user-set target (texels per world meter). Bands: red (<0.5×) → yellow (0.5–0.8) → green (0.8–1.2) → cyan (1.2–1.5) → blue (>1.5×). Density computed via `dFdx`/`dFdy` of UV2 vs world position; geometric mean across both axes for anisotropy robustness. |
+| `src/demo/CornellBoxExample.ts` | 7E — Layer system extended with a "material-swap" layer type; original materials cached in a `WeakMap<Mesh, Material>` and restored on switch-away. `texelDensity` entry added to the registry. View folder slider `Density Target (px/m)` (1–50, default 10). Closes Task 13 D1/D2. |
+| `src/lib/LightmapBaker.ts` | 7F — public `LightmapBakerOptions.perMesh: Record<uuid, { resolution?, exclude? }>` added. `bake()` partitions non-excluded meshes into resolution groups; runs separate atlas + lightmapper + composite + refinement per group. BVH and per-tri material textures stay SHARED across groups so cross-mesh shadows/GI remain accurate. Excluded meshes never enter the atlas/bake but DO appear in the BVH (they cast shadows). |
+| `src/lib/LightmapBaker.ts` | 7F — `LightmapBakeResult` restructured: `lightmaps` is now `Map<Mesh, Texture>`; `apply()` walks the map; `export()` writes one file per mesh; `dispose()` chains all per-group disposers. |
+| `src/demo/CornellBoxExample.ts` | 7F — per-mesh Tweakpane folder with exclude checkbox + resolution-override dropdown per mesh. Exclude flag fully wired; excluded meshes show no lightmap but still cast shadows. Resolution override shown in UI but deferred in the demo's own bake path (public `LightmapBaker.bake()` implements full grouping; demo rework is a follow-up). |
+
+**Math notes**
+
+- Multi-bounce throughput accumulator: `throughput *= hitAlbedo`. Russian Roulette fires at bounce ≥ 2; survival probability = `max(throughput.r, throughput.g, throughput.b)`; throughput divided by probability on survival. The `1e-4` floor on the divisor prevents NaN on black surfaces.
+- AO falloff: `ao = 1 - clamp((1 - pow(t, e)) * intensity, 0, 1)`. At `e=1, intensity=1` → `ao = t = dist/ambientDistance` (linear, matches pre-7D). Higher `e` concentrates darkening near the surface; higher `intensity` deepens shadows globally.
+- Light texture layout: each light occupies 4 texels (one column of a 4-wide texture). Row 0 = `(world_pos.xyz, type_enum)`. Row 1 = `(direction.xyz, param0)` (spot inner angle / rect half-width). Row 2 = `(color.rgb, param1)` (spot outer angle / rect half-height). Row 3 = `(intensity, decay, _, _)`.
+
+**Decisions made (and why)**
+
+1. **Hand-unrolled bounce loop, not GLSL recursion.** WebGL2 GLSL has no recursion. N² ray cost at N=4 is acceptable at the sample budgets the UI exposes (Draft 128 spp × 4 bounces = 512 ray-ops/texel). Multi-pass with intermediate radiance RTs would halve the GPU memory but triple the JS orchestration complexity.
+2. **`#define MAX_BOUNCES 4` + runtime `bounces` uniform.** Compile-time constant satisfies driver loop-unrolling requirements for portability; runtime cap lets the user tune quality without recompiling shaders. `bounces=1` path produces exactly the Session 7 output.
+3. **Light DataTexture (4-wide float) instead of uniform arrays.** Uniform arrays have a driver-specific max size (~256 floats on some mobile drivers). A texture scales to `MAX_LIGHTS=16` now and can be widened to any N later by changing only `buildLightTexture`. Uniform arrays would need a shader recompile to change the count.
+4. **`L.y > 0` gate removed.** The gate was guarding against emissive contributions from the light-marker plane. That plane is never inserted into the BVH, so the gate was checking a condition that could never be true. Removing it correctly lights ceiling undersides.
+5. **AO `samples` (separate ray budget) deferred.** The spec allows AO to run on a separate ray budget from the indirect hemisphere loop. Implementing it requires a second inner loop or a second MRT pass. Not in scope for 7D; AO continues to share rays with indirect. Documented.
+6. **`scaleInLightmap` not implemented for per-mesh resolution.** xatlas-three does not expose per-mesh chart weighting in the current integration. Per-mesh quality is via `resolution` only. Documented in code and deferred.
+7. **Demo still uses its own bake path for resolution grouping.** The demo's bake pipeline predates the public `LightmapBaker.bake()` refactor. Migrating the demo to consume the public class is a pre-requisite for the Task 12 (model import/export) workflow; deferred to that session.
+
+**Carry-overs / not changed**
+
+- Demo's bake pipeline duplicates `LightmapBaker`'s group orchestration; per-mesh `resolution` override has no effect in the demo (only `exclude` is wired). Rework blocked on Task 12 (GLB import/export demo path).
+- AO `samples` (separate ray budget from indirect) deferred — AO shares rays with indirect loop.
+- "Combined (Dilated)" layer in the registry still deferred — `PostProcess` does not expose a dilated-only intermediate stage.
+- `LightBakerExample.ts` remains unreferenced legacy; not removed (out of scope, but not harmful).
+
+**Next session** — Task 12 (GLB model import/export) first: migrating the demo to consume the public `LightmapBaker.bake()` path unlocks per-mesh resolution end-to-end and provides the import/export surface needed for the asset-pipeline story. After that, Task 08 (WebGL TDR / timeout protection) is high priority on Windows — longer multi-bounce bakes at Production/Final quality raise GPU-hang risk. Tasks 10 (lightmap downscaling) and 11 (light probes/SH) follow.
