@@ -304,7 +304,9 @@ export class CornellBoxExample {
      * fully honoured. Resolution-override deferred to a future session when the demo is rewired
      * to the high-level LightmapBaker class (which does implement full grouping).
      */
-    perMesh: {} as Record<string, { resolution: number | null; exclude: boolean }>,
+    // resolution=0 is the "use global lightMapSize" sentinel — kept as `number` (not
+    // `number | null`) so Tweakpane's homogeneous-options-type requirement is satisfied.
+    perMesh: {} as Record<string, { resolution: number; exclude: boolean }>,
 
     // --- Atlas viewer (2D corner overlay) ---
     atlasViewerEnabled: true,
@@ -632,18 +634,21 @@ export class CornellBoxExample {
     for (const mesh of this.meshes) {
       const uuid = mesh.uuid;
       if (!this.options.perMesh[uuid]) {
-        this.options.perMesh[uuid] = { resolution: null, exclude: false };
+        this.options.perMesh[uuid] = { resolution: 0, exclude: false };
       }
       const entry = this.options.perMesh[uuid]!;
       const label = mesh.name || uuid.slice(0, 8);
 
       const meshFolder = folder.addFolder({ title: label, expanded: false });
       meshFolder.addInput(entry, 'exclude', { label: 'Exclude' }).on('change', () => this.bake());
-      // Resolution override shown as a monitor/label — deferred, not wired to grouping.
+      // Resolution override shown as a dropdown — deferred, not wired to grouping in
+      // the demo's bake pipeline (see options.perMesh JSDoc). 0 means "use global".
+      // Tweakpane requires all options values to share a single type, so we use 0 as
+      // the "Default" sentinel rather than null.
       meshFolder.addInput(entry, 'resolution', {
         label: 'Resolution (deferred)',
         options: {
-          Default: null as unknown as number,
+          Default: 0,
           '256': 256,
           '512': 512,
           '1024': 1024,
