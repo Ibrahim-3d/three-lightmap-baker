@@ -130,6 +130,17 @@ Every non-trivial technical decision is recorded here. Format:
   - Make it a uniform with default 1.0 (= identity): acceptable future work. Out of scope right now.
 - **Consequences:** Output is NOT physically calibrated in absolute units. Quantitative comparisons between this baker's output and ground truth (Mitsuba, PBRT) must account for the curve. Visual comparison against other browser bakers is meaningless without normalising both sides through the same curve. The bias is consistent across direct, indirect, and AO channels (all flow through the composite), so relative ratios within an output are preserved.
 
+## D-013: Density mode and per-mesh resolution as orthogonal sizing strategies
+
+- **Date:** 2026-04-27
+- **Status:** accepted
+- **Context:** Phase 1 of the demo→public-API migration promotes the demo's `scaleInLightmap` density multiplier into the public API as `LightmapBakerOptions.texelsPerMeter` + `perMesh[uuid].density`. The existing public API already had `perMesh[uuid].resolution` (forces a mesh into its own per-resolution atlas). Both knobs control "per-mesh quality" but use different mechanisms — combining them in one bake call would require the bin-packer to handle mixed atlas sizes, which it doesn't.
+- **Decision:** Treat them as **mutually exclusive within one bake**. When `texelsPerMeter` is set, density mode runs (`partitionByDensity` → `binPackMeshes`); per-mesh `resolution` overrides are silently ignored with a DEV warning. When `texelsPerMeter` is omitted, resolution mode runs (`partitionByResolution`) and `density` overrides are ignored. Both still respect `exclude`.
+- **Alternatives considered:**
+  - Compose them: meshes with explicit `resolution` get their own atlas group; remaining meshes get density-packed at `globalRes`. Rejected — adds complexity to the partition + bake loop for a use case neither the demo nor public-API callers exercise today.
+  - Make `density` always-on (as a multiplier on the resolution-mode atlas allocation): rejected — `partitionByResolution` doesn't compute UV demand; density would have no effect there.
+- **Consequences:** The new partition logic lives in `src/lib/utils/Partition.ts` (not LightmapBaker.ts) per the 300-line modularity rule. Public API gains capability without breaking existing callers (default `texelsPerMeter=0` triggers the legacy resolution-only path). DEV warning surfaces caller misuse without throwing.
+
 ## D-012: TDR / GPU-watchdog protection via scissor tiling, not resolution downscaling
 
 - **Date:** 2026-04-27

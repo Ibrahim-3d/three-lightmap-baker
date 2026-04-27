@@ -21,6 +21,7 @@ import { runPostProcess, PostProcessOptions, PostProcessResult } from './lightma
 import { mergeGeometry, extractPerTriangleMaterials } from './utils/GeometryUtils';
 import { buildMaterialTextures } from './utils/MaterialTextures';
 import { exportLightmap, ExportFormat } from './utils/exportLightmap';
+import { partitionByResolution, partitionByDensity, PerMeshOverride } from './utils/Partition';
 import { BakeError, BakeErrorPhase } from './errors';
 import { detectGPUCapabilities, GPUCapabilities } from './gpu/Capabilities';
 
@@ -83,17 +84,32 @@ export type LightmapBakerOptions = {
   /** UV2 filtering at view time. Default 'linear'. */
   filtering?: 'linear' | 'nearest';
   /**
+   * Density-aware multi-atlas bin-packing. Texels per WORLD UNIT (typically meters)
+   * of mesh surface. When provided, the baker computes per-mesh atlas demand from
+   * world-space surface area × `texelsPerMeter²` and greedily packs meshes into
+   * one or more atlases of side `resolution`. Larger meshes auto-spawn additional
+   * atlases when one cannot hold them all at the target density.
+   *
+   * When NOT provided (default), the baker falls back to resolution-only grouping —
+   * all meshes share one atlas at `resolution`, OR meshes with `perMesh[uuid].resolution`
+   * overrides get their own per-resolution atlas.
+   *
+   * Density and per-mesh `resolution` compose: a mesh with `resolution: 2048` gets
+   * its own 2048² atlas; within that atlas the bin-packer respects its `density` weight.
+   */
+  texelsPerMeter?: number;
+  /**
    * Per-mesh overrides. Keys are mesh UUIDs (mesh.uuid).
    * - resolution: lightmap side length for this mesh. Default = global resolution.
+   *               Forces this mesh into its own resolution-keyed atlas group.
+   * - density:    per-mesh density multiplier (1.0 = match `texelsPerMeter`, 2.0 =
+   *               double density, 0.5 = half). Only meaningful when top-level
+   *               `texelsPerMeter` is set. Range 0.1–10.
    * - exclude:    if true, mesh is skipped entirely (no UV unwrap, no lightmap).
    *               Excluded meshes still appear in the BVH so they cast shadows
    *               and contribute to GI for other meshes.
-   *
-   * Note: `scaleInLightmap` from the original spec is NOT implemented — xatlas-three
-   * does not expose per-mesh chart weighting in our integration. Use `resolution`
-   * to control quality per mesh.
    */
-  perMesh?: Record<string, { resolution?: number; exclude?: boolean }>;
+  perMesh?: Record<string, { resolution?: number; density?: number; exclude?: boolean }>;
   /**
    * GPU timeout (TDR) protection. The bake auto-tiles each ray-tracing draw
    * call into smaller scissored regions to avoid Windows' ~2s GPU watchdog,
@@ -207,17 +223,42 @@ function validateOptions(opts: LightmapBakerOptions): void {
   if (opts.ao?.distance !== undefined && opts.ao.distance < 0)
     throw new BakeError(`ao.distance must be >= 0, got ${opts.ao.distance}`, 'validation');
 
-  // Validate per-mesh resolution overrides.
+  // Validate top-level density (Phase 1 — density-aware multi-atlas).
+  if (opts.texelsPerMeter !== undefined) {
+    const tpm = opts.texelsPerMeter;
+    if (!Number.isFinite(tpm) || tpm <= 0 || tpm > 1024)
+      throw new BakeError(`texelsPerMeter must be in (0, 1024], got ${tpm}`, 'validation');
+  }
+
+  // Validate per-mesh resolution + density overrides.
   for (const [uuid, override] of Object.entries(opts.perMesh ?? {})) {
     const r = override.resolution;
-    if (r === undefined) continue;
-    if (!Number.isFinite(r) || r < 128 || r > 4096)
-      throw new BakeError(`perMesh[${uuid}].resolution must be 128-4096, got ${r}`, 'validation');
-    if (!isPowerOfTwo(r))
-      throw new BakeError(
-        `perMesh[${uuid}].resolution must be a power of two, got ${r}`,
-        'validation',
+    if (r !== undefined) {
+      if (!Number.isFinite(r) || r < 128 || r > 4096)
+        throw new BakeError(`perMesh[${uuid}].resolution must be 128-4096, got ${r}`, 'validation');
+      if (!isPowerOfTwo(r))
+        throw new BakeError(
+          `perMesh[${uuid}].resolution must be a power of two, got ${r}`,
+          'validation',
+        );
+    }
+    const d = override.density;
+    if (d !== undefined && (!Number.isFinite(d) || d < 0.1 || d > 10))
+      throw new BakeError(`perMesh[${uuid}].density must be in [0.1, 10], got ${d}`, 'validation');
+  }
+
+  // Density mode and per-mesh resolution are mutually exclusive (orthogonal sizing
+  // strategies). When `texelsPerMeter` is set, all atlases share `resolution`;
+  // per-mesh `resolution` overrides are ignored. Surface as a warning, not an error.
+  if (opts.texelsPerMeter !== undefined && import.meta.env.DEV) {
+    const overrides = Object.entries(opts.perMesh ?? {}).filter(
+      ([, o]) => o.resolution !== undefined,
+    );
+    if (overrides.length > 0) {
+      console.warn(
+        `[baker] texelsPerMeter is set; perMesh[].resolution overrides on ${overrides.length} mesh(es) will be ignored — density mode uses one shared resolution.`,
       );
+    }
   }
 
   // Validate timeout-protection overrides (defaults applied later from capabilities).
@@ -426,7 +467,7 @@ export class LightmapBaker {
     gi: Required<GIOptions>;
     ao: Required<AOOptions>;
     refinementOptions: PostProcessOptions;
-    perMesh: Record<string, { resolution?: number; exclude?: boolean }>;
+    perMesh: Record<string, PerMeshOverride>;
     /** Raw user override; resolved against GPU capabilities at bake start. */
     timeoutProtection: TimeoutProtectionOptions | undefined;
   };
@@ -444,6 +485,7 @@ export class LightmapBaker {
       resolution: opts.resolution ?? 1024,
       denoise: opts.denoise ?? true,
       filtering: opts.filtering ?? 'linear',
+      texelsPerMeter: opts.texelsPerMeter ?? 0,
       perMesh: opts.perMesh ?? {},
       light: {
         position: opts.light?.position ?? new Vector3(0, 10, 0),
@@ -532,12 +574,21 @@ export class LightmapBaker {
     ctxState: ContextLossState,
     checkAbort: (phase: BakeErrorPhase) => void,
   ): Promise<LightmapBakeResult> {
-    // Partition meshes into excluded / groups keyed by effective resolution.
-    const { excluded, groups } = partitionMeshes(
-      allMeshes,
-      this.opts.perMesh,
-      this.opts.resolution,
-    );
+    // Partition meshes — density mode if `texelsPerMeter` is set (groups keyed
+    // by atlas index, all sharing `resolution`), else resolution mode (groups
+    // keyed by resolution, one mesh per `perMesh.resolution` override). The
+    // two strategies are orthogonal; validateOptions surfaces a DEV warning
+    // when the caller mixes them.
+    const tpm = this.opts.texelsPerMeter;
+    const partition =
+      tpm > 0
+        ? partitionByDensity(allMeshes, this.opts.perMesh, this.opts.resolution, tpm)
+        : partitionByResolution(allMeshes, this.opts.perMesh, this.opts.resolution);
+    const { excluded, groups } = partition;
+    // In density mode, group keys are atlas indices and ALL groups bake at
+    // `partition.resolution`. In resolution mode, the group key IS the per-group
+    // resolution. The downstream loop uses `groupResolution(key)` to abstract this.
+    const groupResolution = (key: number): number => (tpm > 0 ? partition.resolution : key);
 
     // --- 1. UV unwrap (only non-excluded meshes need UV2) ---
     const tUV0 = performance.now();
@@ -582,7 +633,7 @@ export class LightmapBaker {
 
     // --- 4. Per-group bake ---
     const tB0 = performance.now();
-    const groupResolutions = [...groups.keys()];
+    const groupKeys = [...groups.keys()];
     const groupResults: GroupInternals[] = [];
     const meshLightmaps = new Map<Mesh, Texture>();
     const meshResolutions = new Map<Mesh, number>();
@@ -591,11 +642,12 @@ export class LightmapBaker {
     // (They're kept separate so callers know to handle them differently.)
     void excluded; // intentionally unused beyond BVH; suppress lint
 
-    for (let gi = 0; gi < groupResolutions.length; gi++) {
-      const res = groupResolutions[gi]!;
-      const groupMeshes = groups.get(res)!;
+    for (let gi = 0; gi < groupKeys.length; gi++) {
+      const key = groupKeys[gi]!;
+      const res = groupResolution(key);
+      const groupMeshes = groups.get(key)!;
 
-      hooks.onProgress?.('bake', gi / groupResolutions.length);
+      hooks.onProgress?.('bake', gi / groupKeys.length);
       checkAbort('bake');
 
       const atlas = renderAtlas(this.renderer, groupMeshes, res, true);
@@ -632,7 +684,7 @@ export class LightmapBaker {
         hooks,
         ctxState,
         tp,
-        (p) => hooks.onProgress?.('bake', (gi + p) / groupResolutions.length),
+        (p) => hooks.onProgress?.('bake', (gi + p) / groupKeys.length),
       );
 
       const composite = runComposite(
@@ -687,7 +739,12 @@ export class LightmapBaker {
     hooks.onProgress?.('refine', 1);
     const tR1 = performance.now();
 
-    const totalTexels = groupResolutions.reduce((s, r) => s + r * r, 0);
+    // Sum texels across all groups. In density mode every group bakes at
+    // `partition.resolution`; in resolution mode the key IS the resolution.
+    const totalTexels = groupKeys.reduce((s: number, k: number) => {
+      const r = groupResolution(k);
+      return s + r * r;
+    }, 0);
     const stats: BakeStats = {
       meshCount: bakeMeshes.length,
       texelCount: totalTexels,
@@ -728,37 +785,6 @@ function collectBakeMeshes(scene: Scene | Object3D): Mesh[] {
     if (mats.some((m) => m && 'lightMap' in m)) out.push(mesh);
   });
   return out;
-}
-
-/**
- * Partition meshes into excluded and resolution-keyed groups.
- * Defaults for omitted perMesh entries: { exclude: false, resolution: globalRes }.
- */
-function partitionMeshes(
-  meshes: Mesh[],
-  perMesh: Record<string, { resolution?: number; exclude?: boolean }>,
-  globalRes: number,
-): { excluded: Mesh[]; groups: Map<number, Mesh[]> } {
-  const excluded: Mesh[] = [];
-  const groups = new Map<number, Mesh[]>();
-  for (const m of meshes) {
-    const override = perMesh[m.uuid] ?? {};
-    if (override.exclude === true) {
-      excluded.push(m);
-      continue;
-    }
-    const res = override.resolution ?? globalRes;
-    if (!groups.has(res)) groups.set(res, []);
-    groups.get(res)!.push(m);
-  }
-  // Ensure at least one group (all meshes at globalRes) when no overrides apply.
-  if (groups.size === 0 && excluded.length < meshes.length) {
-    groups.set(
-      globalRes,
-      meshes.filter((m) => !perMesh[m.uuid]?.exclude),
-    );
-  }
-  return { excluded, groups };
 }
 
 function buildRaycastOpts(

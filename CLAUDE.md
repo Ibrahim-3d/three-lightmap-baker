@@ -86,6 +86,46 @@ Visual verification against Cornell Box:
 - Add postprocessing (SSAO, bloom, tone mapping) — they mask bake quality issues
 - Over-engineer — this is a focused library, not an engine
 
+## Workflow Orchestration
+
+### Plan first
+- Any task with 3+ steps or architectural impact: plan mode before edits.
+- If something goes sideways mid-task: STOP, re-plan, don't bash through.
+- Plans live in `.claude/tasks/` as checkable items; mark items as you go.
+- Detailed specs upfront beat ambiguity later.
+
+### Verification before "done"
+Never claim a task complete without proof:
+- `npx tsc --noEmit` clean
+- `build-verifier` green (size delta sane)
+- Visual changes: Cornell Box check (see Testing) — red/green bleed, soft shadow
+- Diff behavior vs. `master` when relevant
+
+Sub-agent summaries describe INTENT, not result. After any worker that wrote
+files: `Read` the changed file or dispatch `build-verifier` to confirm.
+
+### Demand elegance (balanced)
+- Non-trivial change: pause and ask "is there a simpler way?" before shipping.
+- Hacky fix → redo as the elegant solution. "Knowing what I know now,
+  implement it properly."
+- Skip for one-line fixes. Don't over-engineer trivia.
+
+### Autonomous bug fixing
+- Bug report with logs / errors / failing test → just fix it. Don't ask for
+  steps. Point at the failure, resolve it, verify.
+- Root-cause, not Band-Aid (see Core Principles below).
+
+### Self-improvement loop
+- After ANY user correction: append the pattern to `.claude/tasks/lessons.md`
+  with enough context that future-you won't repeat it.
+- At session start: skim `lessons.md` alongside `progress.md` / `docs/`.
+- Lessons stay forever; supersede with new entries, never delete.
+
+### Core principles
+- **Simplicity first** — minimal-impact changes; touch only what's necessary.
+- **No laziness** — find root causes; no temp fixes; senior-dev standards.
+- **Minimal blast radius** — no incidental refactors that introduce new bugs.
+
 ## Sub-agents — Development Workflow
 
 This project uses a fleet of sub-agents in `.claude/agents/` to **offload context
