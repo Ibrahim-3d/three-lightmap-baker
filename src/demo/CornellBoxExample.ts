@@ -269,6 +269,12 @@ export class CornellBoxExample {
     // Frames to accumulate before pausing. Effective samples-per-texel = targetSamples × casts.
     targetSamples: 256,
     bounces: 2,
+    /**
+     * TDR / GPU-watchdog protection. When true, ray-tracing draws are split
+     * into 64×64 scissored tiles per the public-API safeMode default. Slow
+     * but safe on iGPUs / large resolutions. Default false.
+     */
+    safeMode: false,
     filterMode: 'linear',
     directLightEnabled: true,
     indirectLightEnabled: true,
@@ -473,6 +479,13 @@ export class CornellBoxExample {
         this.maybeBake(e);
       });
     bakeFolder.addInput(this.options, 'autoBake', { label: 'Auto-bake' });
+    bakeFolder
+      .addInput(this.options, 'safeMode', { label: 'Safe Mode (TDR)' })
+      .on('change', (e) => {
+        this.options.quality = 'Custom';
+        this.pane.refresh();
+        this.maybeBake(e);
+      });
     bakeFolder.addButton({ title: 'Bake Now' }).on('click', () => this.bake());
 
     const lightFolder = this.pane.addFolder({ title: 'Lighting & GI', expanded: false });
@@ -1169,6 +1182,9 @@ export class CornellBoxExample {
       });
     }
 
+    // Safe mode → 64-texel tiles (TDR-safe). Off → no tiling (single fullscreen draw per sample).
+    const tileSize = this.options.safeMode ? 64 : this.options.lightMapSize;
+
     const baseOpts: Omit<RaycastOptions, 'resolution'> = {
       casts: this.options.casts,
       filterMode: this.options.filterMode === 'linear' ? LinearFilter : NearestFilter,
@@ -1182,12 +1198,14 @@ export class CornellBoxExample {
       materialTextureSize: matTex.side,
       targetSamples: this.options.targetSamples,
       bounces: this.options.bounces,
+      tileSize,
     };
 
     const aoBaseOpts: Omit<AORaycastOptions, 'resolution'> = {
       aoSamples: this.options.aoSamples,
       ambientDistance: this.options.ambientDistance,
       targetSamples: this.options.targetSamples,
+      tileSize,
     };
 
     // --- 5. Per-bin renderAtlas + lightmapper + composite ------------------

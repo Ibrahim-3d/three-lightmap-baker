@@ -68,7 +68,12 @@ export type {
   LightOptions,
   GIOptions,
   AOOptions,
+  TimeoutProtectionOptions,
   BakePhase,
   BakeHooks,
   BakeStats,
 } from './LightmapBaker';
+
+// --- GPU capability detection (Task 08) ---
+export { detectGPUCapabilities, classifyRenderer } from './gpu/Capabilities';
+export type { GPUCapabilities, GPUTier } from './gpu/Capabilities';

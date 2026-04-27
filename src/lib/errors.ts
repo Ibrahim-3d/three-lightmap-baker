@@ -14,7 +14,9 @@ export type BakeErrorPhase =
   | 'bake'
   | 'flood'
   | 'denoise'
-  | 'export';
+  | 'export'
+  | 'context-loss'
+  | 'capability';
 
 export class BakeError extends Error {
   public readonly phase: BakeErrorPhase;

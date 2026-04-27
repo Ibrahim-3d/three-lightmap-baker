@@ -36,7 +36,7 @@
 |---|---|
 | 07 — Multi-light + multi-bounce + production polish (merged) | ✅ Done | Sub-phases 7A–7F shipped Session 8 |
 | 12 — Model import/export (GLB round-trip) | ✅ Done | Wired in demo since pre-S8: GLTFLoader + GLTFExporter + file-picker UI in `CornellBoxExample.ts` |
-| 08 — WebGL timeout protection | ⬜ |
+| 08 — WebGL timeout protection | ✅ Done | Session 10 — scissor tiling + adaptive throttle + context-loss guard + Safe Mode |
 | 10 — Lightmap downscaling | ⬜ |
 | 11 — Light probes (SH) | ⬜ |
 
@@ -542,3 +542,66 @@ A full code-vs-journal reconciliation was performed (audit document at `.claude/
 7. **All RT/texture leaks documented S2–S7 are FIXED as of S8** (commit `9b3b1cc`). All dispose paths verified end-to-end in the audit. Carry-over notes in older session bodies are historical, not current state.
 
 **Next session** — Migration of demo `→` `LightmapBaker.bake()` is now considered higher-risk than initially scoped (9 risk items). The recommended next step is **Task 08 (WebGL TDR / timeout protection on Windows)** — bigger bakes are the more pressing risk surface, and Task 08 doesn't depend on the migration. Migration can follow once R-01 through R-09 each have a clear plan. After Task 08: Tasks 10 (lightmap downscaling) and 11 (SH light probes).
+
+### Session 10 — 2026-04-27
+
+**Task completed** — Task 08 (WebGL TDR / context-loss timeout protection on the public bake path).
+
+**What changed**
+
+| File | Change |
+|---|---|
+| `src/lib/gpu/Capabilities.ts` (NEW, ~140 LOC) | `detectGPUCapabilities(renderer)` — reads `WEBGL_debug_renderer_info`, classifies into `discrete` / `integrated` / `unknown` via `classifyRenderer(str)` (substring match against vendor/family keywords). Returns `{ tier, vendor, renderer, initialTileSize, maxBatchMs, maxFrameMs }`. Discrete → 1024-tile / 500ms; iGPU/unknown → 256-tile / 250ms; safe-mode override forces 64 / 100ms. Logs `[baker] GPU detected: <tier>` (or warning on unknown) under `import.meta.env.DEV`. |
+| `src/lib/lightmap/Lightmapper.ts` | Added `tileSize?` to `RaycastOptions` (default = `resolution` → no tiling, byte-equivalent to pre-T08 behaviour). Internal tile state: `nextTileIndex` and `pendingTileSize` flush at sample boundaries. New `renderOneTile()` does one scissored draw (or one fullscreen draw when `tileSize >= resolution`); `render()` keeps the legacy "advance one full sample" semantics by looping tiles until `sampleCompleted`; new `renderTiled(budgetMs)` advances tiles until budget elapses or done. New `setTileSize(n)` on the returned mapper. Render result extended with `sampleComplete` and `lastDrawMs`. |
+| `src/lib/lightmap/AOMapper.ts` | Mirror of Lightmapper changes — `tileSize?` on `AORaycastOptions`, `renderTiled` / `setTileSize` on the returned mapper, `sampleComplete` / `lastDrawMs` on `AOMapperRender`. |
+| `src/lib/LightmapBaker.ts` | New public `LightmapBakerOptions.timeoutProtection?: { safeMode?, initialTileSize?, maxBatchMs?, maxFrameMs?, autoAdapt? }`. `bake()` calls `detectGPUCapabilities` once and resolves TP options via `resolveTimeoutProtection`. Installs `webglcontextlost` listener on `renderer.domElement` for the duration of the bake; mutable `ContextLossState` is checked by `checkAbort` and the mapper loop. Bake body extracted into private `bakeInternal(...)` so the `try/finally` always releases the listener. New `runMappersWithTimeoutProtection` replaces `runMappersUntilDone` — per-RAF inner work uses `mapper.renderTiled(maxFrameMs)`; tracks an 8-sample RAF-interval ring and routes through `adaptiveTileSize(intervals, currentTileSize, tp)` (USER-AUTHORED policy slot, marked `TODO(user)`). On context loss, rejects with `BakeError('webgl context lost during bake', 'context-loss')`. `rebakeAOForGroup` left on the legacy path — comment notes the deliberate scope (AO-only re-bakes are short-lived and surface context loss as a draw-call failure). |
+| `src/lib/errors.ts` | `BakeErrorPhase` extended with `'context-loss'` and `'capability'`. |
+| `src/lib/index.ts` | Exports `TimeoutProtectionOptions`, `detectGPUCapabilities`, `classifyRenderer`, `GPUCapabilities`, `GPUTier`. |
+| `src/demo/CornellBoxExample.ts` | New `safeMode: false` option. "Safe Mode (TDR)" checkbox in the Bake folder; flips to `Custom` quality, triggers maybeBake on toggle. Demo bake path computes `tileSize = safeMode ? 64 : lightMapSize` and passes it through both `RaycastOptions` and `AORaycastOptions`. The demo's per-RAF `render()` (one full sample) is unchanged — it just becomes internally tiled when safe mode is on. |
+
+**Pipeline shape**
+
+```
+Per RAF tick (public LightmapBaker.bake path):
+  1. Check abort + ctxState.lost → reject if either.
+  2. Push (now - lastRaf) into 8-deep ring.
+  3. If autoAdapt: adaptiveTileSize(ring, current) → maybe shrink → setTileSize(both mappers).
+  4. lightmapper.renderTiled(maxFrameMs)   ← does as many tiles as fit in budget
+     aoMapper.renderTiled(maxFrameMs)      ← same
+  5. onProgress(min(samples) / target).
+  6. If both done → resolve. Else → schedule next RAF.
+
+Per renderTile() inside Lightmapper / AOMapper:
+  setRenderTarget(rt); set scissor(x, y, w, h); enable scissor test;
+  renderer.render(quad, cam);             ← scissor masks fragments to one tile
+  restore scissor + RT + autoClear.
+  nextTileIndex++. On final tile of grid: totalSamples++, commit pendingTileSize.
+```
+
+**Decisions (and why)**
+
+1. **Scissor tiling, not multiple smaller quads.** A scissored fullscreen quad is mathematically identical to N² smaller quads — every fragment is independent and the additive blend with `opacity = 1/(n+1)` is order-invariant. Scissor adds zero shader / vertex / uniform changes. See D-012 below.
+2. **`tileSize` change deferred to sample boundary.** Mid-sample tile-grid changes would mix old and new tile coverage of a single sample. Pending changes commit when `nextTileIndex == 0`.
+3. **`render()` keeps "one full sample" semantics.** Demo's existing `g.lightmapper.render()` per-RAF loop continues to work without modification — `render()` loops tiles internally until `sampleComplete`. Only orchestrators that *want* mid-sample yield call `renderTiled(budgetMs)`. Backward compatible.
+4. **Default `tileSize = resolution`** (no tiling) when not specified. Public `LightmapBaker.bake` overrides this via capability detection; demo overrides only on Safe Mode toggle. Existing demo bakes are bit-identical to S9.
+5. **RAF-interval observation, not GPU timer queries.** `EXT_disjoint_timer_query_webgl2` is well-supported but adds boilerplate; `performance.now()` around `gl.draw()` measures only command-buffer build (WebGL is async). Stretched RAFs are a clean proxy for GPU back-pressure and require no extension.
+6. **Context-loss listener on the canvas, not on the GL context.** `webglcontextlost` is a DOM event on `<canvas>`; the listener mutates a shared `ContextLossState` flag that the mapper loop polls before scheduling the next tick. `e.preventDefault()` opts in to recovery semantics (we don't actually recover — we reject the bake — but it's harmless and idiomatic).
+7. **No auto-retry on context loss.** Per task spec ("Do NOT auto-retry"). Caller decides whether to re-call `bake()` (which would build a fresh BVH + atlas etc. — expensive). Reloading the page is often the cleanest path.
+8. **Adaptive policy is user-authored, not framework-prescribed.** `adaptiveTileSize` carries a starter implementation but the function signature, defaults, and `TODO(user)` block are explicit invitation points: the threshold, magnitude, and hysteresis behaviours are UX calls, not measurable optima.
+9. **AO-only re-bake left on the legacy single-render-per-RAF path.** AO re-bakes are short (~5–15% of a full bake's cost) and a context loss during one would be caught at the next renderer call; threading the canvas listener through `LightmapBakeResult.rebakeAO` was out of scope.
+
+**Verification**
+
+- `npx tsc --noEmit` clean.
+- `node_modules/.bin/eslint src/lib/gpu/Capabilities.ts src/lib/lightmap/{Lightmapper,AOMapper}.ts src/lib/LightmapBaker.ts src/demo/CornellBoxExample.ts` → 0 errors, 5 informational warnings (pre-existing `!` assertions; none introduced).
+- `npm run build` (Vite) → green at 886.07 KiB (Δ +2.37 KiB vs S9 baseline 883.70 KiB; consistent with the new Capabilities.ts module).
+- Behavioural verification (live bake): pending — needs a test on iGPU at 2048px / 512 samples per the success criteria. The Cornell demo at default settings is byte-equivalent to S9 (tiling off by default); Safe Mode in the demo can be flipped to verify scissored draws produce identical output.
+
+**Carry-overs / not changed**
+
+- Bake output is bit-identical to S9 when `tileSize >= resolution` (default). Cross-check Cornell red/green bleed unchanged.
+- Demo's bake pipeline still doesn't consume the public `LightmapBaker.bake()` (Migration Risk Register R-01..R-09 unchanged).
+- `rebakeAOForGroup` does not install context-loss recovery (deferred — see Decision 9).
+- Behavioural test on a known-TDR-prone iGPU is the natural next verification step; deferred to user environment.
+
+**Next session** — User-environment validation of Task 08: bake at 2048px / 512 samples on a mid-range laptop iGPU with `safeMode: true` and confirm completion without context loss. After that: Task 10 (lightmap downscaling) and Task 11 (SH light probes).

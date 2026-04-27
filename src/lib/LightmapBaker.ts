@@ -22,6 +22,7 @@ import { mergeGeometry, extractPerTriangleMaterials } from './utils/GeometryUtil
 import { buildMaterialTextures } from './utils/MaterialTextures';
 import { exportLightmap, ExportFormat } from './utils/exportLightmap';
 import { BakeError, BakeErrorPhase } from './errors';
+import { detectGPUCapabilities, GPUCapabilities } from './gpu/Capabilities';
 
 /**
  * One-call lightmap baker — wraps the lib primitives behind the Task 06 spec API.
@@ -93,6 +94,39 @@ export type LightmapBakerOptions = {
    * to control quality per mesh.
    */
   perMesh?: Record<string, { resolution?: number; exclude?: boolean }>;
+  /**
+   * GPU timeout (TDR) protection. The bake auto-tiles each ray-tracing draw
+   * call into smaller scissored regions to avoid Windows' ~2s GPU watchdog,
+   * and adapts the tile size if RAFs stretch under load.
+   *
+   * Defaults are derived from `detectGPUCapabilities()` at bake start.
+   * Override only if you need a specific tradeoff.
+   */
+  timeoutProtection?: TimeoutProtectionOptions;
+};
+
+export type TimeoutProtectionOptions = {
+  /**
+   * Smallest possible tile (64) and tightest budgets. Use on hardware known
+   * to TDR (older Intel iGPU, low-end mobile). Slow but safe. Default false.
+   */
+  safeMode?: boolean;
+  /**
+   * Initial per-draw tile side in texels. Defaults: discrete=1024, iGPU=256,
+   * unknown=256, safeMode=64. Pass `>= resolution` to disable tiling entirely.
+   */
+  initialTileSize?: number;
+  /**
+   * Soft upper bound on per-tile wall time before adaptive shrinking fires.
+   * Default 250–500 ms depending on tier; safeMode forces 100 ms.
+   */
+  maxBatchMs?: number;
+  /**
+   * Per-frame work budget. Mappers yield once this is exceeded. Default 16ms.
+   */
+  maxFrameMs?: number;
+  /** Enable RAF-interval-based adaptive tile shrinking. Default true. */
+  autoAdapt?: boolean;
 };
 
 export type LightOptions = {
@@ -185,6 +219,45 @@ function validateOptions(opts: LightmapBakerOptions): void {
         'validation',
       );
   }
+
+  // Validate timeout-protection overrides (defaults applied later from capabilities).
+  const tp = opts.timeoutProtection;
+  if (tp?.initialTileSize !== undefined) {
+    const t = tp.initialTileSize;
+    if (!Number.isFinite(t) || t < 16 || t > 4096)
+      throw new BakeError(
+        `timeoutProtection.initialTileSize must be 16-4096, got ${t}`,
+        'validation',
+      );
+  }
+  if (tp?.maxBatchMs !== undefined && (!Number.isFinite(tp.maxBatchMs) || tp.maxBatchMs <= 0))
+    throw new BakeError(
+      `timeoutProtection.maxBatchMs must be > 0, got ${tp.maxBatchMs}`,
+      'validation',
+    );
+  if (tp?.maxFrameMs !== undefined && (!Number.isFinite(tp.maxFrameMs) || tp.maxFrameMs <= 0))
+    throw new BakeError(
+      `timeoutProtection.maxFrameMs must be > 0, got ${tp.maxFrameMs}`,
+      'validation',
+    );
+}
+
+/**
+ * Resolve timeout-protection settings from user opts + detected GPU capabilities.
+ * Pure function for testability — no side effects beyond the capability log.
+ */
+function resolveTimeoutProtection(
+  user: TimeoutProtectionOptions | undefined,
+  caps: GPUCapabilities,
+): Required<TimeoutProtectionOptions> {
+  const safe = user?.safeMode ?? false;
+  return {
+    safeMode: safe,
+    initialTileSize: user?.initialTileSize ?? (safe ? 64 : caps.initialTileSize),
+    maxBatchMs: user?.maxBatchMs ?? (safe ? 100 : caps.maxBatchMs),
+    maxFrameMs: user?.maxFrameMs ?? caps.maxFrameMs,
+    autoAdapt: user?.autoAdapt ?? true,
+  };
 }
 
 const DEFAULT_REFINEMENT: PostProcessOptions = {
@@ -344,13 +417,18 @@ export class LightmapBakeResult {
 
 export class LightmapBaker {
   private opts: Required<
-    Omit<LightmapBakerOptions, 'light' | 'gi' | 'ao' | 'refinementOptions' | 'perMesh'>
+    Omit<
+      LightmapBakerOptions,
+      'light' | 'gi' | 'ao' | 'refinementOptions' | 'perMesh' | 'timeoutProtection'
+    >
   > & {
     light: Required<LightOptions>;
     gi: Required<GIOptions>;
     ao: Required<AOOptions>;
     refinementOptions: PostProcessOptions;
     perMesh: Record<string, { resolution?: number; exclude?: boolean }>;
+    /** Raw user override; resolved against GPU capabilities at bake start. */
+    timeoutProtection: TimeoutProtectionOptions | undefined;
   };
 
   constructor(
@@ -392,6 +470,7 @@ export class LightmapBaker {
         ...(opts.refinementOptions ?? {}),
         denoiseEnabled: opts.denoise ?? DEFAULT_REFINEMENT.denoiseEnabled,
       },
+      timeoutProtection: opts.timeoutProtection,
     };
   }
 
@@ -412,12 +491,47 @@ export class LightmapBaker {
         'validation',
       );
 
+    // Detect GPU + resolve timeout-protection settings.
+    const caps = detectGPUCapabilities(this.renderer);
+    const tp = resolveTimeoutProtection(this.opts.timeoutProtection, caps);
+
+    // Context-loss guard: shared mutable flag flipped by the canvas listener.
+    // Each tick of the mapper loop checks it before scheduling new work.
+    const ctxState: ContextLossState = { lost: false };
+    const canvas = this.renderer.domElement;
+    const onLost = (e: Event): void => {
+      e.preventDefault(); // Tells the browser we'll attempt recovery (we don't, but it's harmless).
+      ctxState.lost = true;
+      console.error('[baker] webglcontextlost during bake — cancelling');
+    };
+    canvas.addEventListener('webglcontextlost', onLost as EventListener, false);
+    const releaseContextGuard = (): void => {
+      canvas.removeEventListener('webglcontextlost', onLost as EventListener, false);
+    };
+
     scene.updateMatrixWorld(true);
 
     const checkAbort = (phase: BakeErrorPhase): void => {
       if (hooks.signal?.aborted) throw new BakeError('aborted by signal', phase);
+      if (ctxState.lost) throw new BakeError('webgl context lost', 'context-loss');
     };
 
+    try {
+      return await this.bakeInternal(allMeshes, scene, hooks, t0, tp, ctxState, checkAbort);
+    } finally {
+      releaseContextGuard();
+    }
+  }
+
+  private async bakeInternal(
+    allMeshes: Mesh[],
+    scene: Scene | Object3D,
+    hooks: BakeHooks,
+    t0: number,
+    tp: Required<TimeoutProtectionOptions>,
+    ctxState: ContextLossState,
+    checkAbort: (phase: BakeErrorPhase) => void,
+  ): Promise<LightmapBakeResult> {
     // Partition meshes into excluded / groups keyed by effective resolution.
     const { excluded, groups } = partitionMeshes(
       allMeshes,
@@ -492,8 +606,9 @@ export class LightmapBaker {
         sceneLights,
         skyColor,
         matTex,
+        tp,
       );
-      const aoOpts: AORaycastOptions = buildAORaycastOpts(this.opts, res);
+      const aoOpts: AORaycastOptions = buildAORaycastOpts(this.opts, res, tp);
 
       const lightmapper = generateLightmapper(
         this.renderer,
@@ -510,8 +625,14 @@ export class LightmapBaker {
         aoOpts,
       );
 
-      await runMappersUntilDone(lightmapper, aoMapper, this.opts.samples, hooks, (p) =>
-        hooks.onProgress?.('bake', (gi + p) / groupResolutions.length),
+      await runMappersWithTimeoutProtection(
+        lightmapper,
+        aoMapper,
+        this.opts.samples,
+        hooks,
+        ctxState,
+        tp,
+        (p) => hooks.onProgress?.('bake', (gi + p) / groupResolutions.length),
       );
 
       const composite = runComposite(
@@ -646,6 +767,7 @@ function buildRaycastOpts(
   lights: PackedLight[],
   skyColor: Color,
   matTex: { albedoTexture: Texture; emissiveTexture: Texture; side: number },
+  tp: Required<TimeoutProtectionOptions>,
 ): RaycastOptions {
   return {
     resolution,
@@ -661,39 +783,135 @@ function buildRaycastOpts(
     materialTextureSize: matTex.side,
     targetSamples: opts.samples,
     bounces: opts.bounces,
+    tileSize: tp.initialTileSize,
   };
 }
 
 /** Build the AOMapper options for a group at the given resolution. */
-function buildAORaycastOpts(opts: LightmapBaker['opts'], resolution: number): AORaycastOptions {
+function buildAORaycastOpts(
+  opts: LightmapBaker['opts'],
+  resolution: number,
+  tp: Required<TimeoutProtectionOptions>,
+): AORaycastOptions {
   return {
     resolution,
     aoSamples: opts.ao.samples,
     ambientDistance: opts.ao.distance,
     targetSamples: opts.samples,
+    tileSize: tp.initialTileSize,
   };
 }
 
+/** Mutable state shared between the canvas listener and the mapper loop. */
+type ContextLossState = { lost: boolean };
+
 /**
- * Drive bounce + AO mappers in lockstep until both report done. Each frame
- * advances each accumulator by one sample. Progress reflects whichever pass
- * is further behind, so the user-visible progress bar never jumps.
+ * Decide whether to shrink the tile size based on recent RAF intervals.
+ *
+ * Called once per RAF tick. Receives:
+ *   - `intervals`: ring buffer of the last few RAF deltas (ms, newest last)
+ *   - `currentTileSize`: tile size in effect right now
+ *   - `tp.maxFrameMs`: the per-frame budget the orchestrator targets
+ *   - `tp.maxBatchMs`: the per-tile soft ceiling
+ *
+ * Returns the next tile size. Return `currentTileSize` to leave it alone, or
+ * a smaller power-of-two-ish value to trigger an adaptive shrink. The mapper
+ * will commit it at the next sample boundary.
+ *
+ * Constraints:
+ *   - Never grow above `currentTileSize` (we don't have RAF data on the
+ *     unloaded GPU; growing risks oscillation and TDR).
+ *   - Floor at `MIN_TILE_SIZE` (64). Below that, scissor overhead dominates.
+ *   - Be conservative — false positives just slow the bake; false negatives
+ *     can TDR the user's machine.
+ *
+ * @example
+ *   adaptiveTileSize([18, 19, 17, 20], 256, tp) // → 256 (steady)
+ *   adaptiveTileSize([45, 38, 50, 42], 256, tp) // → 128 (3+ stretched RAFs)
  */
-function runMappersUntilDone(
+const MIN_TILE_SIZE = 64;
+function adaptiveTileSize(
+  intervals: number[],
+  currentTileSize: number,
+  tp: Required<TimeoutProtectionOptions>,
+): number {
+  // TODO(user): Implement the adaptive throttling policy. ~5–10 lines.
+  //
+  // The signal: if recent RAF intervals are much longer than `tp.maxFrameMs`,
+  // the GPU is the bottleneck — shrink the tile so each draw is smaller.
+  //
+  // Suggested heuristic (feel free to tune):
+  //   - If we don't have at least 4 samples yet, return currentTileSize.
+  //   - Count how many of the last 4 intervals exceeded `tp.maxFrameMs * 1.5`.
+  //   - If 3 or more did, halve currentTileSize (Math.max(MIN_TILE_SIZE, ...)).
+  //   - Otherwise return currentTileSize.
+  //
+  // Why "3 of last 4" not "1 of last 4": single-RAF spikes happen for
+  // unrelated reasons (GC, OS scheduler, browser layout). We only want to
+  // react to sustained pressure.
+  //
+  // Why halve, not subtract: tile work scales with side² — halving the side
+  // quarters the per-tile cost. Linear shrinking would barely help on the
+  // first iteration.
+  //
+  // Why floor at MIN_TILE_SIZE: each tile incurs ~10–100µs of CPU/driver
+  // overhead per draw. At 64x64 on a 1024² lightmap that's already 256 draws
+  // per sample — going smaller hurts more than it helps.
+  if (intervals.length < 4) return currentTileSize;
+  const lookback = intervals.slice(-4);
+  const overBudget = lookback.filter((i) => i > tp.maxFrameMs * 1.5).length;
+  if (overBudget >= 3) return Math.max(MIN_TILE_SIZE, currentTileSize >> 1);
+  return currentTileSize;
+}
+
+/**
+ * Drive bounce + AO mappers with timeout protection: each RAF runs
+ * `renderTiled(maxFrameMs)` on both, optionally shrinks tile size when RAFs
+ * stretch under load, and rejects with a `'context-loss'` BakeError if the
+ * canvas reports webglcontextlost mid-bake.
+ */
+function runMappersWithTimeoutProtection(
   lightmapper: Lightmapper,
   aoMapper: AOMapper,
   targetSamples: number,
   hooks: BakeHooks,
+  ctxState: ContextLossState,
+  tp: Required<TimeoutProtectionOptions>,
   onProgress: (p: number) => void,
 ): Promise<void> {
   return new Promise<void>((resolve, reject) => {
+    const intervals: number[] = [];
+    let lastRaf = performance.now();
+    let tileSize = tp.initialTileSize;
+
     const tick = (): void => {
       if (hooks.signal?.aborted) {
         reject(new BakeError('aborted by signal', 'bake'));
         return;
       }
-      const lr = lightmapper.render();
-      const ar = aoMapper.render();
+      if (ctxState.lost) {
+        reject(new BakeError('webgl context lost during bake', 'context-loss'));
+        return;
+      }
+
+      const now = performance.now();
+      intervals.push(now - lastRaf);
+      if (intervals.length > 8) intervals.shift();
+      lastRaf = now;
+
+      if (tp.autoAdapt) {
+        const next = adaptiveTileSize(intervals, tileSize, tp);
+        if (next !== tileSize) {
+          console.warn(`[baker] adaptive throttle: tileSize ${tileSize} → ${next}`);
+          tileSize = next;
+          lightmapper.setTileSize(tileSize);
+          aoMapper.setTileSize(tileSize);
+          intervals.length = 0; // reset history after a change
+        }
+      }
+
+      const lr = lightmapper.renderTiled(tp.maxFrameMs);
+      const ar = aoMapper.renderTiled(tp.maxFrameMs);
       const minSamples = Math.min(lr.samples, ar.samples);
       onProgress(targetSamples > 0 ? minSamples / targetSamples : 1);
       if (lr.done && ar.done) {
@@ -729,6 +947,10 @@ function rebakeAOForGroup(
         reject(new BakeError('aborted by signal', 'bake'));
         return;
       }
+      // AO-only re-bake doesn't install its own context-loss guard — the
+      // caller (`LightmapBakeResult.rebakeAO`) is short enough that a lost
+      // context will surface as a draw-call failure on the next renderer
+      // call. Adding one would require threading the canvas through.
       const r = newAO.render();
       onProgress(aoOpts.targetSamples > 0 ? r.samples / aoOpts.targetSamples : 1);
       if (r.done) {

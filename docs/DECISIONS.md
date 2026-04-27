@@ -130,6 +130,25 @@ Every non-trivial technical decision is recorded here. Format:
   - Make it a uniform with default 1.0 (= identity): acceptable future work. Out of scope right now.
 - **Consequences:** Output is NOT physically calibrated in absolute units. Quantitative comparisons between this baker's output and ground truth (Mitsuba, PBRT) must account for the curve. Visual comparison against other browser bakers is meaningless without normalising both sides through the same curve. The bias is consistent across direct, indirect, and AO channels (all flow through the composite), so relative ratios within an output are preserved.
 
+## D-012: TDR / GPU-watchdog protection via scissor tiling, not resolution downscaling
+
+- **Date:** 2026-04-27
+- **Status:** accepted
+- **Context:** Task 08 — bakes at 2048² / 512 samples (Final preset) issue ~80M+ ray traversals in a single `gl.draw()` call. Windows' default GPU watchdog (TDR) is ~2s; iGPUs and low-end discrete cards routinely exceed it. The bake must scale to that workload without crashing the user's GPU.
+- **Decision:** Split each ray-tracing draw into N×N **scissored tiles** (default 64×64 in safe mode, 256×256 on iGPUs, 1024×1024 / unlimited on discrete GPUs). Each tile is a separate `gl.draw()` of the same fullscreen quad with `gl.scissor` masking output to a sub-rectangle. The mapper's progressive accumulator (additive blend with `opacity = 1/(n+1)`) is order-invariant, so tiled output is bit-identical to single-draw output.
+- **Alternatives considered:**
+  - **Resolution downscaling** (smaller lightmap when GPU is weak): rejected — permanent quality loss; user would see blurrier output as a side-effect of hardware choice. The user explicitly raised this concern and confirmed tiling is the correct approach.
+  - **GPU timer queries** (`EXT_disjoint_timer_query_webgl2`) for batch-time measurement: rejected — adds extension boilerplate and per-frame query lifecycle for a signal we get for free from RAF-interval observation. WebGL is async; CPU `performance.now()` around `gl.draw()` measures command-buffer build, not GPU work, so a stretched RAF is a cleaner proxy for GPU back-pressure.
+  - **Multiple smaller quads** instead of scissored fullscreen quads: rejected — equivalent output, more vertex/uniform plumbing, no benefit.
+  - **Auto-retry on context loss**: rejected per task spec. Reloading the page is the cleanest recovery; auto-retry on a corrupt context risks deeper failure modes.
+- **Consequences:**
+  - Bake output is bit-identical to pre-T08 when `tileSize >= resolution` (the default for non-tiled paths). Existing reference images and demo behaviour unchanged.
+  - At default `tileSize=256` on iGPU, a 1024² bake issues 16 draw calls per sample × samples × bounces; per-draw GPU work is ~1/16 of single-draw, well below TDR watchdog.
+  - Per-tile CPU/driver overhead is ~10–100µs/draw — negligible vs the GPU shader work, but the floor on tile size (`MIN_TILE_SIZE = 64`) prevents this from dominating at extreme tiling.
+  - Public API surface: `LightmapBakerOptions.timeoutProtection?: { safeMode?, initialTileSize?, maxBatchMs?, maxFrameMs?, autoAdapt? }`.
+  - New `BakeError` phase `'context-loss'` is thrown if the canvas reports `webglcontextlost` mid-bake.
+  - `adaptiveTileSize(intervals, current, tp)` is a user-tunable policy slot — the framework supplies a starter (3-of-last-4 RAFs over 1.5× budget → halve, no growback) but the function is explicitly marked `TODO(user)` because the threshold/magnitude/hysteresis trade-offs are UX calls.
+
 ## D-009: Texel density as a material-swap layer (not a lightmap-overlay layer)
 
 - **Date:** 2026-04-26
