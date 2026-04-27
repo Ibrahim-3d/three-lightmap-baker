@@ -44,7 +44,7 @@
 
 | Item | Status | Notes |
 |---|---|---|
-| Demo → public `LightmapBaker.bake()` migration | ⬜ | Demo runs its own `bake()` at `CornellBoxExample.ts:1067`. **9 demo-only features must be preserved** — see "Migration Risk Register" below before touching this. |
+| Demo → public `LightmapBaker.bake()` migration | 🟨 In progress | **Phases 1, 2, 3a done** (`544b958`, `d4e9983`, `8472eb8`). Public API now has everything 3b needs. Phase 3b (the actual demo rewrite) and Phase 4 (cleanup) still pending. See Session 11 below. |
 | AO `samples` separate from indirect ray budget | ✅ Done | Session 9 — AO now lives in its own `AOMapper` / `AOMaterial`. |
 
 ### Migration Risk Register — features at risk if demo bake path is replaced naively
@@ -605,3 +605,81 @@ Per renderTile() inside Lightmapper / AOMapper:
 - Behavioural test on a known-TDR-prone iGPU is the natural next verification step; deferred to user environment.
 
 **Next session** — User-environment validation of Task 08: bake at 2048px / 512 samples on a mid-range laptop iGPU with `safeMode: true` and confirm completion without context loss. After that: Task 10 (lightmap downscaling) and Task 11 (SH light probes).
+
+### Session 11 — 2026-04-27
+
+**Tasks completed** — Migration Phases 1, 2, 3a (public API foundation for the demo→public bake migration). Phase 3b (the actual demo rewrite) and Phase 4 (cleanup) deferred.
+
+**Why this session split** — User pushed for "migrate now so future work lands in the right place" rather than building Tasks 10/11 inside the demo and porting later. Strategically correct. But the audit (`.claude/AUDIT-2026-04-27.md`) had identified 9 demo-only features at risk if the migration is naive. So the migration was scoped into 4 atomic phases, each leaving a working demo at every commit:
+
+| Phase | Goal | Status | Commit |
+|---|---|---|---|
+| 1 | Promote `density` + density-aware multi-atlas to public API | ✅ Done | `544b958` |
+| 2 | Add `BakeHooks.onFrame` + per-RAF composite refresh (live preview) | ✅ Done | `d4e9983` |
+| 3a | Expose `BakeGroupView` / `result.groups` / `getGroupForMesh` | ✅ Done | `8472eb8` |
+| 3b | Rewire demo's `bake()` to call `LightmapBaker.bake()` | ⬜ Deferred | — |
+| 4 | Cleanup — delete dead orchestration helpers, legacy files | ⬜ Deferred | — |
+
+**What changed (Phases 1, 2, 3a)**
+
+| File | Change |
+|---|---|
+| `src/lib/utils/Partition.ts` (NEW, ~110 LOC) | `partitionByResolution` (extracted from LightmapBaker.ts; existing logic unchanged) + `partitionByDensity` (new — uses `binPackMeshes` to assign meshes to atlases by world-space surface area × `texelsPerMeter²` × per-mesh `density`). Per the 300-line modularity rule, lives in its own module. |
+| `src/lib/LightmapBaker.ts` | (1) `LightmapBakerOptions.texelsPerMeter` (top-level) + `perMesh[uuid].density` added. (2) `validateOptions` enforces `texelsPerMeter ∈ (0, 1024]`, `density ∈ [0.1, 10]`. (3) Density-mode + per-mesh-resolution mutual-exclusion DEV warning. (4) `bakeInternal` dispatches to `partitionByDensity` when `texelsPerMeter > 0` else `partitionByResolution` — both return the same `{ excluded, groups, resolution }` shape with a `groupResolution(key)` helper hiding the key-semantics difference. (5) New `BakeFrameInfo` type + `BakeHooks.onFrame` callback. (6) Composite is now created BEFORE the mappers loop so its texture exists during accumulation; `runMappersWithTimeoutProtection` calls `composite.refresh()` per-RAF then fires `onFrame` with `{ groupIndex, totalGroups, bounceSamples, aoSamples, targetSamples, done, compositeTexture, directTexture, indirectTexture, aoTexture }`. (7) New `BakeGroupView` type + `LightmapBakeResult.groups: ReadonlyArray<BakeGroupView>` + `LightmapBakeResult.getGroupForMesh(mesh): BakeGroupView \| null` — exposes per-group { meshes, resolution, textures: { direct, indirect, ao, composite, refinement, position, normal } }. (8) `GroupInternals` now stores `meshes: Mesh[]` so the public view assembles cheaply. |
+| `src/lib/index.ts` | Exports `BakeFrameInfo` and `BakeGroupView` types. |
+| `docs/DECISIONS.md` | D-013 — density mode and per-mesh resolution as orthogonal sizing strategies, mutually exclusive within one bake. |
+
+**Pipeline shape after Phases 1–3a**
+
+```
+LightmapBaker.bake() now:
+  1. validateOptions (samples, casts, bounces, resolution, ao, texelsPerMeter, density, perMesh, timeoutProtection)
+  2. detectGPUCapabilities + resolveTimeoutProtection
+  3. install webglcontextlost listener
+  4. partition meshes:
+     - density mode (texelsPerMeter > 0): binPackMeshes → atlases keyed by atlasIdx
+     - resolution mode: per-mesh resolution overrides → groups keyed by resolution
+  5. uv-unwrap (xatlas), BVH build, per-tri material textures
+  6. for each group:
+     a. renderAtlas (positionTex + normalTex)
+     b. generateLightmapper + generateAOMapper
+     c. runComposite (created EARLY — texture exists during accumulation)
+     d. runMappersWithTimeoutProtection — per RAF: tile-budget render, composite.refresh, onFrame
+     e. runPostProcess (refinement, optional)
+  7. resolve LightmapBakeResult { lightmaps, groups, refreshAO, rebakeAO, dispose, ... }
+
+Phase 3a additions to LightmapBakeResult:
+  result.groups: ReadonlyArray<BakeGroupView>
+  result.getGroupForMesh(mesh): BakeGroupView | null
+```
+
+**Decisions made (and why)**
+
+1. **Density and per-mesh resolution are orthogonal.** D-013. Combining them in one bake would require the bin-packer to handle mixed atlas sizes; not implemented because no caller exercises that today. DEV warning surfaces caller misuse without throwing.
+2. **`onFrame` carries STABLE texture refs.** The textures inside `BakeFrameInfo` are the same object every frame — Three.js sees content updates automatically. Documented in the type. Future refactors must preserve this contract.
+3. **Composite created before mappers loop.** Cost-neutral (same RT allocation) but enables live preview without exposing intermediate refresh calls. The existing post-mapper `composite.refresh()` is gone (replaced by per-RAF refresh inside the run loop).
+4. **`BakeGroupView.textures` exposes raw channels.** The demo's 11-layer system (Direct / Indirect / AO / Position / Normal / Combined Refined / etc.) needs per-channel access. Today only post-composite was public via `lightmaps`. Phase 3a fixes the asymmetry.
+5. **Phase 3b stopped at the planning boundary.** A 400-LOC rewrite of a 1760-line demo is appropriately-sized for a sub-agent (per CLAUDE.md dispatch rules); inline rewrite risks losing demo-only features without realizing it. Sub-agent dispatch was attempted in this session but hit the org's monthly usage cap. Phase 3b held until either fresh dispatch budget is available or the user explicitly requests inline execution.
+
+**Verification**
+
+- `npm run check`: 0 errors (47 informational warnings, all pre-existing).
+- `npm run build`: green.
+- All three commits build and typecheck cleanly individually.
+- Demo behavior unchanged (Phases 1–3a are purely additive to the public API; the demo's own bake() still runs untouched).
+
+**Carry-overs / not changed**
+
+- **Migration is in flight, not done.** Status table updated to 🟨 In progress. The 9-item Migration Risk Register at the top is the acceptance checklist for Phase 3b.
+- Phase 3b plan (for whoever picks it up):
+  - Add `private bakeResult: LightmapBakeResult | null` field; replaces `bakeGroups[]`.
+  - Replace demo's local `bake()` orchestration with one call to `LightmapBaker.bake()`.
+  - Drive live preview / progress / FPS via the new `BakeHooks.onFrame`.
+  - Promote `secondaryLight*` to a real `THREE.DirectionalLight` in the scene (R-03).
+  - Delegate `rebakeAO` to `result.rebakeAO()` (R-04 — drop the demo's private rebakeAO).
+  - Mount per-channel layer textures via `result.groups[gi].textures.{direct, indirect, ao, position, normal, refinement}` (R-08).
+  - KEEP in demo: TexelDensityMaterial cache (R-06), manual rerunnable refinement buttons (R-07), `fitCameraAndLightToScene` (R-09).
+- Phase 4 (cleanup): delete `src/demo/legacy/LightBakerExample.ts`; remove dead helper functions in the demo; trim unused imports.
+- Behavioural test on iGPU for Task 08 still deferred to user environment.
+
+**Next session** — Phase 3b (preferred via sub-agent dispatch when budget refreshes; or via the briefing in this session if the user accepts the inline-rewrite risk). After 3b: Phase 4 cleanup, then Task 10 (lightmap downscaling) and Task 11 (SH light probes).
