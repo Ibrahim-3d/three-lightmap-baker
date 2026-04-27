@@ -381,6 +381,20 @@ export type BakeGroupView = {
   readonly meshes: ReadonlyArray<Mesh>;
   /** Lightmap side length for every mesh in this group. */
   readonly resolution: number;
+  /**
+   * Live bounce mapper instance for this group. Read-only handle —
+   * lifetime is owned by the result; do NOT call `.dispose()`. Useful for
+   * advanced callers that want to drive accumulation per-RAF or introspect
+   * per-group sample counts (`textures` for direct/indirect refs, `setTileSize`,
+   * `renderTiled`).
+   */
+  readonly lightmapper: Lightmapper;
+  /**
+   * Live AO mapper instance for this group. Read-only handle — lifetime
+   * is owned by the result; do NOT call `.dispose()`. Mirrors `lightmapper`
+   * for the AO pass.
+   */
+  readonly aoMapper: AOMapper;
   readonly textures: {
     /** Direct lighting accumulator (raw, pre-composite). */
     direct: Texture;
@@ -424,6 +438,16 @@ export class LightmapBakeResult {
   }
 
   /**
+   * Live BVH used by every group's mappers — covers the FULL bake set
+   * (including excluded meshes, since they cast shadows / contribute GI).
+   * Read-only handle; lifetime is owned by the result. Useful for advanced
+   * callers that want to reuse the BVH for their own ray queries.
+   */
+  get bvh(): MeshBVH {
+    return this.internals.bvh;
+  }
+
+  /**
    * Public per-group view — every texture produced by every group's bake.
    * Use this for advanced layer mounting (debug visualizations of Direct,
    * Indirect, AO, Position, Normal channels), multi-atlas viewers, or
@@ -438,6 +462,8 @@ export class LightmapBakeResult {
     return this.internals.groups.map((g) => ({
       meshes: g.meshes as ReadonlyArray<Mesh>,
       resolution: g.resolution,
+      lightmapper: g.lightmapper,
+      aoMapper: g.aoMapper,
       textures: {
         direct: g.lightmapper.textures.direct,
         indirect: g.lightmapper.textures.indirect,
@@ -462,6 +488,8 @@ export class LightmapBakeResult {
         return {
           meshes: g.meshes as ReadonlyArray<Mesh>,
           resolution: g.resolution,
+          lightmapper: g.lightmapper,
+          aoMapper: g.aoMapper,
           textures: {
             direct: g.lightmapper.textures.direct,
             indirect: g.lightmapper.textures.indirect,
@@ -561,8 +589,15 @@ export class LightmapBakeResult {
         ambientDistance: opts.distance,
         targetSamples: opts.targetSamples,
       };
-      await rebakeAOForGroup(this.renderer, this.internals.bvh, g, aoOpts, hooks, (p) =>
-        hooks.onProgress?.('bake', (gi + p) / groups.length),
+      await rebakeAOForGroup(
+        this.renderer,
+        this.internals.bvh,
+        g,
+        aoOpts,
+        hooks,
+        gi,
+        groups.length,
+        (p) => hooks.onProgress?.('bake', (gi + p) / groups.length),
       );
 
       // Re-run refinement so denoise sees the new composite output.
@@ -910,14 +945,24 @@ export class LightmapBaker {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Walks the scene; returns Meshes whose material has `lightMap` (i.e. MeshStandard-like). */
+/**
+ * Walks the scene; returns Meshes with a `MeshStandardMaterial`-like material
+ * (Standard or Physical). Excludes:
+ *  - Helpers/gizmos (TransformControls etc. use `MeshBasicMaterial` — `lightMap`
+ *    alone is too loose since Basic also exposes that property)
+ *  - Anything marked `userData.lightmapIgnore = true` (explicit opt-out)
+ *  - Invisible objects (`visible === false`)
+ */
 function collectBakeMeshes(scene: Scene | Object3D): Mesh[] {
   const out: Mesh[] = [];
   scene.traverse((obj) => {
     if (!(obj as Mesh).isMesh) return;
+    if (!obj.visible) return;
+    if (obj.userData?.lightmapIgnore) return;
     const mesh = obj as Mesh;
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    if (mats.some((m) => m && 'lightMap' in m)) out.push(mesh);
+    if (mats.some((m) => m && (m as { isMeshStandardMaterial?: boolean }).isMeshStandardMaterial))
+      out.push(mesh);
   });
   return out;
 }
@@ -1111,6 +1156,10 @@ function runMappersWithTimeoutProtection(
  * AO-only re-bake helper. Used by `LightmapBaker.rebakeAO()` to swap each
  * group's AO mapper without touching bounce/composite/refinement allocations
  * beyond the single texture rebind.
+ *
+ * Fires `hooks.onFrame` per RAF with the same `BakeFrameInfo` shape as a full
+ * bake. `bounceSamples` is always 0 (we don't touch bounce); `directTexture`
+ * and `indirectTexture` remain stable refs to the existing accumulators.
  */
 function rebakeAOForGroup(
   renderer: WebGLRenderer,
@@ -1118,12 +1167,18 @@ function rebakeAOForGroup(
   group: GroupInternals,
   aoOpts: AORaycastOptions,
   hooks: BakeHooks,
+  groupIndex: number,
+  totalGroups: number,
   onProgress: (p: number) => void,
 ): Promise<void> {
   const newAO = generateAOMapper(renderer, group.positionTex, group.normalTex, bvh, aoOpts);
   // Replace the old AO mapper.
   group.aoMapper.dispose();
   group.aoMapper = newAO;
+  // Rebind composite's AO source so per-RAF refreshes during accumulation
+  // already read the new texture (caller can mount composite.texture and watch
+  // the AO fade in live).
+  group.composite.refresh({ aoTex: newAO.texture });
   return new Promise<void>((resolve, reject) => {
     const tick = (): void => {
       if (hooks.signal?.aborted) {
@@ -1136,9 +1191,25 @@ function rebakeAOForGroup(
       // call. Adding one would require threading the canvas through.
       const r = newAO.render();
       onProgress(aoOpts.targetSamples > 0 ? r.samples / aoOpts.targetSamples : 1);
+
+      // Refresh composite so live preview reflects this RAF's AO accumulator,
+      // then fire onFrame with the same shape as a full bake. Bounce textures
+      // are stable refs; bounceSamples is 0 (not touched by AO rebake).
+      group.composite.refresh();
+      hooks.onFrame?.({
+        groupIndex,
+        totalGroups,
+        bounceSamples: 0,
+        aoSamples: r.samples,
+        targetSamples: aoOpts.targetSamples,
+        done: r.done,
+        compositeTexture: group.composite.texture,
+        directTexture: group.lightmapper.textures.direct,
+        indirectTexture: group.lightmapper.textures.indirect,
+        aoTexture: newAO.texture,
+      });
+
       if (r.done) {
-        // Swap composite's AO source to the new texture and re-render.
-        group.composite.refresh({ aoTex: newAO.texture });
         resolve();
         return;
       }

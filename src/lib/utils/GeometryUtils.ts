@@ -6,8 +6,13 @@ import {
   MeshBasicMaterial,
   MeshStandardMaterial,
 } from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BakeError } from '../errors';
+
+// Attributes mergeGeometry preserves on every input. `mergeGeometries` rejects
+// the whole batch if attribute sets differ across inputs, so we strip every
+// other attribute (tangent, skinIndex, skinWeight, color, etc.) on the clone.
+const KEPT_ATTRIBUTES = new Set(['position', 'normal', 'uv', 'uv2', 'meshIndex']);
 
 /**
  * Merge meshes into a single BufferGeometry suitable for MeshBVH.
@@ -22,12 +27,22 @@ import { BakeError } from '../errors';
  * identity. Used by extractPerTriangleMaterials to build a material lookup
  * keyed by post-BVH triangle index — matching what the GPU shader's
  * `faceIndices.w` returns at hit time.
+ *
+ * Normalizes inputs: forces indexed geometry (mergeVertices) and strips
+ * non-essential attributes so mixed scenes (GLB imports + procedural meshes
+ * + helpers) don't cause `mergeGeometries` to reject the batch.
  */
 export const mergeGeometry = (meshes: Mesh[]): BufferGeometry => {
   const prepped = meshes.map((mesh, meshIdx) => {
-    const g = mesh.geometry.clone();
-    g.deleteAttribute('color');
+    let g = mesh.geometry.clone();
+
+    for (const name of Object.keys(g.attributes)) {
+      if (!KEPT_ATTRIBUTES.has(name)) g.deleteAttribute(name);
+    }
+
     g.applyMatrix4(mesh.matrixWorld);
+
+    if (!g.index) g = mergeVertices(g);
 
     const posAttr = g.attributes.position;
     if (!posAttr)
@@ -39,7 +54,15 @@ export const mergeGeometry = (meshes: Mesh[]): BufferGeometry => {
 
     return g;
   });
-  return mergeGeometries(prepped);
+  const merged = mergeGeometries(prepped);
+  if (!merged) {
+    const names = meshes.map((m, i) => m.name || `<unnamed#${i}>`).join(', ');
+    throw new BakeError(
+      `mergeGeometries returned null — incompatible attribute sets across meshes [${names}]`,
+      'geometry',
+    );
+  }
+  return merged;
 };
 
 /**
