@@ -39,7 +39,6 @@ import {
   AORaycastOptions,
   runRefinement,
   RefinementResult,
-  runComposite,
   CompositeResult,
   mergeGeometry,
   extractPerTriangleMaterials,
@@ -1223,31 +1222,25 @@ export class CornellBoxExample {
     this.meshToGroup.clear();
     for (let i = 0; i < result.groups.length; i++) {
       const gv = result.groups[i]!;
-      const composite = runComposite(
-        this.renderer,
-        {
-          direct: gv.lightmapper.textures.direct,
-          indirect: gv.lightmapper.textures.indirect,
-          ao: gv.aoMapper.texture,
-        },
-        gv.resolution,
-        {
-          directIntensity: this.options.directIntensity,
-          giIntensity: this.options.giIntensity,
-          aoEnabled: this.options.ambientLightEnabled,
-          aoIntensity: this.options.aoIntensity,
-          aoExponent: this.options.aoExponent,
-        },
-      );
+      // Library owns the composite; demo references it. Push current UI state
+      // into the uniforms once (library hardcodes directIntensity=1.0 at bake
+      // start); subsequent slider changes flow through refreshAllComposites.
+      gv.compositeRef.refresh({
+        directIntensity: this.options.directIntensity,
+        giIntensity: this.options.giIntensity,
+        aoEnabled: this.options.ambientLightEnabled,
+        aoIntensity: this.options.aoIntensity,
+        aoExponent: this.options.aoExponent,
+      });
       const group: BakeGroup = {
         atlasIdx: i,
         meshes: [...gv.meshes],
         positionTexture: gv.textures.position,
         normalTexture: gv.textures.normal,
-        atlasDispose: () => composite.dispose(),
+        atlasDispose: () => {}, // library owns composite; result.dispose() handles it
         lightmapper: gv.lightmapper,
         aoMapper: gv.aoMapper,
-        composite,
+        composite: gv.compositeRef,
         refinement: null,
       };
       this.bakeGroups.push(group);
