@@ -354,6 +354,8 @@ type GroupInternals = {
   refinement: PostProcessResult | null;
   atlasDispose: () => void;
   resolution: number;
+  /** Meshes assigned to this group (for the public `groups` accessor). */
+  meshes: Mesh[];
   /**
    * Atlas G-buffers kept alive for the duration of the bake result so AO-only
    * rebakes can reuse them and so refinement can read positionTex as the chart
@@ -361,6 +363,40 @@ type GroupInternals = {
    */
   positionTex: Texture;
   normalTex: Texture;
+};
+
+/**
+ * Public per-group view exposed by `LightmapBakeResult.groups`. Provides
+ * read-only access to every texture produced by a group's bake — needed by
+ * advanced callers that mount per-channel debug layers (Direct, Indirect, AO,
+ * Position, Normal), run their own refinement passes, or implement a
+ * multi-atlas viewer.
+ *
+ * All textures are STABLE refs — Three.js will see updates automatically when
+ * the underlying RT contents change (e.g. during accumulation, after `rebakeAO`,
+ * after a manual refinement re-run).
+ */
+export type BakeGroupView = {
+  /** Meshes assigned to this group (read-only — do NOT mutate). */
+  readonly meshes: ReadonlyArray<Mesh>;
+  /** Lightmap side length for every mesh in this group. */
+  readonly resolution: number;
+  readonly textures: {
+    /** Direct lighting accumulator (raw, pre-composite). */
+    direct: Texture;
+    /** Indirect / GI accumulator (raw, pre-composite). */
+    indirect: Texture;
+    /** AO visibility accumulator (raw, pre-remap). */
+    ao: Texture;
+    /** Composite (direct + indirect × gi) × ao_remap with contrast curve. */
+    composite: Texture;
+    /** Post-refinement (dilation + denoise) texture. Null when denoise was off. */
+    refinement: Texture | null;
+    /** UV-space world-position G-buffer. */
+    position: Texture;
+    /** UV-space world-normal G-buffer. */
+    normal: Texture;
+  };
 };
 
 /** Result of a successful bake. Owns the GPU resources — call `dispose()` to release. */
@@ -385,6 +421,60 @@ export class LightmapBakeResult {
    */
   get lightmaps(): Map<Mesh, Texture> {
     return new Map(this.meshLightmaps);
+  }
+
+  /**
+   * Public per-group view — every texture produced by every group's bake.
+   * Use this for advanced layer mounting (debug visualizations of Direct,
+   * Indirect, AO, Position, Normal channels), multi-atlas viewers, or
+   * manual refinement re-runs against the live composite.
+   *
+   * Texture refs are STABLE — store the ref, not a copy. Three.js will see
+   * updates automatically on accumulation, AO re-bake, or manual refinement.
+   *
+   * Cost: O(groups) — each call rebuilds the wrapper array.
+   */
+  get groups(): ReadonlyArray<BakeGroupView> {
+    return this.internals.groups.map((g) => ({
+      meshes: g.meshes as ReadonlyArray<Mesh>,
+      resolution: g.resolution,
+      textures: {
+        direct: g.lightmapper.textures.direct,
+        indirect: g.lightmapper.textures.indirect,
+        ao: g.aoMapper.texture,
+        composite: g.composite.texture,
+        refinement: g.refinement?.texture ?? null,
+        position: g.positionTex,
+        normal: g.normalTex,
+      },
+    }));
+  }
+
+  /**
+   * Find the group containing a given mesh. Used by per-mesh layer mounting
+   * (e.g. mounting the right group's composite on a mesh's `material.lightMap`
+   * when meshes from different groups share the scene). Returns `null` if
+   * the mesh was excluded or not part of the bake.
+   */
+  getGroupForMesh(mesh: Mesh): BakeGroupView | null {
+    for (const g of this.internals.groups) {
+      if (g.meshes.includes(mesh)) {
+        return {
+          meshes: g.meshes as ReadonlyArray<Mesh>,
+          resolution: g.resolution,
+          textures: {
+            direct: g.lightmapper.textures.direct,
+            indirect: g.lightmapper.textures.indirect,
+            ao: g.aoMapper.texture,
+            composite: g.composite.texture,
+            refinement: g.refinement?.texture ?? null,
+            position: g.positionTex,
+            normal: g.normalTex,
+          },
+        };
+      }
+    }
+    return null;
   }
 
   /** Mounts each mesh's atlas texture as `mat.lightMap` (channel = 2). */
@@ -768,6 +858,7 @@ export class LightmapBaker {
         refinement,
         atlasDispose: atlas.dispose,
         resolution: res,
+        meshes: groupMeshes,
         positionTex: atlas.positionTexture,
         normalTex: atlas.normalTexture,
       });

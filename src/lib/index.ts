@@ -72,6 +72,8 @@ export type {
   BakePhase,
   BakeHooks,
   BakeStats,
+  BakeFrameInfo,
+  BakeGroupView,
 } from './LightmapBaker';
 
 // --- GPU capability detection (Task 08) ---
