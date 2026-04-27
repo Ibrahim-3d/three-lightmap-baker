@@ -10,7 +10,7 @@
 | 02 — Understand architecture | ✅ Done | |
 | 03 — Material textures | ✅ Done | Per-triangle albedo+emissive DataTextures |
 | 04 — Bounce lighting (GI) | ✅ Done (1-bounce) | Multi-bounce deferred → merged into Task 07 below |
-| 05 — Quality + denoising | ✅ Done | ETA estimator stub remains |
+| 05 — Quality + denoising | ✅ Done | ETA estimator: rolling-average shipped in S8 (`CornellBoxExample.ts:1441`, ring buffer of 16). Old "stub remains" notes in S5/S6/S7 bodies are superseded. |
 | 06 — Export + API | ✅ Done | LightmapBaker class, PNG/EXR/raw export |
 | 09 — Separate AO map | ✅ Done | Via Task 13 MRT layers |
 | 13 — Layer system + MRT | ✅ Phases A–C done | D1/D2 (texel density heatmap) merged below |
@@ -44,8 +44,26 @@
 
 | Item | Status | Notes |
 |---|---|---|
-| Demo → public `LightmapBaker.bake()` migration | ⬜ | Demo still uses its own group orchestration; per-mesh `resolution` override is wired in the public class but not the demo path. Carry-over from S8. |
+| Demo → public `LightmapBaker.bake()` migration | ⬜ | Demo runs its own `bake()` at `CornellBoxExample.ts:1067`. **9 demo-only features must be preserved** — see "Migration Risk Register" below before touching this. |
 | AO `samples` separate from indirect ray budget | ✅ Done | Session 9 — AO now lives in its own `AOMapper` / `AOMaterial`. |
+
+### Migration Risk Register — features at risk if demo bake path is replaced naively
+
+Authoritative reference: [`.claude/AUDIT-2026-04-27.md`](AUDIT-2026-04-27.md) §5.
+
+| ID | Feature | Demo location | Public API equivalent | Risk |
+|---|---|---|---|---|
+| R-01 | `scaleInLightmap` per-mesh density multiplier | `CornellBoxExample.ts:1091` → `binPackMeshes` `perMeshScale` | None — public `perMesh` only has `{ resolution?, exclude? }` | "Density ×" slider becomes no-op |
+| R-02 | Density-aware multi-atlas auto-spawn (when target won't fit one atlas) | `CornellBoxExample.ts:1095-1102`, `binPackMeshes` opens new bins on overflow | `partitionMeshes` groups by **resolution**, not density | Multi-atlas based on density is lost |
+| R-03 | Secondary directional light UI | `CornellBoxExample.ts:1154-1169` builds a virtual `PackedLight` | `collectLightsFromScene` only walks real `THREE.*Light` objects | Secondary light dropped unless added as a real Three.js light |
+| R-04 | `bakeBVH` reused for AO-only re-bake | `CornellBoxExample.ts:248`, used in `rebakeAO()` at `:1668` | Public has `LightmapBakeResult.rebakeAO` (uses `internals.bvh`) — fine if demo *delegates* | Don't re-implement; delegate to the result |
+| R-05 | Per-atlas progress widget breakdown | `CornellBoxExample.ts:1604-1617` shows `[done 256, 187, 187]` per bin | `BakeHooks.onProgress(phase, percent)` is scalar only | Granular multi-atlas progress lost |
+| R-06 | Per-mesh `TexelDensityMaterial` cache (target = global × scale) | `CornellBoxExample.ts:1703` `refreshTexelDensityMaterials` | `TexelDensityMaterial` is exported as a primitive only | "Texel Density" debug layer loses per-mesh density scaling |
+| R-07 | Manual / re-runnable refinement (`Run Refinement` + `Revert to Raw` buttons) | `CornellBoxExample.ts:1576` `autoApplyRefinement`, `applyRefinement`, `showUnrefined` | `LightmapBakerOptions.denoise=true` runs once inside `bake()`; no re-run path | Re-tuning denoise sliders without re-baking lost |
+| R-08 | Multi-atlas `AtlasViewer.setTextures(texs)` | `CornellBoxExample.ts:1638` (collects textures from all groups for active layer) | `AtlasViewer` exported but its multi-tex API is demo-glue | Atlas viewer reverts to single-atlas only |
+| R-09 | GLB import camera/light auto-fit | `CornellBoxExample.ts:970` `fitCameraAndLightToScene` | None | Import experience regresses |
+
+**Migration plan (when undertaken):** Address R-01/R-02 by extending public `perMesh` to support a density mode, OR keep demo's bin-packer as a pre-step that produces a `perMesh.resolution` mapping consumed by the public API. R-03 by promoting the secondary light to a real `THREE.DirectionalLight`. R-04 by delegating to `result.rebakeAO`. R-05 by widening `BakeHooks` (per-group progress array). R-06/R-07/R-08/R-09 stay in the demo layer (they're presentation, not bake).
 
 ### Deliberate exclusions
 
@@ -497,13 +515,30 @@ Per-frame cost: bounce-pass rays = `casts × resolution²`, AO-pass rays = `aoSa
 5. **BVH retained across AO-only re-bakes.** Stored on `LightmapBakeResult.internals.bvh` (and `bakeBVH` in the demo). Re-baking AO does NOT rebuild the BVH or atlas G-buffers — those are reused. AO-only re-bake cost ≈ `aoSamples / (aoSamples + casts × bounceCost)` of a full bake; rough order 5–15%.
 6. **Default `AOOptions.samples` = `castsPerFrame`.** Preserves the pre-split ray budget exactly when the caller doesn't pass a value. Documented in JSDoc + validateOptions.
 
+**Public API surface added in S9 (callable on the result of `LightmapBaker.bake()`):**
+
+- `LightmapBakeResult.refreshAO({ intensity?, exponent?, enabled? })` — sub-ms view-time AO remap across all groups. Calls each group's `composite.refresh()`. No re-bake.
+- `LightmapBakeResult.rebakeAO({ samples, distance, targetSamples }, hooks?)` — AO-only re-bake. Disposes each group's AO mapper, builds fresh, swaps into composite, re-runs refinement. Bounce textures untouched. Uses retained `internals.bvh`.
+
 **Carry-overs / not changed**
 
-- Demo `→` public `LightmapBaker.bake()` migration STILL pending. Demo continues to use its own group orchestration. Per-mesh `resolution` override is wired in the public class but not in the demo path. (Logged in the new "Pending refactors" section of the Status table.)
-- Multi-bounce GI still hand-unrolled in the bounce shader (no GLSL recursion). Bounces uniform [1, 4]; default 1 produces byte-equivalent output to the pre-7B path.
-- "Combined (Dilated)" layer still deferred — `PostProcess` doesn't expose a dilated-only intermediate stage.
-- `LightBakerExample.ts` remains unreferenced legacy.
+- Demo `→` public `LightmapBaker.bake()` migration STILL pending. **9 demo-only features must be preserved** — see Migration Risk Register in the Status section above. Migration is NOT a simple drop-in; the demo's bin-packer (R-01, R-02), virtual secondary light (R-03), per-atlas progress (R-05), and rerunnable refinement (R-07) have no public-API equivalent today.
+- Multi-bounce GI still hand-unrolled in the bounce shader (no GLSL recursion). Bounces uniform [1, 4]; default 2 in demo, default 1 in public API; both equivalent to pre-7B path at value 1.
+- "Combined (Dilated)" layer still deferred — `PostProcess` doesn't expose a dilated-only intermediate stage. (Confirmed: `LAYERS` array has 11 entries today including `combined`, `combinedPost`, `combinedRaw`; `combined` and `combinedPost` are functionally identical — both fall back to composite when refinement is null.)
+- `LightBakerExample.ts` remains unreferenced legacy at `src/demo/legacy/LightBakerExample.ts`.
 - `npm run check` passes (typecheck 0 errors, prettier clean, eslint 45 informational warnings — all pre-existing on Tweakpane any-typed bindings, not in lib/lightmap).
 - `npm run build` green at 883.70 KiB (was 730.53 KiB at end of S8 — delta is the new AOMaterial + AOMapper + demo overlay code, expected).
 
-**Next session** — Demo `→` `LightmapBaker.bake()` migration, then Task 08 (WebGL TDR / timeout protection on Windows). Tasks 10 (lightmap downscaling) and 11 (SH light probes) follow.
+**Trajectory audit (post-S9, 2026-04-27) — corrections applied to journal**
+
+A full code-vs-journal reconciliation was performed (audit document at `.claude/AUDIT-2026-04-27.md`). Key corrections that future sessions must respect:
+
+1. **`estimateTimeRemaining` is NOT a stub.** S5/S6/S7 carry-over notes calling it a stub are stale. Implementation: `CornellBoxExample.ts:1441`, 16-sample rolling-average ring buffer (`bakeBatchHistory`, `BAKE_ETA_WINDOW = 16`).
+2. **Demo per-mesh quality control IS working** via `scaleInLightmap` density multiplier (`CornellBoxExample.ts:1091`) feeding `binPackMeshes.perMeshScale`. The S8 note "only `exclude` is wired" referred to the public API's `perMesh.resolution` not being plumbed through the demo, NOT to `scaleInLightmap` being absent. Both `scaleInLightmap` AND `exclude` are live in the demo; `resolution` is public-API only.
+3. **`CompositeMaterial` applies a `pow(max(lit, 0), 1/1.1)` contrast correction** silently on every composited texel (`CompositeMaterial.ts:88`). NOT physically based. NOT in any session log before this audit. Affects every quantitative comparison of lightmap output. Decision to keep is documented in DECISIONS.md (D-011, see below).
+4. **GLB import calls `mergeVertices`** on non-indexed meshes at `CornellBoxExample.ts:944` — converts to indexed geometry as required by `extractPerTriangleMaterials`. Not previously documented.
+5. **Auto-multi-atlas spawning** when `texelsPerMeter` × total UV area exceeds one atlas's capacity. `binPackMeshes` opens new bins automatically (`Packing.ts:145-166`). The mechanism (overflow → new bin) was implicit in S7's "density-aware multi-atlas bake" commit but not described as automatic.
+6. **The Layer registry has 11 entries today**, not 9. S7's "9-layer registry" claim was correct at the time. Today: `combined`, `combinedPost`, `combinedRaw`, `direct`, `indirect`, `ao`, `lightmapRaw`, `albedo`, `positions`, `normals`, `texelDensity`. (`combined` and `combinedPost` resolve identically — both `refinement?.texture ?? composite.texture`.)
+7. **All RT/texture leaks documented S2–S7 are FIXED as of S8** (commit `9b3b1cc`). All dispose paths verified end-to-end in the audit. Carry-over notes in older session bodies are historical, not current state.
+
+**Next session** — Migration of demo `→` `LightmapBaker.bake()` is now considered higher-risk than initially scoped (9 risk items). The recommended next step is **Task 08 (WebGL TDR / timeout protection on Windows)** — bigger bakes are the more pressing risk surface, and Task 08 doesn't depend on the migration. Migration can follow once R-01 through R-09 each have a clear plan. After Task 08: Tasks 10 (lightmap downscaling) and 11 (SH light probes).

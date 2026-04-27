@@ -119,6 +119,17 @@ Every non-trivial technical decision is recorded here. Format:
   - Keep AO on the MRT, lift only the remap to composite: rejected — solves the slider latency but not the budget independence; messier API.
 - **Consequences:** +1 fullscreen quad draw per frame during accumulation (negligible). +1 RT alive during bake (FloatType, square at lightmap resolution — ~16 MB at 2048²). View-time AO tweaking is now sub-ms instead of full re-bake. AO-only re-bakes (distance / samples sliders) cost ~5–15% of a full bake. Composite shader is the single source of truth for the AO remap formula. At `aoIntensity=1, aoExponent=1` the rendered output is byte-equivalent to the pre-split path.
 
+## D-011: CompositeMaterial applies a `pow(1/1.1)` contrast correction
+
+- **Date:** 2026-04-27 (retroactively documented during the trajectory audit; the correction itself has been live since the early composite work)
+- **Status:** accepted (retroactive; documented during audit)
+- **Context:** `CompositeMaterial.ts:88` applies `pow(max(lit, vec3(0.0)), vec3(1.0/1.1))` as the final step before writing `outColor`. This is a subtle gamma-like contrast boost (γ ≈ 0.909 — pulls midtones up). It was added implicitly during the original composite shader work and never recorded.
+- **Decision:** Keep it. Document it now so it isn't accidentally removed during a future "physical accuracy" pass that misreads it as a bug.
+- **Alternatives considered:**
+  - Remove the `pow` and ship raw linear lit values: rejected — the existing demo presets (and any user's existing visual reference of "what a baked Cornell looks like in this baker") are calibrated against post-`pow` output. Removing it would shift every comparison reference. If a future caller wants raw values they can read pre-composite from `Lightmapper.textures.direct`/`indirect`.
+  - Make it a uniform with default 1.0 (= identity): acceptable future work. Out of scope right now.
+- **Consequences:** Output is NOT physically calibrated in absolute units. Quantitative comparisons between this baker's output and ground truth (Mitsuba, PBRT) must account for the curve. Visual comparison against other browser bakers is meaningless without normalising both sides through the same curve. The bias is consistent across direct, indirect, and AO channels (all flow through the composite), so relative ratios within an output are preserved.
+
 ## D-009: Texel density as a material-swap layer (not a lightmap-overlay layer)
 
 - **Date:** 2026-04-26
