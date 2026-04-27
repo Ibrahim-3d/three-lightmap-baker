@@ -33,6 +33,9 @@ import {
   generateLightmapper,
   Lightmapper,
   RaycastOptions,
+  generateAOMapper,
+  AOMapper,
+  AORaycastOptions,
   runRefinement,
   RefinementResult,
   runComposite,
@@ -77,6 +80,8 @@ type BakeGroup = {
   normalTexture: Texture;
   atlasDispose: () => void;
   lightmapper: Lightmapper;
+  /** Standalone AO bake — independent ray budget; AO-only re-bake on slider change. */
+  aoMapper: AOMapper;
   composite: CompositeResult;
   refinement: RefinementResult | null;
 };
@@ -140,7 +145,7 @@ const LAYERS: Layer[] = [
     label: 'Ambient Occlusion',
     group: 'output',
     showAlbedo: false,
-    getLightMap: (c) => c.group.lightmapper.textures.ao,
+    getLightMap: (c) => c.group.aoMapper.texture,
   },
   {
     id: 'lightmapRaw',
@@ -235,6 +240,12 @@ export class CornellBoxExample {
   private meshToGroup: Map<Mesh, BakeGroup> = new Map();
   /** Disposer for the SHARED per-tri material DataTextures (one per bake). */
   private matTexDispose: (() => void) | null = null;
+  /**
+   * BVH from the last bake — kept alive so AO-only rebakes can reuse it
+   * without redoing the merge + tree build. Cleared in `disposeAllGroups()`
+   * via the next bake's reassignment.
+   */
+  private bakeBVH: MeshBVH | null = null;
 
   /**
    * Per-mesh TexelDensityMaterial cache for the "Texel Density" debug layer.
@@ -265,6 +276,8 @@ export class CornellBoxExample {
     ambientDistance: 0.5,
     aoIntensity: 1.0,
     aoExponent: 1.5,
+    /** AO ray budget per frame, independent of `casts`. */
+    aoSamples: 5,
     /** Texel-density debug viz target (texels per world meter). Layer = "Texel Density". */
     texelsPerMeter: 10,
     lightSize: 2.9,
@@ -519,12 +532,10 @@ export class CornellBoxExample {
       .on('change', this.maybeBake);
 
     const aoFolder = lightFolder.addFolder({ title: 'Ambient Occlusion' });
-    aoFolder
-      .addInput(this.options, 'ambientLightEnabled', { label: 'Enabled' })
-      .on('change', (e) => {
-        this.refreshAllComposites({ aoEnabled: this.options.ambientLightEnabled });
-        this.maybeBake(e);
-      });
+    aoFolder.addInput(this.options, 'ambientLightEnabled', { label: 'Enabled' }).on('change', () =>
+      // View-time toggle on the composite — no re-bake.
+      this.refreshAllComposites({ aoEnabled: this.options.ambientLightEnabled }),
+    );
     aoFolder
       .addInput(this.options, 'ambientDistance', {
         min: 0.05,
@@ -532,13 +543,25 @@ export class CornellBoxExample {
         step: 0.05,
         label: 'Max Distance',
       })
-      .on('change', this.maybeBake);
+      // Distance changes which hits count as occluders → AO-only re-bake.
+      .on('change', () => this.rebakeAO());
     aoFolder
       .addInput(this.options, 'aoIntensity', { min: 0, max: 3, step: 0.05, label: 'Intensity' })
-      .on('change', this.maybeBake);
+      // View-time remap on the composite — sub-ms; no re-bake.
+      .on('change', () => this.refreshAllComposites({ aoIntensity: this.options.aoIntensity }));
     aoFolder
       .addInput(this.options, 'aoExponent', { min: 0.5, max: 4, step: 0.1, label: 'Exponent' })
-      .on('change', this.maybeBake);
+      // View-time remap on the composite — sub-ms; no re-bake.
+      .on('change', () => this.refreshAllComposites({ aoExponent: this.options.aoExponent }));
+    aoFolder
+      .addInput(this.options, 'aoSamples', {
+        min: 0,
+        max: 32,
+        step: 1,
+        label: 'Samples',
+      })
+      // Samples changes the AO ray budget → AO-only re-bake.
+      .on('change', () => this.rebakeAO());
 
     // --- Refinement folder ---
     const post = this.pane.addFolder({ title: 'Refinement', expanded: false });
@@ -666,13 +689,14 @@ export class CornellBoxExample {
     const folder = this.pane.addFolder({ title: 'Per-Mesh', expanded: false });
     this.perMeshFolder = folder;
 
-    for (const mesh of this.meshes) {
+    for (let i = 0; i < this.meshes.length; i++) {
+      const mesh = this.meshes[i]!;
       const uuid = mesh.uuid;
       if (!this.options.perMesh[uuid]) {
         this.options.perMesh[uuid] = { scaleInLightmap: 1.0, exclude: false };
       }
       const entry = this.options.perMesh[uuid]!;
-      const label = mesh.name || uuid.slice(0, 8);
+      const label = mesh.name || `Mesh ${i + 1} (${mesh.geometry.type.replace('Geometry', '')})`;
 
       const meshFolder = folder.addFolder({ title: label, expanded: false });
       meshFolder.addInput(entry, 'exclude', { label: 'Exclude' }).on('change', this.maybeBake);
@@ -702,8 +726,12 @@ export class CornellBoxExample {
     this.fpsElement.style.color = '#00ff00';
     this.fpsElement.style.fontFamily = 'monospace';
     this.fpsElement.style.fontSize = '12px';
+    this.fpsElement.style.lineHeight = '1.4';
     this.fpsElement.style.pointerEvents = 'none';
     this.fpsElement.style.zIndex = '100';
+    this.fpsElement.style.padding = '8px';
+    this.fpsElement.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    this.fpsElement.style.borderRadius = '4px';
     document.body.appendChild(this.fpsElement);
 
     // Progress Widget
@@ -794,28 +822,33 @@ export class CornellBoxExample {
 
     // Floor: top surface at y=0, slab extends down to y=-T
     const floor = new Mesh(new BoxGeometry(ROOM, T, ROOM), white);
+    floor.name = 'Floor';
     floor.position.set(0, -T / 2, 0);
     this.addMesh(floor);
 
     // Ceiling: bottom surface at y=ROOM, slab extends up to y=ROOM+T
     const ceil = new Mesh(new BoxGeometry(ROOM, T, ROOM), white.clone());
+    ceil.name = 'Ceiling';
     (ceil.material as any)._originalMap = null;
     ceil.position.set(0, ROOM + T / 2, 0);
     this.addMesh(ceil);
 
     // Back wall: front surface at z=-HALF, slab extends back to z=-HALF-T
     const back = new Mesh(new BoxGeometry(ROOM, ROOM, T), white.clone());
+    back.name = 'Back Wall';
     (back.material as any)._originalMap = null;
     back.position.set(0, HALF, -HALF - T / 2);
     this.addMesh(back);
 
     // Left wall (red): inside surface at x=-HALF
     const left = new Mesh(new BoxGeometry(T, ROOM, ROOM), red);
+    left.name = 'Left Wall (Red)';
     left.position.set(-HALF - T / 2, HALF, 0);
     this.addMesh(left);
 
     // Right wall (green): inside surface at x=+HALF
     const right = new Mesh(new BoxGeometry(T, ROOM, ROOM), green);
+    right.name = 'Right Wall (Green)';
     right.position.set(HALF + T / 2, HALF, 0);
     this.addMesh(right);
   }
@@ -825,12 +858,14 @@ export class CornellBoxExample {
 
     // Tall block: ~3×6×3, back-left, rotated ~17° CCW
     const tall = new Mesh(new BoxGeometry(3, 6, 3), white);
+    tall.name = 'Tall Block';
     tall.position.set(-1.8, 3, -1.5);
     tall.rotation.y = 0.29;
     this.addMesh(tall);
 
     // Short block: ~3×3×3, front-right, rotated ~-17°
     const short = new Mesh(new BoxGeometry(3, 3, 3), white.clone());
+    short.name = 'Short Block';
     (short.material as any)._originalMap = null;
     short.position.set(1.8, 1.5, 1.5);
     short.rotation.y = -0.29;
@@ -841,6 +876,7 @@ export class CornellBoxExample {
     // Diffuse pearl sphere — sits in front of the short block.
     // NOTE: keep metalness ~0; baked lightmaps only carry diffuse irradiance.
     const sphere = new Mesh(new SphereGeometry(1.0, 48, 32), this.mat(0xf5f5f5, 0.4, 0.0));
+    sphere.name = 'Sphere';
     sphere.position.set(2.4, 1.0, 3.0);
     this.addMesh(sphere);
 
@@ -849,6 +885,7 @@ export class CornellBoxExample {
       new TorusKnotGeometry(0.55, 0.18, 160, 24),
       this.mat(0xffd166, 0.55, 0.0),
     );
+    knot.name = 'Torus Knot';
     knot.position.set(0.0, 1.0, 2.8);
     knot.rotation.x = Math.PI / 2;
     this.addMesh(knot);
@@ -858,6 +895,7 @@ export class CornellBoxExample {
     // to dominate the bounce term (linear blue=1.0 channel) and tint the whole front-left
     // of the room. Terracotta complements the red wall instead of fighting it.
     const accent = new Mesh(new BoxGeometry(1.2, 1.2, 1.2), this.mat(0xc77a3a, 0.8, 0.0));
+    accent.name = 'Accent Block';
     accent.position.set(-3.5, 0.6, 2.8);
     accent.rotation.y = 0.45;
     this.addMesh(accent);
@@ -1018,6 +1056,7 @@ export class CornellBoxExample {
     for (const g of this.bakeGroups) {
       g.refinement?.dispose();
       g.composite.dispose();
+      g.aoMapper.dispose();
       g.lightmapper.dispose();
       g.atlasDispose();
     }
@@ -1082,6 +1121,7 @@ export class CornellBoxExample {
     // --- 3. Shared BVH + per-tri materials (across ALL meshes inc. excluded) ---
     const merged = mergeGeometry(this.meshes);
     const bvh = new MeshBVH(merged);
+    this.bakeBVH = bvh;
     this.matTexDispose?.();
     const perTri = extractPerTriangleMaterials(merged, this.meshes);
     const matTex = buildMaterialTextures(perTri);
@@ -1135,10 +1175,6 @@ export class CornellBoxExample {
       lights,
       skyColor: skyColorLinear,
       skyIntensity: this.options.skyIntensity,
-      ambientDistance: this.options.ambientDistance,
-      aoIntensity: this.options.aoIntensity,
-      aoExponent: this.options.aoExponent,
-      ambientLightEnabled: this.options.ambientLightEnabled,
       directLightEnabled: this.options.directLightEnabled,
       indirectLightEnabled: this.options.indirectLightEnabled,
       albedoTexture: matTex.albedoTexture,
@@ -1146,6 +1182,12 @@ export class CornellBoxExample {
       materialTextureSize: matTex.side,
       targetSamples: this.options.targetSamples,
       bounces: this.options.bounces,
+    };
+
+    const aoBaseOpts: Omit<AORaycastOptions, 'resolution'> = {
+      aoSamples: this.options.aoSamples,
+      ambientDistance: this.options.ambientDistance,
+      targetSamples: this.options.targetSamples,
     };
 
     // --- 5. Per-bin renderAtlas + lightmapper + composite ------------------
@@ -1160,11 +1202,29 @@ export class CornellBoxExample {
         bvh,
         { ...baseOpts, resolution: res },
       );
-      const composite = runComposite(this.renderer, lightmapper.textures, res, {
-        directIntensity: this.options.directIntensity,
-        giIntensity: this.options.giIntensity,
-        aoEnabled: this.options.ambientLightEnabled,
-      });
+      const aoMapper = generateAOMapper(
+        this.renderer,
+        atlas.positionTexture,
+        atlas.normalTexture,
+        bvh,
+        { ...aoBaseOpts, resolution: res },
+      );
+      const composite = runComposite(
+        this.renderer,
+        {
+          direct: lightmapper.textures.direct,
+          indirect: lightmapper.textures.indirect,
+          ao: aoMapper.texture,
+        },
+        res,
+        {
+          directIntensity: this.options.directIntensity,
+          giIntensity: this.options.giIntensity,
+          aoEnabled: this.options.ambientLightEnabled,
+          aoIntensity: this.options.aoIntensity,
+          aoExponent: this.options.aoExponent,
+        },
+      );
       const group: BakeGroup = {
         atlasIdx: bi,
         meshes: binMeshes,
@@ -1172,12 +1232,14 @@ export class CornellBoxExample {
         normalTexture: atlas.normalTexture,
         atlasDispose: atlas.dispose,
         lightmapper,
+        aoMapper,
         composite,
         refinement: null,
       };
       this.bakeGroups.push(group);
       for (const m of binMeshes) this.meshToGroup.set(m, group);
       lightmapper.render(); // first sample
+      aoMapper.render();
     }
 
     this.options.refinementStatus = 'idle';
@@ -1408,21 +1470,77 @@ export class CornellBoxExample {
       frames++;
       if (now >= lastTime + 1000) {
         fps = Math.round((frames * 1000) / (now - lastTime));
-        this.fpsElement.innerText = `FPS: ${fps}`;
+
+        // Calculate VRAM and Scene complexity
+        let vram = 0;
+        let triangles = 0;
+
+        // Textures & RenderTargets
+        const textures = this.renderer.info.memory.textures;
+        // Approximation: Width * Height * 4 (channels) * 4 (float)
+        // Lightmap baking uses FloatType (4 bytes) or HalfFloat (2 bytes)
+        // We can get more precise by counting our specific RTs
+        for (const g of this.bakeGroups) {
+          const res = this.options.lightMapSize;
+          // G-Buffers: Position(RGBA32F), Normal(RGBA32F) = 2 * res^2 * 16 bytes
+          vram += res * res * 16 * 2;
+          // Composite: RGBA16F = res^2 * 8 bytes
+          vram += res * res * 8;
+          // Lightmapper internal MRT (3x RGBA32F) = 3 * res^2 * 16 bytes
+          vram += res * res * 16 * 3;
+          if (g.refinement) vram += res * res * 8;
+        }
+
+        // Scene Triangles
+        for (const m of this.meshes) {
+          const geom = m.geometry;
+          if (geom.index) {
+            triangles += geom.index.count / 3;
+          } else {
+            const pos = geom.attributes.position;
+            if (pos) triangles += pos.count / 3;
+          }
+        }
+
+        const vramMB = (vram / (1024 * 1024)).toFixed(1);
+        const triK = (triangles / 1000).toFixed(1);
+
+        let statsText = `FPS: ${fps}\n`;
+        statsText += `VRAM: ${vramMB} MB (${textures} tex)\n`;
+        statsText += `TRIS: ${triK}k\n`;
+
+        if (this.bakeGroups.length && !this.options.pause) {
+          const rps =
+            (this.bakeGroups.length *
+              this.options.lightMapSize *
+              this.options.lightMapSize *
+              this.options.casts *
+              fps) /
+            1000000;
+          statsText += `RAYS: ${rps.toFixed(1)}M/s`;
+        } else {
+          statsText += `RAYS: 0.0M/s`;
+        }
+
+        this.fpsElement.innerText = statsText;
         frames = 0;
         lastTime = now;
       }
 
       if (this.bakeGroups.length && !this.options.pause) {
         // Step every group; aggregate sample counts for the progress widget.
+        // Drive bounce + AO accumulators in lockstep — both report independent
+        // sample counts but use the same `targetSamples` budget.
         let allDone = true;
         let minSamples = Infinity;
         const perAtlasSamples: number[] = [];
         for (const g of this.bakeGroups) {
           const r = g.lightmapper.render();
-          if (!r.done) allDone = false;
-          if (r.samples < minSamples) minSamples = r.samples;
-          perAtlasSamples.push(r.samples);
+          const ar = g.aoMapper.render();
+          if (!r.done || !ar.done) allDone = false;
+          const minOfPair = Math.min(r.samples, ar.samples);
+          if (minOfPair < minSamples) minSamples = minOfPair;
+          perAtlasSamples.push(minOfPair);
         }
         if (!Number.isFinite(minSamples)) minSamples = 0;
 
@@ -1437,15 +1555,21 @@ export class CornellBoxExample {
 
           // Generate mipmaps on every group's MRT outputs at end-of-bake; swap min
           // filter to LinearMipMapLinear so the lightmap can sample at any LOD.
+          // Bounce MRT now has 2 attachments (direct, indirect); AO lives on its
+          // own mapper texture and is upgraded the same way.
           for (const g of this.bakeGroups) {
             const rt = g.lightmapper.renderTarget;
-            for (let i = 0; i < 3; i++) {
+            for (let i = 0; i < 2; i++) {
               const tex = rt.texture[i];
               if (!tex) continue;
               tex.generateMipmaps = true;
               tex.minFilter = LinearMipMapLinearFilter;
               this.renderer.initTexture(tex);
             }
+            const aoTex = g.aoMapper.texture;
+            aoTex.generateMipmaps = true;
+            aoTex.minFilter = LinearMipMapLinearFilter;
+            this.renderer.initTexture(aoTex);
             g.composite.texture.needsUpdate = true;
           }
           this.pane.refresh();
@@ -1527,8 +1651,41 @@ export class CornellBoxExample {
     directIntensity?: number;
     giIntensity?: number;
     aoEnabled?: boolean;
+    aoIntensity?: number;
+    aoExponent?: number;
   }): void {
     for (const g of this.bakeGroups) g.composite.refresh(overrides);
+  }
+
+  /**
+   * AO-only re-bake. Disposes each group's AO mapper, builds a fresh one with
+   * current `aoSamples` / `ambientDistance`, swaps it into the composite, and
+   * resumes accumulation. Bounce textures stay untouched. Used when a slider
+   * change requires fresh rays (samples / distance) — not for intensity or
+   * exponent, which are view-time uniforms on the composite.
+   */
+  private rebakeAO(): void {
+    if (!this.bakeGroups.length || !this.bakeBVH) return;
+    const res = this.options.lightMapSize;
+    const aoOpts: Omit<AORaycastOptions, 'resolution'> = {
+      aoSamples: this.options.aoSamples,
+      ambientDistance: this.options.ambientDistance,
+      targetSamples: this.options.targetSamples,
+    };
+    for (const g of this.bakeGroups) {
+      g.aoMapper.dispose();
+      g.aoMapper = generateAOMapper(
+        this.renderer,
+        g.positionTexture,
+        g.normalTexture,
+        this.bakeBVH,
+        { ...aoOpts, resolution: res },
+      );
+      g.composite.refresh({ aoTex: g.aoMapper.texture });
+    }
+    // Resume accumulation — the per-frame loop drives both lightmapper.render()
+    // (already converged → returns done) and aoMapper.render() (fresh → ticks).
+    this.options.pause = false;
   }
 
   /**

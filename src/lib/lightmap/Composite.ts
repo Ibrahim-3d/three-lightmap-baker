@@ -11,19 +11,32 @@ import {
 } from 'three';
 import { CompositeMaterial } from './CompositeMaterial';
 
+export type CompositeOverrides = Partial<{
+  directIntensity: number;
+  giIntensity: number;
+  aoEnabled: boolean;
+  aoIntensity: number;
+  aoExponent: number;
+  /** Swap the AO source texture (e.g. after an AO-only re-bake). */
+  aoTex: Texture;
+}>;
+
 export type CompositeResult = {
-  /** Combined (direct*directIntensity + indirect*giIntensity)*ao — linear float RT texture. */
+  /** Combined (direct*directIntensity + indirect*giIntensity)*remappedAO — linear float RT texture. */
   texture: Texture;
-  /** Re-render the composite, optionally overriding intensities / aoEnabled. */
-  refresh: (
-    uniforms?: Partial<{ directIntensity: number; giIntensity: number; aoEnabled: boolean }>,
-  ) => void;
+  /** Re-render the composite, optionally overriding any uniform / swapping aoTex. */
+  refresh: (overrides?: CompositeOverrides) => void;
   dispose: () => void;
 };
 
 /**
- * Allocate a composite RT and render direct*directIntensity + indirect*giIntensity
- * multiplied by AO into it. Call `refresh()` each frame (or on slider change) to keep it current.
+ * Allocate a composite RT and render
+ *   (direct*directIntensity + indirect*giIntensity) * remappedAO
+ * into it. AO comes from a separate texture (AOMapper output) so the AO pass
+ * can re-bake independently of the bounce pass.
+ *
+ * Call `refresh()` each frame (or on slider change) to keep it current.
+ * Pass `{ aoTex: newTex }` to swap the AO source after an AO-only re-bake.
  *
  * Ownership: all GPU resources are inside the returned CompositeResult; caller
  * disposes via CompositeResult.dispose(). Pattern matches PostProcess.ts.
@@ -32,7 +45,13 @@ export const runComposite = (
   renderer: WebGLRenderer,
   lightmapTextures: { direct: Texture; indirect: Texture; ao: Texture },
   resolution: number,
-  opts: { directIntensity: number; giIntensity: number; aoEnabled: boolean },
+  opts: {
+    directIntensity: number;
+    giIntensity: number;
+    aoEnabled: boolean;
+    aoIntensity: number;
+    aoExponent: number;
+  },
 ): CompositeResult => {
   const rt = new WebGLRenderTarget(resolution, resolution, {
     type: FloatType,
@@ -48,6 +67,8 @@ export const runComposite = (
     directIntensity: opts.directIntensity,
     giIntensity: opts.giIntensity,
     aoEnabled: opts.aoEnabled,
+    aoIntensity: opts.aoIntensity,
+    aoExponent: opts.aoExponent,
   });
 
   const quad = new Mesh(new PlaneGeometry(2, 2), mat);
@@ -56,14 +77,17 @@ export const runComposite = (
   // SAFETY: uniforms are constructed in CompositeMaterial; presence is invariant.
   const u = mat.uniforms;
 
-  const refresh = (
-    overrides?: Partial<{ directIntensity: number; giIntensity: number; aoEnabled: boolean }>,
-  ): void => {
+  const refresh = (overrides?: CompositeOverrides): void => {
     if (overrides?.directIntensity !== undefined && u.directIntensity)
       u.directIntensity.value = overrides.directIntensity;
     if (overrides?.giIntensity !== undefined && u.giIntensity)
       u.giIntensity.value = overrides.giIntensity;
     if (overrides?.aoEnabled !== undefined && u.aoEnabled) u.aoEnabled.value = overrides.aoEnabled;
+    if (overrides?.aoIntensity !== undefined && u.aoIntensity)
+      u.aoIntensity.value = overrides.aoIntensity;
+    if (overrides?.aoExponent !== undefined && u.aoExponent)
+      u.aoExponent.value = overrides.aoExponent;
+    if (overrides?.aoTex !== undefined && u.aoTex) u.aoTex.value = overrides.aoTex;
 
     const prev = renderer.getRenderTarget();
     const autoClear = renderer.autoClear;

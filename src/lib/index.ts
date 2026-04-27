@@ -17,6 +17,10 @@ export { renderAtlas } from './atlas/renderAtlas';
 export { generateLightmapper } from './lightmap/Lightmapper';
 export type { Lightmapper, RaycastOptions, LightmapperRender } from './lightmap/Lightmapper';
 
+// --- Standalone AO bake (own ray budget, view-time intensity/exponent) ---
+export { generateAOMapper } from './lightmap/AOMapper';
+export type { AOMapper, AORaycastOptions, AOMapperRender } from './lightmap/AOMapper';
+
 // --- View-time composite (direct + indirect*gi) * ao ---
 export { runComposite } from './lightmap/Composite';
 export type { CompositeResult } from './lightmap/Composite';

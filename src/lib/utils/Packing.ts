@@ -146,7 +146,9 @@ export function binPackMeshes(meshes: Mesh[], opts: BinPackOptions): BinAssignme
       // Single mesh too big for one atlas at the target density. Clamp + warn.
       // Effective density of this mesh will be ~sqrt(fillRatio / uvFraction)
       // times the target — the texel-density debug layer makes this visible.
-      const tag = item.mesh.name || item.mesh.uuid.slice(0, 8);
+      const tag =
+        item.mesh.name ||
+        `Mesh ${item.inputIdx + 1} (${item.mesh.geometry.type.replace('Geometry', '')})`;
       console.warn(
         `[baker] mesh "${tag}" wants ${(frac * 100).toFixed(0)}% of one ${opts.atlasResolution}² atlas at ${opts.texelsPerMeter} texels/m — clamping to ${(fillRatio * 100).toFixed(0)}% (effective density reduced)`,
       );

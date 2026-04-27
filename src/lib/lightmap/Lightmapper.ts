@@ -30,13 +30,6 @@ export type RaycastOptions = {
 
   directLightEnabled: boolean;
   indirectLightEnabled: boolean;
-  ambientLightEnabled: boolean;
-  /** AO max distance (also the falloff divisor). World units. */
-  ambientDistance: number;
-  /** AO darkness multiplier. Default 1.0. Sane range 0..3. */
-  aoIntensity: number;
-  /** AO falloff curve exponent. 1.0 = linear (pre-7D). Default 1.5. Range 0.5..4.0. */
-  aoExponent: number;
 
   /** Per-triangle albedo lookup, indexed by global triangle index. Task 03. */
   albedoTexture: Texture;
@@ -55,7 +48,11 @@ export type LightmapperRender = { samples: number; done: boolean };
 
 export type Lightmapper = {
   renderTarget: WebGLMultipleRenderTargets;
-  textures: { direct: Texture; indirect: Texture; ao: Texture };
+  /**
+   * Direct/indirect output textures. AO has been split into a separate pass —
+   * see `AOMapper.ts`. Composite consumes (direct, indirect, ao-from-AOMapper).
+   */
+  textures: { direct: Texture; indirect: Texture };
   /** Returns running sample/frame count and whether the budget has been hit. */
   render: () => LightmapperRender;
   /** Reset accumulator (re-bake without rebuilding BVH/textures — currently unused, future-proof). */
@@ -98,13 +95,9 @@ export const generateLightmapper = (
     sampleIndex: 0,
     directLightEnabled: options.directLightEnabled,
     indirectLightEnabled: options.indirectLightEnabled,
-    ambientLightEnabled: options.ambientLightEnabled,
-    ambientDistance: options.ambientDistance,
-    aoIntensity: options.aoIntensity,
-    aoExponent: options.aoExponent,
   });
 
-  const renderTarget = new WebGLMultipleRenderTargets(options.resolution, options.resolution, 3, {
+  const renderTarget = new WebGLMultipleRenderTargets(options.resolution, options.resolution, 2, {
     type: FloatType,
     minFilter: LinearFilter, // Use Linear during bake to avoid heavy mipmap generation every frame
     magFilter: LinearFilter,
@@ -167,10 +160,10 @@ export const generateLightmapper = (
     raycastMesh.geometry.dispose();
   };
 
-  const [direct, indirect, ao] = renderTarget.texture;
-  if (!direct || !indirect || !ao)
-    throw new Error('[baker] WebGLMultipleRenderTargets did not allocate 3 textures');
-  const textures = { direct, indirect, ao };
+  const [direct, indirect] = renderTarget.texture;
+  if (!direct || !indirect)
+    throw new Error('[baker] WebGLMultipleRenderTargets did not allocate 2 textures');
+  const textures = { direct, indirect };
 
   return {
     renderTarget,

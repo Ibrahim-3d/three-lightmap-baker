@@ -15,6 +15,7 @@ import { MeshBVH } from 'three-mesh-bvh';
 import { generateAtlas } from './atlas/generateAtlas';
 import { renderAtlas } from './atlas/renderAtlas';
 import { generateLightmapper, Lightmapper, RaycastOptions } from './lightmap/Lightmapper';
+import { generateAOMapper, AOMapper, AORaycastOptions } from './lightmap/AOMapper';
 import { runComposite, CompositeResult } from './lightmap/Composite';
 import { runPostProcess, PostProcessOptions, PostProcessResult } from './lightmap/Refinement';
 import { mergeGeometry, extractPerTriangleMaterials } from './utils/GeometryUtils';
@@ -118,6 +119,12 @@ export type AOOptions = {
   intensity?: number;
   /** Falloff curve exponent. 1.0 = linear (pre-7D). Default 1.5. Sane 0.5..4.0. */
   exponent?: number;
+  /**
+   * AO ray budget per frame, independent of `castsPerFrame`. Lets you keep AO
+   * clean while indirect stays cheap (e.g. casts=4, samples=16). Default:
+   * same as `castsPerFrame`. Set to 0 to disable AO via empty loop. Range 0..64.
+   */
+  samples?: number;
 };
 
 const toLinearColor = (c: Color | string | number | undefined, fallback: number): Color =>
@@ -138,6 +145,10 @@ function validateOptions(opts: LightmapBakerOptions): void {
   const casts = opts.castsPerFrame ?? 5;
   if (!Number.isFinite(casts) || casts < 1 || casts > 256)
     throw new BakeError(`castsPerFrame must be 1-256, got ${casts}`, 'validation');
+
+  const aoSamples = opts.ao?.samples;
+  if (aoSamples !== undefined && (!Number.isFinite(aoSamples) || aoSamples < 0 || aoSamples > 64))
+    throw new BakeError(`ao.samples must be 0-64, got ${aoSamples}`, 'validation');
 
   const bounces = opts.bounces ?? 1;
   if (!Number.isInteger(bounces) || bounces < 0 || bounces > 8)
@@ -186,10 +197,18 @@ const DEFAULT_REFINEMENT: PostProcessOptions = {
 
 type GroupInternals = {
   lightmapper: Lightmapper;
+  aoMapper: AOMapper;
   composite: CompositeResult;
   refinement: PostProcessResult | null;
   atlasDispose: () => void;
   resolution: number;
+  /**
+   * Atlas G-buffers kept alive for the duration of the bake result so AO-only
+   * rebakes can reuse them and so refinement can read positionTex as the chart
+   * mask. Released by `atlasDispose()` on `LightmapBakeResult.dispose()`.
+   */
+  positionTex: Texture;
+  normalTex: Texture;
 };
 
 /** Result of a successful bake. Owns the GPU resources — call `dispose()` to release. */
@@ -201,6 +220,9 @@ export class LightmapBakeResult {
     public readonly stats: BakeStats,
     private readonly internals: {
       groups: GroupInternals[];
+      bvh: MeshBVH;
+      refinementOptions: PostProcessOptions;
+      denoise: boolean;
       matTexDispose: () => void;
     },
   ) {}
@@ -252,10 +274,71 @@ export class LightmapBakeResult {
     for (const g of this.internals.groups) {
       g.refinement?.dispose();
       g.composite.dispose();
+      g.aoMapper.dispose();
       g.lightmapper.dispose();
       g.atlasDispose();
     }
     this.internals.matTexDispose();
+  }
+
+  /**
+   * View-time AO tweak — applies new intensity / exponent / enabled to every
+   * group's composite. Sub-millisecond per group; no re-bake. Returns
+   * immediately. Use this for `aoIntensity`, `aoExponent`, and `aoEnabled`.
+   */
+  refreshAO(opts: { intensity?: number; exponent?: number; enabled?: boolean }): void {
+    for (const g of this.internals.groups) {
+      g.composite.refresh({
+        aoIntensity: opts.intensity,
+        aoExponent: opts.exponent,
+        aoEnabled: opts.enabled,
+      });
+    }
+  }
+
+  /**
+   * Re-bake AO only — re-runs every group's AO mapper with the supplied
+   * options, refreshes its composite to read the new AO texture, and re-runs
+   * refinement. Bounce textures (direct/indirect) are NOT touched. Cost ≈
+   * (AO ray cost / total bake ray cost) × original bake time, typically
+   * 5–15% of a full bake.
+   *
+   * Use for `aoSamples` / `ambientDistance` slider changes.
+   * Use `refreshAO()` instead for `aoIntensity` / `aoExponent` / `aoEnabled`.
+   */
+  async rebakeAO(
+    opts: { samples: number; distance: number; targetSamples: number },
+    hooks: BakeHooks = {},
+  ): Promise<void> {
+    const groups = this.internals.groups;
+    for (let gi = 0; gi < groups.length; gi++) {
+      const g = groups[gi]!;
+      const aoOpts: AORaycastOptions = {
+        resolution: g.resolution,
+        aoSamples: opts.samples,
+        ambientDistance: opts.distance,
+        targetSamples: opts.targetSamples,
+      };
+      await rebakeAOForGroup(this.renderer, this.internals.bvh, g, aoOpts, hooks, (p) =>
+        hooks.onProgress?.('bake', (gi + p) / groups.length),
+      );
+
+      // Re-run refinement so denoise sees the new composite output.
+      if (g.refinement) {
+        g.refinement.dispose();
+        g.refinement = await runPostProcess(
+          this.renderer,
+          g.composite.texture,
+          g.positionTex,
+          g.resolution,
+          this.internals.refinementOptions,
+        );
+        const finalTex = g.refinement.texture;
+        for (const [mesh, res] of this.meshResolutions) {
+          if (res === g.resolution) this.meshLightmaps.set(mesh, finalTex);
+        }
+      }
+    }
   }
 }
 
@@ -302,6 +385,7 @@ export class LightmapBaker {
         distance: opts.ao?.distance ?? 0.5,
         intensity: opts.ao?.intensity ?? 1.0,
         exponent: opts.ao?.exponent ?? 1.5,
+        samples: opts.ao?.samples ?? opts.castsPerFrame ?? 5,
       },
       refinementOptions: {
         ...DEFAULT_REFINEMENT,
@@ -409,6 +493,7 @@ export class LightmapBaker {
         skyColor,
         matTex,
       );
+      const aoOpts: AORaycastOptions = buildAORaycastOpts(this.opts, res);
 
       const lightmapper = generateLightmapper(
         this.renderer,
@@ -417,16 +502,34 @@ export class LightmapBaker {
         bvh,
         raycastOpts,
       );
+      const aoMapper = generateAOMapper(
+        this.renderer,
+        atlas.positionTexture,
+        atlas.normalTexture,
+        bvh,
+        aoOpts,
+      );
 
-      await runLightmapperUntilDone(lightmapper, this.opts.samples, hooks, (p) =>
+      await runMappersUntilDone(lightmapper, aoMapper, this.opts.samples, hooks, (p) =>
         hooks.onProgress?.('bake', (gi + p) / groupResolutions.length),
       );
 
-      const composite = runComposite(this.renderer, lightmapper.textures, res, {
-        directIntensity: 1.0,
-        giIntensity: this.opts.gi.intensity,
-        aoEnabled: this.opts.ao.enabled,
-      });
+      const composite = runComposite(
+        this.renderer,
+        {
+          direct: lightmapper.textures.direct,
+          indirect: lightmapper.textures.indirect,
+          ao: aoMapper.texture,
+        },
+        res,
+        {
+          directIntensity: 1.0,
+          giIntensity: this.opts.gi.intensity,
+          aoEnabled: this.opts.ao.enabled,
+          aoIntensity: this.opts.ao.intensity,
+          aoExponent: this.opts.ao.exponent,
+        },
+      );
       composite.refresh();
 
       let refinement: PostProcessResult | null = null;
@@ -443,10 +546,13 @@ export class LightmapBaker {
       const finalTex = refinement?.texture ?? composite.texture;
       groupResults.push({
         lightmapper,
+        aoMapper,
         composite,
         refinement,
         atlasDispose: atlas.dispose,
         resolution: res,
+        positionTex: atlas.positionTexture,
+        normalTex: atlas.normalTexture,
       });
 
       for (const m of groupMeshes) {
@@ -476,6 +582,9 @@ export class LightmapBaker {
 
     return new LightmapBakeResult(this.renderer, meshLightmaps, meshResolutions, stats, {
       groups: groupResults,
+      bvh,
+      refinementOptions: this.opts.refinementOptions,
+      denoise: this.opts.denoise,
       matTexDispose: () => {
         matTex.albedoTexture.dispose();
         matTex.emissiveTexture.dispose();
@@ -545,10 +654,6 @@ function buildRaycastOpts(
     lights,
     skyColor,
     skyIntensity: opts.gi.skyIntensity,
-    ambientDistance: opts.ao.distance,
-    aoIntensity: opts.ao.intensity,
-    aoExponent: opts.ao.exponent,
-    ambientLightEnabled: opts.ao.enabled,
     directLightEnabled: opts.light.enabled,
     indirectLightEnabled: opts.gi.enabled,
     albedoTexture: matTex.albedoTexture,
@@ -559,8 +664,24 @@ function buildRaycastOpts(
   };
 }
 
-function runLightmapperUntilDone(
+/** Build the AOMapper options for a group at the given resolution. */
+function buildAORaycastOpts(opts: LightmapBaker['opts'], resolution: number): AORaycastOptions {
+  return {
+    resolution,
+    aoSamples: opts.ao.samples,
+    ambientDistance: opts.ao.distance,
+    targetSamples: opts.samples,
+  };
+}
+
+/**
+ * Drive bounce + AO mappers in lockstep until both report done. Each frame
+ * advances each accumulator by one sample. Progress reflects whichever pass
+ * is further behind, so the user-visible progress bar never jumps.
+ */
+function runMappersUntilDone(
   lightmapper: Lightmapper,
+  aoMapper: AOMapper,
   targetSamples: number,
   hooks: BakeHooks,
   onProgress: (p: number) => void,
@@ -571,9 +692,48 @@ function runLightmapperUntilDone(
         reject(new BakeError('aborted by signal', 'bake'));
         return;
       }
-      const r = lightmapper.render();
-      onProgress(targetSamples > 0 ? r.samples / targetSamples : 1);
+      const lr = lightmapper.render();
+      const ar = aoMapper.render();
+      const minSamples = Math.min(lr.samples, ar.samples);
+      onProgress(targetSamples > 0 ? minSamples / targetSamples : 1);
+      if (lr.done && ar.done) {
+        resolve();
+        return;
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+}
+
+/**
+ * AO-only re-bake helper. Used by `LightmapBaker.rebakeAO()` to swap each
+ * group's AO mapper without touching bounce/composite/refinement allocations
+ * beyond the single texture rebind.
+ */
+function rebakeAOForGroup(
+  renderer: WebGLRenderer,
+  bvh: MeshBVH,
+  group: GroupInternals,
+  aoOpts: AORaycastOptions,
+  hooks: BakeHooks,
+  onProgress: (p: number) => void,
+): Promise<void> {
+  const newAO = generateAOMapper(renderer, group.positionTex, group.normalTex, bvh, aoOpts);
+  // Replace the old AO mapper.
+  group.aoMapper.dispose();
+  group.aoMapper = newAO;
+  return new Promise<void>((resolve, reject) => {
+    const tick = (): void => {
+      if (hooks.signal?.aborted) {
+        reject(new BakeError('aborted by signal', 'bake'));
+        return;
+      }
+      const r = newAO.render();
+      onProgress(aoOpts.targetSamples > 0 ? r.samples / aoOpts.targetSamples : 1);
       if (r.done) {
+        // Swap composite's AO source to the new texture and re-render.
+        group.composite.refresh({ aoTex: newAO.texture });
         resolve();
         return;
       }

@@ -30,6 +30,10 @@ export class TexelDensityMaterial extends ShaderMaterial {
   constructor(opts: TexelDensityMaterialOptions) {
     super({
       glslVersion: GLSL3,
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1,
+      side: 0, // FrontSide (explicitly avoid backface fighting)
       uniforms: {
         uTexelsPerMeter: { value: opts.texelsPerMeter },
         uLightmapSize: { value: opts.lightmapSize },
@@ -81,13 +85,11 @@ export class TexelDensityMaterial extends ShaderMaterial {
                     else                  c = vec3(0.0, 0.0, 1.0);
 
                     // Checker in WORLD space — one square = CHECKER_TEXELS target
-                    // texels wide. CHECKER_TEXELS is decoupled from the actual
-                    // texel size so the pattern stays visually readable as the
-                    // density slider goes up: at 10 texels/m + 16 texels/square,
-                    // squares are 1.6m; at 50 t/m, squares are 0.32m. Triplanar
+                    // texels wide. Decoupled from the actual texel size so the
+                    // pattern stays readable as density slides up. Triplanar
                     // XOR sum covers all axes — squares stay UNIFORMLY square
                     // across the scene if density is on-target.
-                    const float CHECKER_TEXELS = 16.0;
+                    const float CHECKER_TEXELS = 4.0;
                     float worldPerSquare = CHECKER_TEXELS / max(uTexelsPerMeter, 1e-6);
                     vec3 wcell = floor(vWorldPos / worldPerSquare);
                     float check = mod(wcell.x + wcell.y + wcell.z, 2.0);

@@ -103,6 +103,22 @@ Every non-trivial technical decision is recorded here. Format:
   - Per-group BVH including all meshes (rebuild N times): rejected — wasted work; BVH construction is O(n log n) and can dominate at moderate scene sizes.
 - **Consequences:** Excluded meshes still cast shadows for other meshes (they're in the BVH but skipped from atlas). All groups see the same scene geometry → physically correct cross-mesh GI. Single BVH allocation = lower peak memory.
 
+## D-010: AO split into a dedicated pass with composite-time remap
+
+- **Date:** 2026-04-27
+- **Status:** accepted
+- **Context:** Through Session 8 (Task 7D), AO was a third MRT attachment of `LightmapperMaterial`. AO sliders (`aoIntensity`, `aoExponent`, `ambientDistance`) all triggered a full bounce-pass re-bake because they were uniforms on the bake shader. The `samples` carry-over from S8 also wanted AO to have an independent ray budget from the indirect bounce loop.
+- **Decision:** Split AO into its own pass:
+  1. New `AOMaterial` + `generateAOMapper` — single-output GLSL3 shader, owns its own RT, accumulator, and dispose.
+  2. Bounce MRT goes from 3 attachments to 2 (`direct`, `indirect`). AO uniforms removed from the bounce shader.
+  3. AO bake stores RAW normalized visibility `t = clamp(dist/ambientDistance, 0, 1)` per texel.
+  4. `aoIntensity` / `aoExponent` remap moved to `CompositeMaterial`. View-time tweak; sub-millisecond.
+  5. `ambientDistance` and `aoSamples` still require fresh rays → AO-only re-bake (`LightmapBakeResult.rebakeAO()`). Bounce textures untouched.
+- **Alternatives considered:**
+  - Second inner loop inside LightmapperMaterial: rejected — couples AO ray count to bounce loop count, defeats the point of independent budgets.
+  - Keep AO on the MRT, lift only the remap to composite: rejected — solves the slider latency but not the budget independence; messier API.
+- **Consequences:** +1 fullscreen quad draw per frame during accumulation (negligible). +1 RT alive during bake (FloatType, square at lightmap resolution — ~16 MB at 2048²). View-time AO tweaking is now sub-ms instead of full re-bake. AO-only re-bakes (distance / samples sliders) cost ~5–15% of a full bake. Composite shader is the single source of truth for the AO remap formula. At `aoIntensity=1, aoExponent=1` the rendered output is byte-equivalent to the pre-split path.
+
 ## D-009: Texel density as a material-swap layer (not a lightmap-overlay layer)
 
 - **Date:** 2026-04-26

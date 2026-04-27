@@ -35,10 +35,17 @@
 | Task | Status |
 |---|---|
 | 07 — Multi-light + multi-bounce + production polish (merged) | ✅ Done | Sub-phases 7A–7F shipped Session 8 |
+| 12 — Model import/export (GLB round-trip) | ✅ Done | Wired in demo since pre-S8: GLTFLoader + GLTFExporter + file-picker UI in `CornellBoxExample.ts` |
 | 08 — WebGL timeout protection | ⬜ |
 | 10 — Lightmap downscaling | ⬜ |
 | 11 — Light probes (SH) | ⬜ |
-| 12 — Model import/export | ⬜ |
+
+### Pending refactors (not original tasks)
+
+| Item | Status | Notes |
+|---|---|---|
+| Demo → public `LightmapBaker.bake()` migration | ⬜ | Demo still uses its own group orchestration; per-mesh `resolution` override is wired in the public class but not the demo path. Carry-over from S8. |
+| AO `samples` separate from indirect ray budget | ✅ Done | Session 9 — AO now lives in its own `AOMapper` / `AOMaterial`. |
 
 ### Deliberate exclusions
 
@@ -444,3 +451,59 @@ But Task 03's `extractPerTriangleMaterials` built the per-triangle albedo+emissi
 - `LightBakerExample.ts` remains unreferenced legacy; not removed (out of scope, but not harmful).
 
 **Next session** — Task 12 (GLB model import/export) first: migrating the demo to consume the public `LightmapBaker.bake()` path unlocks per-mesh resolution end-to-end and provides the import/export surface needed for the asset-pipeline story. After that, Task 08 (WebGL TDR / timeout protection) is high priority on Windows — longer multi-bounce bakes at Production/Final quality raise GPU-hang risk. Tasks 10 (lightmap downscaling) and 11 (light probes/SH) follow.
+
+### Session 9 — 2026-04-27
+
+**Task completed** — AO split into its own bake pass + Task 12 reclassification.
+
+**Trajectory audit (this session, before any code changes):**
+- Walked Sessions 1–8 + DECISIONS.md + FAILED-APPROACHES.md to confirm no work was about to be reverted or duplicated.
+- Discovered Task 12 (GLB import/export) was actually already wired in the demo and had been since before S8 — `GLTFLoader` at `CornellBoxExample.ts:917`, `GLTFExporter` at `:1013`, hidden file picker + Import/Export buttons. The Status table just hadn't been flipped. Updated the table (Task 12 → Done) + added a new "Pending refactors" subsection to track the actual remaining gap: demo migration to consume public `LightmapBaker.bake()` (separate from GLB I/O itself).
+
+**What changed (AO split — code shipped this session)**
+
+| File | Change |
+|---|---|
+| `src/lib/lightmap/AOMaterial.ts` (NEW, ~160 LOC) | Standalone GLSL3 AO bake material. Single output `aoOut`. Stores RAW normalized visibility `t = clamp(dist/ambientDistance, 0, 1)` per texel (1.0 on miss / hit beyond range). Mirrors LightmapperMaterial's RNG, hemisphere sampler, ray bias, and BVH usage so contact AO is byte-equivalent to the pre-split path at `intensity=1, exponent=1`. |
+| `src/lib/lightmap/AOMapper.ts` (NEW, ~130 LOC) | `generateAOMapper(renderer, positions, normals, bvh, opts)` — owns its own RT (FloatType + LinearFilter), accumulator, render loop, dispose. Mirror of `generateLightmapper` shape: `{ texture, render(), reset(), dispose() }`. |
+| `src/lib/lightmap/LightmapperMaterial.ts` | AO removed from MRT (3 attachments → 2). Dropped uniforms `ambientLightEnabled`, `ambientDistance`, `aoIntensity`, `aoExponent`, the `aoOut` location-2 output, and the `totalAO` accumulator block from `main()`. Bounce ray work unchanged — `tracePath` still drives indirect. |
+| `src/lib/lightmap/Lightmapper.ts` | `WebGLMultipleRenderTargets(..., 3, ...)` → `..., 2, ...`. `RaycastOptions` dropped 4 AO fields. Returned `textures` is now `{ direct, indirect }` (no `ao`). |
+| `src/lib/lightmap/CompositeMaterial.ts` | Added `aoIntensity`, `aoExponent` uniforms. AO remap moved here from the bake shader: `occ = 1 - pow(t, aoExponent); a = 1 - clamp(occ * aoIntensity, 0, 1)`. At `intensity=1, exponent=1` collapses to identity → byte-equivalent default behaviour. |
+| `src/lib/lightmap/Composite.ts` | `CompositeOverrides` adds `aoIntensity`, `aoExponent`. `runComposite` accepts `{ direct, indirect, ao }` (the AO texture now comes from `AOMapper`, not from the bounce MRT). |
+| `src/lib/LightmapBaker.ts` | Public class now drives both `Lightmapper` AND `AOMapper` per group. New `runMappersUntilDone` lockstep helper drives both accumulators each frame; progress reflects `min(bounce.samples, ao.samples)` so the bar never jumps. New `LightmapBakeResult.refreshAO({ intensity?, exponent?, enabled? })` (sub-ms, view-time). New `LightmapBakeResult.rebakeAO({ samples, distance, targetSamples })` for slider changes that need fresh rays — disposes the AO mapper, builds a new one, swaps it into the composite, re-runs refinement. Bounce textures untouched on AO-only re-bake. `AOOptions.samples` added (range 0–64, default = `castsPerFrame`). Group internals now retain `positionTex` + `normalTex` for AO re-bake reuse. |
+| `src/lib/index.ts` | Public exports for `generateAOMapper`, `AOMapper`, `AORaycastOptions`, `AOMapperRender`. |
+| `src/lib/lightmap/TexelDensityMaterial.ts` | `CHECKER_TEXELS` 16 → 4 (smaller checker squares; better readability at moderate density targets). Added `polygonOffset` + explicit `FrontSide` to avoid z-fighting on coincident faces. |
+| `src/lib/utils/Packing.ts` | Cleaner mesh label fallback: `"Mesh N (Box/Sphere/...)"` instead of UUID prefix when `mesh.name` is empty. |
+| `src/demo/CornellBoxExample.ts` | (1) Wired the new `AOMapper` per `BakeGroup`. AO sliders rerouted: `aoIntensity` / `aoExponent` / `ambientLightEnabled` → composite refresh (no re-bake); `ambientDistance` / `aoSamples` → AO-only re-bake via new private `rebakeAO()`. (2) `bakeBVH` field retains the BVH across rebakes. (3) Mesh `name` set on every Cornell mesh (`Floor`, `Ceiling`, `Back Wall`, `Left Wall (Red)`, etc.) so Tweakpane per-mesh folders read clean. (4) Stats overlay extended: VRAM (RT-aware approximation), triangle count, rays/sec. (5) "Lightmap (AO)" layer now reads `aoMapper.texture` instead of `lightmapper.textures.ao`. (6) Mipmap upgrade loop on bake-done iterates 2 attachments instead of 3 + upgrades AO texture separately. |
+
+**Pipeline shape after the split**
+
+```
+Pass 1 (atlas):     geometry → positionTex, normalTex                        (unchanged)
+Pass 2a (bounce):   positionTex + normalTex + BVH → MRT { direct, indirect } (was 3 attachments)
+Pass 2b (AO):       positionTex + normalTex + BVH → aoTex                    (NEW — own ray budget)
+Composite (view):   (direct + indirect * giIntensity) * aoRemap(aoTex)       (aoRemap is new here)
+Refinement:         dilation + bilateral on composite output                  (unchanged)
+```
+
+Per-frame cost: bounce-pass rays = `casts × resolution²`, AO-pass rays = `aoSamples × resolution²`. They run as separate fullscreen quad draws each frame; both accumulate progressively against the shared `targetSamples` budget.
+
+**Decisions made (and why)**
+
+1. **Two passes, not a second MRT attachment on the bounce shader.** A second inner loop in LightmapperMaterial would let AO share the same shader invocation, but it would also lock AO ray count to the bounce loop count. The user-facing benefit of the split is *independent* ray budgets and the ability to tweak AO without touching bounce. A separate pass realizes that benefit cleanly.
+2. **AO stores RAW visibility `t`; remap moved to composite.** Previously the bake shader applied `aoIntensity` / `aoExponent` and stored the final occlusion value. After the split, the bake stores `t ∈ [0, 1]` only. The remap (`1 - clamp((1 - pow(t, e)) * intensity, 0, 1)`) lives in `CompositeMaterial`, so `aoIntensity` / `aoExponent` sliders are sub-millisecond view-time tweaks instead of full re-bakes.
+3. **`ambientDistance` triggers a re-bake; `aoIntensity` / `aoExponent` do not.** Distance changes which hits count as occluders, which is a ray-result change — the stored `t` values are no longer valid. Intensity/exponent only reshape the stored `t`, which is a view-time op. Documented inline at the slider handlers.
+4. **`AOMapper` mirrors `Lightmapper`'s shape exactly.** Same `{ texture, render, reset, dispose }` interface. Lets `runMappersUntilDone` drive both with one tick loop. Makes future "more independent passes" (e.g. probes, irradiance) easy to add — same pattern.
+5. **BVH retained across AO-only re-bakes.** Stored on `LightmapBakeResult.internals.bvh` (and `bakeBVH` in the demo). Re-baking AO does NOT rebuild the BVH or atlas G-buffers — those are reused. AO-only re-bake cost ≈ `aoSamples / (aoSamples + casts × bounceCost)` of a full bake; rough order 5–15%.
+6. **Default `AOOptions.samples` = `castsPerFrame`.** Preserves the pre-split ray budget exactly when the caller doesn't pass a value. Documented in JSDoc + validateOptions.
+
+**Carry-overs / not changed**
+
+- Demo `→` public `LightmapBaker.bake()` migration STILL pending. Demo continues to use its own group orchestration. Per-mesh `resolution` override is wired in the public class but not in the demo path. (Logged in the new "Pending refactors" section of the Status table.)
+- Multi-bounce GI still hand-unrolled in the bounce shader (no GLSL recursion). Bounces uniform [1, 4]; default 1 produces byte-equivalent output to the pre-7B path.
+- "Combined (Dilated)" layer still deferred — `PostProcess` doesn't expose a dilated-only intermediate stage.
+- `LightBakerExample.ts` remains unreferenced legacy.
+- `npm run check` passes (typecheck 0 errors, prettier clean, eslint 45 informational warnings — all pre-existing on Tweakpane any-typed bindings, not in lib/lightmap).
+- `npm run build` green at 883.70 KiB (was 730.53 KiB at end of S8 — delta is the new AOMaterial + AOMapper + demo overlay code, expected).
+
+**Next session** — Demo `→` `LightmapBaker.bake()` migration, then Task 08 (WebGL TDR / timeout protection on Windows). Tasks 10 (lightmap downscaling) and 11 (SH light probes) follow.
