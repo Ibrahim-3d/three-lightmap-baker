@@ -45,9 +45,47 @@ import { detectGPUCapabilities, GPUCapabilities } from './gpu/Capabilities';
 
 export type BakePhase = 'uv-unwrap' | 'geometry' | 'bake' | 'refine';
 
+/**
+ * Per-frame bake snapshot — fires after each RAF tick during the `bake` phase.
+ * Lets callers preserve a live preview of the in-flight accumulator (mount
+ * `compositeTexture` on a material's `lightMap` slot once and watch it fade in)
+ * and drive their own UI updates (FPS counter, progress widget, stats overlay).
+ *
+ * The texture refs are STABLE across calls — Three.js will pick up the latest
+ * sample on its next render automatically. Don't store copies; store the ref.
+ */
+export type BakeFrameInfo = {
+  /** 0-indexed group currently baking. Public API processes groups sequentially. */
+  groupIndex: number;
+  /** Total group count for this bake. */
+  totalGroups: number;
+  /** Bounce-pass sample count completed so far for this group. */
+  bounceSamples: number;
+  /** AO-pass sample count completed so far for this group. */
+  aoSamples: number;
+  /** Target sample count for this group (= `LightmapBakerOptions.samples`). */
+  targetSamples: number;
+  /** True on the final RAF of this group — both mappers report done. */
+  done: boolean;
+  /** Live composite texture (direct + indirect × gi) × ao. Refreshed per-RAF. */
+  compositeTexture: Texture;
+  /** Raw bounce direct accumulator. */
+  directTexture: Texture;
+  /** Raw bounce indirect accumulator. */
+  indirectTexture: Texture;
+  /** Raw AO visibility accumulator (pre-remap). */
+  aoTexture: Texture;
+};
+
 export type BakeHooks = {
   /** `percent` is 0-1, NOT 0-100. Called several times per phase. */
   onProgress?: (phase: BakePhase, percent: number) => void;
+  /**
+   * Per-RAF callback during the `bake` phase. Use to drive live preview and
+   * UI updates. The composite is refreshed BEFORE this fires, so reading
+   * `compositeTexture` reflects the current sample count.
+   */
+  onFrame?: (info: BakeFrameInfo) => void;
   /** Aborts mid-bake if signalled. */
   signal?: AbortSignal;
 };
@@ -677,16 +715,10 @@ export class LightmapBaker {
         aoOpts,
       );
 
-      await runMappersWithTimeoutProtection(
-        lightmapper,
-        aoMapper,
-        this.opts.samples,
-        hooks,
-        ctxState,
-        tp,
-        (p) => hooks.onProgress?.('bake', (gi + p) / groupKeys.length),
-      );
-
+      // Composite is created BEFORE the mappers loop so its texture exists
+      // during accumulation — callers can mount `composite.texture` on
+      // materials immediately and watch it fade in via per-RAF refreshes
+      // inside runMappersWithTimeoutProtection. Phase-2 onFrame hook.
       const composite = runComposite(
         this.renderer,
         {
@@ -703,7 +735,19 @@ export class LightmapBaker {
           aoExponent: this.opts.ao.exponent,
         },
       );
-      composite.refresh();
+
+      await runMappersWithTimeoutProtection(
+        lightmapper,
+        aoMapper,
+        composite,
+        this.opts.samples,
+        hooks,
+        ctxState,
+        tp,
+        gi,
+        groupKeys.length,
+        (p) => hooks.onProgress?.('bake', (gi + p) / groupKeys.length),
+      );
 
       let refinement: PostProcessResult | null = null;
       if (this.opts.denoise || this.opts.refinementOptions.dilationIterations > 0) {
@@ -899,10 +943,13 @@ function adaptiveTileSize(
 function runMappersWithTimeoutProtection(
   lightmapper: Lightmapper,
   aoMapper: AOMapper,
+  composite: CompositeResult,
   targetSamples: number,
   hooks: BakeHooks,
   ctxState: ContextLossState,
   tp: Required<TimeoutProtectionOptions>,
+  groupIndex: number,
+  totalGroups: number,
   onProgress: (p: number) => void,
 ): Promise<void> {
   return new Promise<void>((resolve, reject) => {
@@ -940,7 +987,26 @@ function runMappersWithTimeoutProtection(
       const ar = aoMapper.renderTiled(tp.maxFrameMs);
       const minSamples = Math.min(lr.samples, ar.samples);
       onProgress(targetSamples > 0 ? minSamples / targetSamples : 1);
-      if (lr.done && ar.done) {
+
+      // Refresh composite so the live preview reflects this frame's accumulator
+      // state, then fire onFrame with the live texture refs. The composite must
+      // refresh BEFORE onFrame so callers see the up-to-date pixels.
+      const done = lr.done && ar.done;
+      composite.refresh();
+      hooks.onFrame?.({
+        groupIndex,
+        totalGroups,
+        bounceSamples: lr.samples,
+        aoSamples: ar.samples,
+        targetSamples,
+        done,
+        compositeTexture: composite.texture,
+        directTexture: lightmapper.textures.direct,
+        indirectTexture: lightmapper.textures.indirect,
+        aoTexture: aoMapper.texture,
+      });
+
+      if (done) {
         resolve();
         return;
       }
