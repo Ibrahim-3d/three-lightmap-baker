@@ -395,14 +395,6 @@ export type BakeGroupView = {
    * for the AO pass.
    */
   readonly aoMapper: AOMapper;
-  /**
-   * Live composite handle — `direct + indirect × gi × ao_remap`. Read-only;
-   * lifetime is owned by the result. Use `.refresh(overrides)` to push
-   * view-time uniform changes (directIntensity, giIntensity, aoIntensity,
-   * aoExponent, aoEnabled) without re-baking. Library refreshes per-RAF
-   * during the bake; after the bake, callers may refresh on slider change.
-   */
-  readonly compositeRef: CompositeResult;
   readonly textures: {
     /** Direct lighting accumulator (raw, pre-composite). */
     direct: Texture;
@@ -472,7 +464,6 @@ export class LightmapBakeResult {
       resolution: g.resolution,
       lightmapper: g.lightmapper,
       aoMapper: g.aoMapper,
-      compositeRef: g.composite,
       textures: {
         direct: g.lightmapper.textures.direct,
         indirect: g.lightmapper.textures.indirect,
@@ -499,7 +490,6 @@ export class LightmapBakeResult {
           resolution: g.resolution,
           lightmapper: g.lightmapper,
           aoMapper: g.aoMapper,
-          compositeRef: g.composite,
           textures: {
             direct: g.lightmapper.textures.direct,
             indirect: g.lightmapper.textures.indirect,
