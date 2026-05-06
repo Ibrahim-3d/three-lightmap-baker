@@ -2,6 +2,7 @@ import {
   Box3,
   BoxGeometry,
   Color,
+  DataTexture,
   DirectionalLight,
   DoubleSide,
   LinearFilter,
@@ -56,6 +57,7 @@ import {
   LightmapBakeResult,
   LightmapBakerOptions,
   BakeFrameInfo,
+  Diagnostics,
 } from '../lib';
 import type { Material } from 'three';
 
@@ -262,6 +264,11 @@ export class CornellBoxExample {
   /** Caches each mesh's original material so we can restore it when leaving a swap layer. */
   private originalMaterials = new WeakMap<Mesh, Material>();
 
+  private diag!: Diagnostics;
+
+  /** Set true once on the first RAF after a bake completes — diag instruments that frame heavily. */
+  private firstPostBakeRender = false;
+
   pane: Pane;
 
   options = {
@@ -279,7 +286,7 @@ export class CornellBoxExample {
      * into 64×64 scissored tiles per the public-API safeMode default. Slow
      * but safe on iGPUs / large resolutions. Default false.
      */
-    safeMode: false,
+    safeMode: true,
     filterMode: 'linear',
     directLightEnabled: true,
     indirectLightEnabled: true,
@@ -313,7 +320,7 @@ export class CornellBoxExample {
      * the user must press "Bake Now" to apply. Useful when iterating multiple
      * settings without paying for a re-bake on each one.
      */
-    autoBake: true,
+    autoBake: false,
 
     // --- Refinement (Task 5) ---
     // Defaults OFF so the post-bake step doesn't make the bake feel "still running".
@@ -377,11 +384,36 @@ export class CornellBoxExample {
     this.camera.position.set(0, 5, 18);
     this.camera.lookAt(0, 5, 0);
 
-    this.renderer = new WebGLRenderer({ antialias: true });
+    this.renderer = new WebGLRenderer({
+      antialias: true,
+      powerPreference: 'low-power',
+      failIfMajorPerformanceCaveat: false,
+      preserveDrawingBuffer: false,
+    });
     this.renderer.outputColorSpace = SRGBColorSpace;
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(window.devicePixelRatio);
     document.body.appendChild(this.renderer.domElement);
+
+    this.diag = new Diagnostics(this.renderer);
+    this.diag.banner();
+    this.diag.snap('after renderer construction');
+
+    this.renderer.domElement.addEventListener('webglcontextlost', (e) => {
+      console.error('[baker:debug] CONTEXT LOST', {
+        bakeGroups: this.bakeGroups.length,
+        firstCompositeUuid: this.bakeGroups[0]?.composite.texture.uuid,
+        firstMeshLM: (this.meshes[0]?.material as MeshStandardMaterial | undefined)?.lightMap?.uuid,
+      });
+      this.diag.contextLossInfo();
+      e.preventDefault();
+    });
+    this.renderer.domElement.addEventListener('webglcontextrestored', () => {
+      console.error('[baker:debug] CONTEXT RESTORED — RT data lost, lightmap textures are now empty', {
+        bakeGroups: this.bakeGroups.length,
+        firstCompositeUuid: this.bakeGroups[0]?.composite.texture.uuid,
+      });
+    });
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.target.set(0, 5, 0);
@@ -401,6 +433,12 @@ export class CornellBoxExample {
     this.lightDummy.add(this.lightMarker);
 
     this.visualLight = new PointLight(0xffffff, 80, 0, 2);
+    // Display-only — at intensity 30×lightIntensity it is for the camera-render
+    // "Standard" view, NOT a bake input. The library's collectLightsFromScene
+    // skips lights tagged this way; without it the bake picks up 60× and
+    // over-exposes by 30×. The actual baked light is built from
+    // opts.light (lightDummy.position + lightIntensity).
+    this.visualLight.userData.lightmapIgnore = true;
     this.lightDummy.add(this.visualLight);
 
     this.lightTransformController = new TransformControls(this.camera, this.renderer.domElement);
@@ -975,7 +1013,7 @@ export class CornellBoxExample {
     // perMesh state from prior scene is meaningless against new uuids — clear it.
     this.options.perMesh = {};
     this.buildPerMeshUI();
-    await this.bake();
+    if (this.options.autoBake) await this.bake();
     this.startLoop();
   }
 
@@ -1064,9 +1102,41 @@ export class CornellBoxExample {
       if (!liveUUIDs.has(k)) delete this.options.perMesh[k];
     }
 
+    // Pre-bind a 1×1 dummy lightmap on every mesh so MeshStandardMaterial
+    // compiles its USE_LIGHTMAP shader variant during initial scene render
+    // (when the program is small + scene is empty, ~ms cost). Otherwise the
+    // first post-bake render forces a fresh compile of the lightmap variant
+    // which on NVIDIA D3D11 takes ~2s and exceeds the Windows TDR watchdog
+    // → CONTEXT_LOST. After bake we just swap mat.lightMap pointer; same
+    // shader variant so no recompile.
+    this.installDummyLightmaps();
+
     this.buildPerMeshUI();
-    await this.bake();
+    if (this.options.autoBake) await this.bake();
     this.startLoop();
+  }
+
+  /** 1×1 white texture reused across meshes — placeholder lightmap so the
+   *  USE_LIGHTMAP shader variant exists from the first render. */
+  private dummyLightmap: Texture | null = null;
+  private getDummyLightmap(): Texture {
+    if (this.dummyLightmap) return this.dummyLightmap;
+    const data = new Uint8Array([255, 255, 255, 255]);
+    const tex = new DataTexture(data, 1, 1);
+    tex.needsUpdate = true;
+    tex.channel = 2;
+    this.dummyLightmap = tex;
+    return tex;
+  }
+  private installDummyLightmaps(): void {
+    const dummy = this.getDummyLightmap();
+    for (const m of this.meshes) {
+      const mat = m.material as MeshStandardMaterial;
+      if (!mat) continue;
+      mat.lightMap = dummy;
+      mat.lightMapIntensity = 0; // invisible contribution
+      mat.needsUpdate = true;
+    }
   }
 
   /** Tear down all bake groups (lightmappers, composites, refinements, atlases). */
@@ -1087,6 +1157,7 @@ export class CornellBoxExample {
 
     this.progressContainer.style.display = 'block';
     this.bakeStartTime = performance.now();
+    this.diag.snap('bake() entry');
     this.bakeBatchHistory = [];
 
     const res = this.options.lightMapSize;
@@ -1191,6 +1262,11 @@ export class CornellBoxExample {
           // independent (used for info.compositeTexture); ours is what layers mount.
           const g = this.bakeGroups[info.groupIndex];
           if (g) g.composite.refresh();
+
+          // Diagnostic: every 30 frames + on completion, snap state.
+          if (info.bounceSamples % 30 === 0 || info.done) {
+            this.diag.snap(`bake RAF samples=${info.bounceSamples}/${info.targetSamples} done=${info.done}`);
+          }
           const totalSamples = info.targetSamples;
           const minSamples = Math.min(info.bounceSamples, info.aoSamples);
           const overall =
@@ -1266,7 +1342,24 @@ export class CornellBoxExample {
     this.options.pause = false;
     this.progressBar.style.width = '100%';
     this.pane.refresh();
+    console.info('[baker:debug] bake() returned, calling applyRenderMode', {
+      groups: this.bakeGroups.length,
+      bvh: !!this.bakeBVH,
+      meshes: this.meshes.length,
+      firstGroupComposite: this.bakeGroups[0]?.composite.texture.uuid,
+    });
+    this.diag.snap('after baker.bake() return, before applyRenderMode');
     this.applyRenderMode();
+    this.diag.snap('after applyRenderMode (lightmaps mounted)');
+
+    // No renderer.compile() — previous attempt requested 5 program variants
+    // upfront and made first render WORSE (2.2s → 14s) because NVIDIA D3D11
+    // parallel compile defers actual GPU compile, then first draw waits on
+    // ALL of them simultaneously. The dummy-lightmap pre-bind in
+    // installDummyLightmaps already pinned the lightmap variant at scene
+    // init, so first post-bake render needs zero new programs.
+
+    this.firstPostBakeRender = true;
   }
 
   /** Apply a quality preset → lightMapSize, casts, targetSamples, then re-bake. */
@@ -1412,21 +1505,42 @@ export class CornellBoxExample {
       if (orig && m.material !== orig) m.material = orig as SceneObj['material'];
     }
 
+    let mounted = 0;
+    let nullLM = 0;
+    const dummy = this.getDummyLightmap();
     for (const m of this.meshes) {
       const mat = m.material as MeshStandardMaterial & { _originalMap?: Texture | null };
       mat.map = layer.showAlbedo ? (mat._originalMap ?? null) : null;
 
-      // Excluded mesh OR no group yet (pre-bake): no lightmap.
+      // Excluded mesh OR no group yet (pre-bake): keep dummy lightmap with
+      // intensity=0 instead of mat.lightMap=null. Setting null removes the
+      // USE_LIGHTMAP define → forces a shader recompile on first render after
+      // bake → ~2s on NVIDIA D3D11 → exceeds Windows TDR watchdog → context
+      // loss. Pinning the variant from scene init keeps every render warm.
       const group = this.meshToGroup.get(m);
       const lm = group ? layer.getLightMap({ group }) : null;
-      mat.lightMap = lm;
-      if (mat.lightMap) {
+      if (lm) {
+        mat.lightMap = lm;
         mat.lightMap.channel = 2;
-        mat.lightMap.needsUpdate = true;
+        mat.lightMapIntensity = 1;
+        mounted++;
+      } else {
+        mat.lightMap = dummy;
+        mat.lightMapIntensity = 0;
+        nullLM++;
       }
-      mat.lightMapIntensity = 1;
-      mat.needsUpdate = true;
+      // Intentionally NOT setting mat.needsUpdate — the USE_LIGHTMAP shader
+      // variant is pinned by installDummyLightmaps at scene init. Swapping
+      // mat.lightMap to a different texture object does NOT change the
+      // compiled defines, so no recompile needed.
     }
+    console.info('[baker:debug] applyRenderMode', {
+      layer: layer.id,
+      meshes: this.meshes.length,
+      mounted,
+      nullLM,
+      groups: this.bakeGroups.length,
+    });
 
     (this.lightMarker.material as MeshBasicMaterial).color = new Color(0xffffff);
     this.visualLight.visible = layer.id === 'albedo';
@@ -1571,25 +1685,14 @@ export class CornellBoxExample {
           );
           this.progressText.innerText = `Baking complete! ${elapsed.toFixed(1)}s\nRunning post-process...`;
 
-          // Generate mipmaps on every group's MRT outputs at end-of-bake; swap min
-          // filter to LinearMipMapLinear so the lightmap can sample at any LOD.
-          // Bounce MRT now has 2 attachments (direct, indirect); AO lives on its
-          // own mapper texture and is upgraded the same way.
-          for (const g of this.bakeGroups) {
-            const rt = g.lightmapper.renderTarget;
-            for (let i = 0; i < 2; i++) {
-              const tex = rt.texture[i];
-              if (!tex) continue;
-              tex.generateMipmaps = true;
-              tex.minFilter = LinearMipMapLinearFilter;
-              this.renderer.initTexture(tex);
-            }
-            const aoTex = g.aoMapper.texture;
-            aoTex.generateMipmaps = true;
-            aoTex.minFilter = LinearMipMapLinearFilter;
-            this.renderer.initTexture(aoTex);
-            g.composite.texture.needsUpdate = true;
-          }
+          // No mipmap upgrade — switching to LinearMipMapLinearFilter forces
+          // lazy mipmap chain regen on next scene render, ~21MB GPU work for
+          // a 1024² FloatType RT, triggers TDR on borderline hardware.
+          // Plain Linear filter is good enough for lightmaps (sample at base mip).
+          console.info('[baker:debug] post-bake done', {
+            groups: this.bakeGroups.length,
+            firstCompositeUuid: this.bakeGroups[0]?.composite.texture.uuid,
+          });
           this.pane.refresh();
           if (this.options.autoApplyRefinement) void this.applyRefinement();
           return;
@@ -1641,7 +1744,16 @@ export class CornellBoxExample {
       }
 
       this.controls.update();
-      this.renderer.render(this.scene, this.camera);
+      if (this.firstPostBakeRender) {
+        this.firstPostBakeRender = false;
+        this.diag.snap('about to do FIRST post-bake scene render');
+        this.diag.measure('FIRST post-bake renderer.render', () =>
+          this.renderer.render(this.scene, this.camera),
+        );
+        this.diag.snap('after FIRST post-bake scene render');
+      } else {
+        this.renderer.render(this.scene, this.camera);
+      }
 
       // Atlas viewer overlay — show ALL atlases simultaneously in a grid.
       this.atlasViewer.visible = this.options.atlasViewerEnabled;

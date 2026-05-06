@@ -79,3 +79,7 @@ export type {
 // --- GPU capability detection (Task 08) ---
 export { detectGPUCapabilities, classifyRenderer } from './gpu/Capabilities';
 export type { GPUCapabilities, GPUTier } from './gpu/Capabilities';
+
+// --- Diagnostics (graphics-engineer instrumentation; remove when stable) ---
+export { Diagnostics } from './utils/Diagnostics';
+export type { DiagSnapshot } from './utils/Diagnostics';
