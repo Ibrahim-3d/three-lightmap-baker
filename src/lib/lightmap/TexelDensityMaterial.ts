@@ -69,6 +69,22 @@ export class TexelDensityMaterial extends ShaderMaterial {
                     vec3 dWdx = dFdx(vWorldPos);
                     vec3 dWdy = dFdy(vWorldPos);
 
+                    // Detect missing uv2 attribute (pre-bake state). xatlas
+                    // writes uv2 only after the bake completes; before that,
+                    // the attribute is absent → vUv2 reads as zero across the
+                    // primitive → derivatives are zero. Without this guard the
+                    // density viz is stuck on red and looks like an undersample
+                    // bug rather than "atlas not built yet".
+                    float uvLen = length(dUVdx) + length(dUVdy);
+                    if (uvLen < 1e-6) {
+                        // Magenta checker = "bake first to see real density".
+                        const float NOATLAS_SQUARE = 0.5;
+                        vec3 wc = floor(vWorldPos / NOATLAS_SQUARE);
+                        float k = mod(wc.x + wc.y + wc.z, 2.0);
+                        fragColor = vec4(vec3(1.0, 0.0, 1.0) * (k > 0.5 ? 1.0 : 0.55), 1.0);
+                        return;
+                    }
+
                     float texelsPerWorldX = length(dUVdx) / max(length(dWdx), 1e-6);
                     float texelsPerWorldY = length(dUVdy) / max(length(dWdy), 1e-6);
                     // Geometric mean is robust to anisotropic stretching.

@@ -13,8 +13,18 @@ enum ProgressCategory {
 }
 
 export const loadXAtlasThree = async (): Promise<void> => {
+  // Only emit one line per category (at 100%). Pre-throttle was per-percent
+  // → ~400 lines drowned diagnostic output.
+  const lastSeen: Partial<Record<number, number>> = {};
   const onProgress = (mode: number, progress: number): void => {
-    if (DEBUG) console.info(`[baker] xatlas ${ProgressCategory[mode]} ${progress}%`);
+    if (!DEBUG) return;
+    if (progress < 100) {
+      lastSeen[mode] = progress;
+      return;
+    }
+    if (lastSeen[mode] === 100) return;
+    lastSeen[mode] = 100;
+    console.info(`[baker] xatlas ${ProgressCategory[mode]} done`);
   };
   await unwrapper.loadLibrary(
     onProgress,

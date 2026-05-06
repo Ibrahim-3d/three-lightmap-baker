@@ -126,9 +126,15 @@ export const generateLightmapper = (
     indirectLightEnabled: options.indirectLightEnabled,
   });
 
+  // FloatType MRT — HalfFloat MRT was tested but caused 30× perf regression on
+  // ANGLE D3D11 (NVIDIA, RTX 3050 Ti reproduced 32s → 981s). Driver's MRT path
+  // for HalfFloat hits a slow fallback when sampled by a downstream shader.
+  // FloatType is fully supported (`OES_texture_float_linear: true` on the
+  // reproducer); precision is overkill but it's the fast path on every tested
+  // discrete GPU.
   const renderTarget = new WebGLMultipleRenderTargets(options.resolution, options.resolution, 2, {
     type: FloatType,
-    minFilter: LinearFilter, // Use Linear during bake to avoid heavy mipmap generation every frame
+    minFilter: LinearFilter,
     magFilter: LinearFilter,
     generateMipmaps: false,
   });

@@ -909,6 +909,23 @@ export class LightmapBaker {
     hooks.onProgress?.('refine', 1);
     const tR1 = performance.now();
 
+    // GPU command-queue drain. The bake submits work asynchronously; by the
+    // time JS reaches here, the GPU is typically seconds behind processing
+    // queued tile/composite draws. If we return without draining, the FIRST
+    // post-bake `renderer.render(scene)` triggers an implicit drain — and on
+    // some drivers (NVIDIA D3D11 reproduced) that drain piles up enough
+    // pressure to TDR / drop the WebGL context. Force the drain HERE, where
+    // we can isolate it from scene rendering and any caller observation.
+    // Cost: blocks JS for the queue length (~3s observed at 1024² Production).
+    // That cost was happening anyway — this just makes it explicit.
+    const tDrain0 = performance.now();
+    this.renderer.getContext().finish();
+    const tDrain1 = performance.now();
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      console.info(`[baker] GPU queue drain: ${(tDrain1 - tDrain0).toFixed(1)}ms`);
+    }
+
     // Sum texels across all groups. In density mode every group bakes at
     // `partition.resolution`; in resolution mode the key IS the resolution.
     const totalTexels = groupKeys.reduce((s: number, k: number) => {

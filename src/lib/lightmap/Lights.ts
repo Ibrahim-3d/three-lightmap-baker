@@ -52,11 +52,22 @@ export interface PackedLight {
 const TYPE_INT: Record<LightType, number> = { point: 0, directional: 1, spot: 2, area: 3 };
 export const LIGHT_TEX_WIDTH = 4;
 
-/** Walk the scene tree and convert Three.js lights to PackedLight. Skips invisible lights. */
+/**
+ * Walk the scene tree and convert Three.js lights to PackedLight.
+ *
+ * Skips:
+ *  - Invisible lights (`visible === false`)
+ *  - Anything marked `userData.lightmapIgnore = true` — same opt-out flag the
+ *    mesh collector honors. Use this on visual-only lights (camera-render
+ *    helpers, gizmo lights) that must NOT contribute energy to the bake.
+ *    Without this guard, a 30× display-only PointLight in the scene gets
+ *    packed at its display intensity and over-exposes the lightmap.
+ */
 export function collectLightsFromScene(scene: Object3D): PackedLight[] {
   const out: PackedLight[] = [];
   scene.traverse((obj) => {
     if (!obj.visible) return;
+    if (obj.userData?.lightmapIgnore) return;
     if (obj instanceof PointLight) {
       out.push({
         type: 'point',
