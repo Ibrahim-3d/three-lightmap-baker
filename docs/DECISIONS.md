@@ -160,6 +160,43 @@ Every non-trivial technical decision is recorded here. Format:
   - New `BakeError` phase `'context-loss'` is thrown if the canvas reports `webglcontextlost` mid-bake.
   - `adaptiveTileSize(intervals, current, tp)` is a user-tunable policy slot — the framework supplies a starter (3-of-last-4 RAFs over 1.5× budget → halve, no growback) but the function is explicitly marked `TODO(user)` because the threshold/magnitude/hysteresis trade-offs are UX calls.
 
+## D-014: HalfFloat composite RT, no mipmaps, gl.finish() drain
+
+- **Date:** 2026-05-06
+- **Status:** accepted
+- **Context:** On NVIDIA D3D11 the FIRST scene render after a successful bake reproducibly lost the WebGL context (`webglcontextlost`) on the Cornell scene. Investigation showed two contributing pressures landing at the same instant: (1) the composite RT was `FloatType` + `LinearMipMapLinearFilter` + `generateMipmaps:true`, and post-bake the new `MeshStandardMaterial.lightMap = composite.texture` assignment triggered a lazy mipmap chain regen for a 1024² Float RT (~21 MB GPU work) on top of (2) a queued backlog of bounce+AO+composite tile draws from the bake itself that the driver hadn't drained yet.
+- **Decision:**
+  1. Composite RT switched to `HalfFloatType` + `LinearFilter`, `generateMipmaps:false`. HalfFloat + LinearFilter is universally supported in WebGL2 (no `OES_texture_float_linear` extension dependency) and ~65k dynamic range covers our HDR composite outputs. Skipping mipmaps removes the chain-regen cost entirely; the lightmap is sampled at base mip in the standard render path.
+  2. Bounce MRT and AO RT remain `FloatType` (see D-015).
+  3. `LightmapBaker.bake()` calls `this.renderer.getContext().finish()` between the sample loop and `runPostProcess`. Drains the GPU queue explicitly. The cost (~3 s observed at 1024² Production) was happening anyway; this just isolates it from the post-bake scene render and makes it explicit in profiling.
+- **Alternatives considered:**
+  - Keep FloatType composite, only drop mipmaps: rejected — `OES_texture_float_linear` is missing on enough iGPUs that the fallback path was itself a TDR risk.
+  - Use `gl.flush()` instead of `gl.finish()`: rejected — `flush` is non-blocking; the goal is to make sure the GPU is idle before we trigger more work, which only `finish` guarantees.
+  - Batch the post-bake renderer setup across multiple RAFs to spread the load: rejected — adds orchestration complexity and user-visible latency for a problem that has a single-line fix.
+- **Consequences:** Composite output precision drops from 32-bit float to 16-bit float per channel. For lightmap composite (linear radiance, typical magnitudes 0–10) the precision loss is far below visual threshold. Quantitative comparisons against earlier bakes need to account for the format change. Bake completion now blocks the JS thread for the queue length before resolving, but that block was implicit in the first post-bake render anyway.
+
+## D-015: HalfFloat MRT for bounce was tested and rejected — Float MRT stays
+
+- **Date:** 2026-05-06
+- **Status:** accepted (records the rejection)
+- **Context:** Natural follow-up to D-014: if HalfFloat composite is fine, why not HalfFloat MRT for the bounce shader too? Memory savings would be ~50% per bounce RT.
+- **Decision:** Keep `FloatType` MRT in `Lightmapper.ts` and `AOMapper.ts`. Documented inline.
+- **Alternatives considered:**
+  - HalfFloat MRT: tested on RTX 3050 Ti / Windows / ANGLE D3D11. A 1024²×512-sample bake that completed in ~32 s with FloatType MRT took **~981 s** with HalfFloat MRT (30× regression). The driver's MRT path for HalfFloat hits a slow fallback when the render target is sampled by a downstream shader (CompositeMaterial reads `directTex` / `indirectTex` / `aoTex` per fragment). Single-attachment HalfFloat works; HalfFloat MRT does not on this driver path.
+- **Consequences:** Bounce + AO RTs are 2× larger than they could be on memory-friendly drivers, but consistent fast-path performance everywhere. `OES_texture_float_linear` reports `true` on every tested discrete GPU, so the FloatType path doesn't fall back.
+
+## D-016: Pin the USE_LIGHTMAP shader variant at scene init via a 1×1 dummy lightmap
+
+- **Date:** 2026-05-06
+- **Status:** accepted
+- **Context:** With D-014's composite changes in place, a residual TDR/context-loss path remained: the first `renderer.render(scene, camera)` after a bake assigned `lightMap` for the first time on every `MeshStandardMaterial`, which adds the `USE_LIGHTMAP` define to the shader, which forces a fresh program compile. On NVIDIA D3D11 with parallel-shader-compile this took ~2 s and exceeded the Windows TDR watchdog when stacked on top of any other GPU work in flight. `renderer.compile(scene, camera)` upfront with all variants at once made it WORSE (2.2 s → 14 s) — see F-004.
+- **Decision:** At scene construction time, before any heavy GPU work, install a 1×1 white `DataTexture` as `lightMap` on every `MeshStandardMaterial` with `lightMapIntensity = 0`. This forces the `USE_LIGHTMAP` shader variant to compile during scene init, when the scene is empty and the program is small (low-millisecond cost). After bake, `applyRenderMode` swaps `mat.lightMap = composite.texture` — same shader variant, no recompile, just a texture pointer swap. `mat.needsUpdate` is intentionally NOT set on swap. For excluded / pre-bake meshes, the dummy stays mounted with intensity 0 (visually identical to "no lightmap") instead of `mat.lightMap = null` — null removes the define and triggers the recompile.
+- **Alternatives considered:**
+  - `renderer.compile(scene, camera)` with all USE_LIGHTMAP variants seeded upfront: rejected — see F-004.
+  - Compile a single throwaway program at startup containing the variant, without mounting on real meshes: rejected — shader variants in three.js are tied to material flags, not standalone; can't pre-compile in isolation.
+  - Pre-render an off-screen frame to a 1×1 RT to warm the program cache: rejected — equivalent cost to mounting a dummy + first render, with more orchestration.
+- **Consequences:** Every `MeshStandardMaterial` in the scene carries an extra 4-byte texture reference and an `intensity=0` slot for the lifetime of the demo. Functionally invisible; memory cost negligible. The dummy texture is module-scoped and reused across all meshes (one `DataTexture` shared by reference). Any future Three.js material added to the demo MUST go through the `installDummyLightmaps` path or risk re-introducing the TDR.
+
 ## D-009: Texel density as a material-swap layer (not a lightmap-overlay layer)
 
 - **Date:** 2026-04-26
