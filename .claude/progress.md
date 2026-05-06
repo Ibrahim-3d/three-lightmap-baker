@@ -25,7 +25,7 @@ patterns see [`docs/FAILED-APPROACHES.md`](../docs/FAILED-APPROACHES.md).
 | Density-aware multi-atlas in public API | ✅ Done (S11 P1) |
 | `BakeHooks.onFrame` + per-RAF composite refresh | ✅ Done (S11 P2) |
 | `BakeGroupView` / `result.groups` / `getGroupForMesh` | ✅ Done (S11 P3a) |
-| Demo `→ LightmapBaker.bake()` migration (P3b + P4) | 🟨 Deferred |
+| Demo `→ LightmapBaker.bake()` migration (P3b + P4) | ✅ Done (S12.1) |
 | Task 10 — Lightmap downscaling | ⬜ |
 | Task 11 — Light probes (SH) | ⬜ |
 | Post-bake TDR mitigations (HalfFloat composite, GPU drain, dummy-LM pin) | ✅ Done (S12) |
@@ -34,44 +34,38 @@ patterns see [`docs/FAILED-APPROACHES.md`](../docs/FAILED-APPROACHES.md).
 
 ---
 
-## Migration Risk Register — features at risk if demo bake path is replaced naively
+## Migration Risk Register — historical, all addressed
 
-The demo's local bake orchestrator predates `LightmapBaker.bake()`. Phase 3b
-(rewrite the demo to consume the public API) is the open work; these are the
-nine features the rewrite must preserve. Authoritative analysis lives in
+The demo migration (P3b + P4) shipped in stages across S11 and S12.1. The
+register below is kept for archaeology — every R-item is now addressed in
+code. Authoritative analysis lives in
 [`archive/AUDIT-2026-04-27.md`](archive/AUDIT-2026-04-27.md) §5.
 
-| ID | Feature | Demo location | Public API equivalent | Risk |
-|---|---|---|---|---|
-| R-01 | `scaleInLightmap` per-mesh density multiplier | `CornellBoxExample.ts` `binPackMeshes` `perMeshScale` | None — `perMesh` only has `{ resolution?, exclude? }` (S11 P1 promoted `density` but call site is still demo-local) | "Density ×" slider becomes no-op |
-| R-02 | Density-aware multi-atlas auto-spawn | `binPackMeshes` opens new bins on overflow | `partitionByDensity` exists in public API (S11 P1) — wire-through pending | Multi-atlas based on density is lost |
-| R-03 | Secondary directional light UI | Builds a virtual `PackedLight` | `collectLightsFromScene` only walks real `THREE.*Light` | Promote secondary to a real `THREE.DirectionalLight` |
-| R-04 | `bakeBVH` reused for AO-only re-bake | Demo `rebakeAO()` | `LightmapBakeResult.rebakeAO` (uses `internals.bvh`) — fine if delegated | Don't re-implement; delegate |
-| R-05 | Per-atlas progress widget | Demo shows `[done 256, 187, 187]` per bin | `BakeHooks.onProgress(phase, percent)` is scalar only | Granular multi-atlas progress lost |
-| R-06 | Per-mesh `TexelDensityMaterial` cache (target = global × scale) | Demo `refreshTexelDensityMaterials` | Material exported as primitive only | "Texel Density" debug layer loses per-mesh scaling |
-| R-07 | Manual / re-runnable refinement (`Run Refinement`, `Revert to Raw`) | Demo `applyRefinement`, `showUnrefined` | `LightmapBakerOptions.denoise=true` runs once inside `bake()`; no re-run path | Re-tuning denoise sliders without re-baking lost |
-| R-08 | Multi-atlas `AtlasViewer.setTextures(texs)` | Demo collects textures from all groups for active layer | `AtlasViewer` exported but multi-tex API is demo-glue | Atlas viewer reverts to single-atlas only |
-| R-09 | GLB import camera/light auto-fit | Demo `fitCameraAndLightToScene` | None | Import experience regresses |
-
-**Migration plan when undertaken:** wire R-01/R-02 via the now-public density
-mode. Promote R-03 to a real Three.js light. Delegate R-04 to
-`result.rebakeAO`. Widen `BakeHooks` for per-group progress (R-05). Keep
-R-06/R-07/R-08/R-09 in the demo layer — those are presentation, not bake.
+| ID | Feature | Resolution |
+|---|---|---|
+| R-01 | `scaleInLightmap` per-mesh density multiplier | ✅ Demo maps `e.scaleInLightmap → perMesh[uuid].density` and passes through `LightmapBaker.bake()` (`CornellBoxExample.ts:1209`). |
+| R-02 | Density-aware multi-atlas auto-spawn | ✅ Library `partitionByDensity` runs whenever `texelsPerMeter > 0`; demo always passes it. |
+| R-03 | Secondary directional light | ✅ Demo adds a real `THREE.DirectionalLight` to the scene around the bake (`CornellBoxExample.ts:1200`); removed in `finally`. Caught by `collectLightsFromScene`. |
+| R-04 | AO-only re-bake | ✅ Demo `rebakeAO()` now delegates to `result.rebakeAO()` and re-pulls fresh group views (S12.1). Library owns BVH lifetime. |
+| R-05 | Per-atlas progress | ✅ `BakeFrameInfo.totalGroups` + `groupIndex` give per-atlas resolution; demo renders `Atlas N/M` line in the progress text (`CornellBoxExample.ts:1280`). |
+| R-06 | Per-mesh `TexelDensityMaterial` cache | ✅ Stayed in demo by design (presentation, not bake). |
+| R-07 | Manual / re-runnable refinement | ✅ Stayed in demo by design (`runRefinement` is exported as a primitive). |
+| R-08 | Multi-atlas `AtlasViewer.setTextures(texs)` | ✅ Stayed in demo by design (`AtlasViewer` is a demo-grade widget, not a public bake feature). |
+| R-09 | GLB import camera/light auto-fit | ✅ Stayed in demo by design. |
 
 ---
 
 ## Open work
 
-- **Task 10** — lightmap downscaling. Still ⬜. See `tasks/10-lightmap-downscaling.md`.
-- **Task 11** — SH light probes. Still ⬜. See `tasks/11-light-probes.md`.
-- **Demo migration P3b + P4** — biggest pending refactor. P3b briefing is in
-  [Session 11](archive/sessions-2026-04-27.md#session-11--2026-04-27); the
-  Migration Risk Register above is the acceptance checklist. Best routed via
-  a sub-agent (per CLAUDE.md dispatch rules) — a 400-LOC rewrite of a
-  ~1800-line demo is too big for inline.
+- **Task 10** — lightmap downscaling. ⬜. See `tasks/10-lightmap-downscaling.md`.
+- **Task 11** — SH light probes. ⬜. See `tasks/11-light-probes.md`.
 - **iGPU TDR validation** — bake at 2048² / 512 samples on a known-TDR-prone
   iGPU with `safeMode: true`; confirm completion. Plus exercise the S12
-  HalfFloat composite + dummy-LM pin path (see Session 12 below).
+  HalfFloat composite + dummy-LM pin path (see Session 12).
+- **Performance / tech-debt sweep** (next focus) — analyze current bake
+  pipeline for hot spots, conflicts, dead code, redundant GPU work. Demo is
+  now a thin consumer of the public API, so optimization can land in `lib/`
+  with confidence the demo will follow.
 
 ---
 
@@ -107,6 +101,25 @@ reproducer (NVIDIA D3D11, Cornell, autoBake off → manual Bake at default
 quality), bake completes and the first post-bake render lands under 200 ms;
 no context loss observed across ~20 cycles. Wider iGPU validation still
 pending.
+
+---
+
+## Recent: Session 12.1 — 2026-05-06 — Migration cleanup, tracker reconciliation
+
+Discovered during a baseline audit before the upcoming optimization sweep:
+demo P3b migration was already shipped in S11 commits, but the tracker still
+listed it as deferred and the demo carried residue.
+
+| Layer | Change |
+|---|---|
+| `CornellBoxExample.ts` | `rebakeAO()` now `await`s `LightmapBakeResult.rebakeAO({ samples, distance, targetSamples })` and re-pulls fresh `result.groups[]` to rebind each demo composite's `aoTex`. Removes the duplicate `generateAOMapper` orchestration that paralleled the public method. |
+| `CornellBoxExample.ts` | Replaced `bakeBVH: MeshBVH \| null` field with `bakeResult: LightmapBakeResult \| null`. BVH now lives where it's owned (library result). |
+| `CornellBoxExample.ts` | Stripped 12 dead imports left over from the pre-migration local bake path: `MeshBVH`, `generateAtlases`, `renderAtlas`, `generateLightmapper`, `RaycastOptions`, `generateAOMapper`, `AORaycastOptions`, `mergeGeometry`, `extractPerTriangleMaterials`, `buildMaterialTextures`, `binPackMeshes`, `BinAssignment`, `PackedLight`. |
+| Tracker | Migration Risk Register R-01 / R-02 / R-03 / R-04 / R-05 marked ✅ Done (R-01–R-03 + R-05 had shipped in S11 P1–P3a; R-04 fixed in this session). R-06–R-09 confirmed as design-intent ("stays in demo"). Status table flipped P3b+P4 to ✅ Done. |
+
+`npx tsc --noEmit` clean. `npm run build` green at 909.97 KiB / 236 KiB
+gzipped (Δ +0 vs. previous: dead imports were tree-shaken anyway, but the
+source is now honest).
 
 ---
 

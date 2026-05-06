@@ -23,36 +23,23 @@ import {
   Vector3,
   WebGLRenderer,
 } from 'three';
-import { MeshBVH } from 'three-mesh-bvh';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Pane } from 'tweakpane';
 import {
-  generateAtlases,
-  renderAtlas,
-  generateLightmapper,
   Lightmapper,
-  RaycastOptions,
-  generateAOMapper,
   AOMapper,
-  AORaycastOptions,
   runRefinement,
   RefinementResult,
   runComposite,
   CompositeResult,
-  mergeGeometry,
-  extractPerTriangleMaterials,
-  buildMaterialTextures,
   exportLightmap,
   ExportFormat,
   AtlasViewer,
   AtlasViewerCorner,
-  PackedLight,
   TexelDensityMaterial,
-  binPackMeshes,
-  BinAssignment,
   LightmapBaker,
   LightmapBakeResult,
   LightmapBakerOptions,
@@ -248,11 +235,11 @@ export class CornellBoxExample {
   /** Disposer for the SHARED per-tri material DataTextures (one per bake). */
   private matTexDispose: (() => void) | null = null;
   /**
-   * BVH from the last bake — kept alive so AO-only rebakes can reuse it
-   * without redoing the merge + tree build. Cleared in `disposeAllGroups()`
-   * via the next bake's reassignment.
+   * Last bake's library result — kept alive so AO-only rebakes can delegate
+   * to `result.rebakeAO()`. Cleared on next bake (the new `result.dispose()`
+   * is wired into `matTexDispose`, which runs from `disposeAllGroups`).
    */
-  private bakeBVH: MeshBVH | null = null;
+  private bakeResult: LightmapBakeResult | null = null;
 
   /**
    * Per-mesh TexelDensityMaterial cache for the "Texel Density" debug layer.
@@ -600,7 +587,7 @@ export class CornellBoxExample {
         label: 'Max Distance',
       })
       // Distance changes which hits count as occluders → AO-only re-bake.
-      .on('change', () => this.rebakeAO());
+      .on('change', () => void this.rebakeAO());
     aoFolder
       .addInput(this.options, 'aoIntensity', { min: 0, max: 3, step: 0.05, label: 'Intensity' })
       // View-time remap on the composite — sub-ms; no re-bake.
@@ -617,7 +604,7 @@ export class CornellBoxExample {
         label: 'Samples',
       })
       // Samples changes the AO ray budget → AO-only re-bake.
-      .on('change', () => this.rebakeAO());
+      .on('change', () => void this.rebakeAO());
 
     // --- Refinement folder ---
     const post = this.pane.addFolder({ title: 'Refinement', expanded: false });
@@ -1294,7 +1281,7 @@ export class CornellBoxExample {
     // bound to the library's live accumulators so demo sliders (directIntensity,
     // giIntensity, aoIntensity, aoExponent, aoEnabled) keep working via
     // refreshAllComposites(). The render-loop tick refreshes these per-RAF.
-    this.bakeBVH = result.bvh;
+    this.bakeResult = result;
     this.bakeGroups = [];
     this.meshToGroup.clear();
     for (let i = 0; i < result.groups.length; i++) {
@@ -1344,7 +1331,7 @@ export class CornellBoxExample {
     this.pane.refresh();
     console.info('[baker:debug] bake() returned, calling applyRenderMode', {
       groups: this.bakeGroups.length,
-      bvh: !!this.bakeBVH,
+      result: !!this.bakeResult,
       meshes: this.meshes.length,
       firstGroupComposite: this.bakeGroups[0]?.composite.texture.uuid,
     });
@@ -1788,33 +1775,32 @@ export class CornellBoxExample {
   }
 
   /**
-   * AO-only re-bake. Disposes each group's AO mapper, builds a fresh one with
-   * current `aoSamples` / `ambientDistance`, swaps it into the composite, and
-   * resumes accumulation. Bounce textures stay untouched. Used when a slider
-   * change requires fresh rays (samples / distance) — not for intensity or
-   * exponent, which are view-time uniforms on the composite.
+   * AO-only re-bake. Delegates to `LightmapBakeResult.rebakeAO()` (the public
+   * library entry point), then re-binds each demo group's view-time composite
+   * to the freshly-built AO texture so demo sliders keep reading live values.
+   * Bounce textures stay untouched. Used when a slider change requires fresh
+   * rays (`aoSamples` / `ambientDistance`) — not for intensity or exponent,
+   * which are view-time uniforms on the composite.
    */
-  private rebakeAO(): void {
-    if (!this.bakeGroups.length || !this.bakeBVH) return;
-    const res = this.options.lightMapSize;
-    const aoOpts: Omit<AORaycastOptions, 'resolution'> = {
-      aoSamples: this.options.aoSamples,
-      ambientDistance: this.options.ambientDistance,
+  private async rebakeAO(): Promise<void> {
+    if (!this.bakeGroups.length || !this.bakeResult) return;
+    await this.bakeResult.rebakeAO({
+      samples: this.options.aoSamples,
+      distance: this.options.ambientDistance,
       targetSamples: this.options.targetSamples,
-    };
-    for (const g of this.bakeGroups) {
-      g.aoMapper.dispose();
-      g.aoMapper = generateAOMapper(
-        this.renderer,
-        g.positionTexture,
-        g.normalTexture,
-        this.bakeBVH,
-        { ...aoOpts, resolution: res },
-      );
-      g.composite.refresh({ aoTex: g.aoMapper.texture });
+    });
+    // Library replaced each group's aoMapper. Re-pull fresh views and rebind
+    // demo composites + cached references so view-time refresh stays correct.
+    const fresh = this.bakeResult.groups;
+    for (let i = 0; i < this.bakeGroups.length; i++) {
+      const g = this.bakeGroups[i]!;
+      const gv = fresh[i];
+      if (!gv) continue;
+      g.aoMapper = gv.aoMapper;
+      g.composite.refresh({ aoTex: gv.aoMapper.texture });
     }
-    // Resume accumulation — the per-frame loop drives both lightmapper.render()
-    // (already converged → returns done) and aoMapper.render() (fresh → ticks).
+    // Library bake is done; render-loop is responsible for re-running manual
+    // refinement if the user has it bound to AO changes.
     this.options.pause = false;
   }
 
