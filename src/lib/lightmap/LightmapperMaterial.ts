@@ -41,6 +41,13 @@ export type LightmapperMaterialOptions = {
 };
 
 export class LightmapperMaterial extends ShaderMaterial {
+  // Shared program cache key: all compile-determining inputs are hardcoded (#define MAX_BOUNCES 4,
+  // #define MAX_LIGHTS 16, fixed MRT layout). casts/bounces/directLightEnabled/indirectLightEnabled
+  // are uniforms → NOT in key. Renderer owns the compiled WebGLProgram; dispose() is unaffected.
+  override customProgramCacheKey(): string {
+    return 'LightmapperMaterial|glsl3|mrt2';
+  }
+
   constructor(options: LightmapperMaterialOptions) {
     const bvhUniformStruct = new MeshBVHUniformStruct();
     bvhUniformStruct.updateFrom(options.bvh);

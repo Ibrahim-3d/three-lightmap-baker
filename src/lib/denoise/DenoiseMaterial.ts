@@ -16,6 +16,12 @@ export type DenoiseMaterialOptions = {
  * of the pipeline writes/reads via this shader using a standard Texture handoff.
  */
 export class DenoiseMaterial extends ShaderMaterial {
+  // USE_SLIDER define is always 0; sigma/threshold/kSigma are uniforms. GLSL1 (deliberate exception
+  // to project GLSL3 rule — see comment above). No per-instance GLSL variation. Renderer owns program.
+  override customProgramCacheKey(): string {
+    return 'DenoiseMaterial|glsl1|single-out';
+  }
+
   constructor(options: DenoiseMaterialOptions) {
     super({
       blending: NoBlending,

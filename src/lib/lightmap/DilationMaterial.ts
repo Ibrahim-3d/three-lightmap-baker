@@ -12,6 +12,12 @@ import { GLSL3, NoBlending, ShaderMaterial, Texture } from 'three';
  */
 
 export class DilationMaterial extends ShaderMaterial {
+  // resolution and DILATION_EMPTY_EPS are uniform/hardcoded — no per-instance GLSL variation.
+  // Renderer owns the compiled WebGLProgram; dispose() is unaffected.
+  override customProgramCacheKey(): string {
+    return 'DilationMaterial|glsl3|single-out';
+  }
+
   constructor(opts: { map?: Texture; positions?: Texture; resolution?: number } = {}) {
     super({
       glslVersion: GLSL3,

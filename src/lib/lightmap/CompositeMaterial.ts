@@ -23,6 +23,11 @@ export type CompositeMaterialOptions = {
  * Phase A.3: giIntensity and directIntensity are applied here at view time.
  */
 export class CompositeMaterial extends ShaderMaterial {
+  // All inputs are uniforms; GLSL source is identical across instances. Renderer owns WebGLProgram.
+  override customProgramCacheKey(): string {
+    return 'CompositeMaterial|glsl3|single-out';
+  }
+
   constructor(opts: CompositeMaterialOptions) {
     super({
       glslVersion: GLSL3,

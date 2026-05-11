@@ -34,6 +34,12 @@ export type AOMaterialOptions = {
  * Same RNG, hemisphere sampler, ray bias, and BVH usage as LightmapperMaterial.
  */
 export class AOMaterial extends ShaderMaterial {
+  // aoSamples and ambientDistance are uniforms (runtime) — not compile-time.
+  // GLSL source is identical across all AOMaterial instances. Renderer owns the WebGLProgram.
+  override customProgramCacheKey(): string {
+    return 'AOMaterial|glsl3|single-out';
+  }
+
   constructor(options: AOMaterialOptions) {
     const bvhUniformStruct = new MeshBVHUniformStruct();
     bvhUniformStruct.updateFrom(options.bvh);
