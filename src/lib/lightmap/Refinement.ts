@@ -1,7 +1,6 @@
 import {
   FloatType,
   LinearFilter,
-  LinearMipMapLinearFilter,
   Mesh,
   OrthographicCamera,
   PlaneGeometry,
@@ -49,9 +48,9 @@ export const runPostProcess = async (
   const makeRT = (): WebGLRenderTarget =>
     new WebGLRenderTarget(resolution, resolution, {
       type: FloatType,
-      minFilter: LinearMipMapLinearFilter,
+      minFilter: LinearFilter,
       magFilter: LinearFilter,
-      generateMipmaps: true,
+      generateMipmaps: false,
     });
   const rtA = makeRT();
   const rtB = makeRT();

@@ -1144,8 +1144,10 @@ function runMappersWithTimeoutProtection(
       // Refresh composite so the live preview reflects this frame's accumulator
       // state, then fire onFrame with the live texture refs. The composite must
       // refresh BEFORE onFrame so callers see the up-to-date pixels.
+      // Gate refresh on sample-boundary: accumulators only change when a full
+      // sample completes, so mid-sample RAFs would blit identical pixels.
       const done = lr.done && ar.done;
-      composite.refresh();
+      if (lr.sampleComplete || ar.sampleComplete) composite.refresh();
       hooks.onFrame?.({
         groupIndex,
         totalGroups,

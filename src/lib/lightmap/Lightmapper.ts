@@ -88,10 +88,6 @@ export type Lightmapper = {
   reset: () => void;
   /** Free GPU resources (RT, material, fullscreen quad geometry). Call before re-baking. */
   dispose: () => void;
-  /** @deprecated Use renderTarget. Alias kept for pre-A.2 callers. */
-  renderTexture: WebGLMultipleRenderTargets;
-  /** @deprecated Use textures.direct. Alias kept for pre-A.2 callers. */
-  texture: Texture;
 };
 
 export const generateLightmapper = (
@@ -307,11 +303,5 @@ export const generateLightmapper = (
     setTileSize,
     reset,
     dispose,
-    get renderTexture() {
-      return renderTarget;
-    },
-    get texture() {
-      return textures.direct;
-    },
   };
 };
