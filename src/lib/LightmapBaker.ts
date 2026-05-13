@@ -18,6 +18,7 @@ import { generateLightmapper, Lightmapper, RaycastOptions } from './lightmap/Lig
 import { generateAOMapper, AOMapper, AORaycastOptions } from './lightmap/AOMapper';
 import { runComposite, CompositeResult } from './lightmap/Composite';
 import { runPostProcess, PostProcessOptions, PostProcessResult } from './lightmap/Refinement';
+import { createDownscale, DownscaleResult } from './lightmap/Downscale';
 import { mergeGeometry, extractPerTriangleMaterials } from './utils/GeometryUtils';
 import { buildMaterialTextures } from './utils/MaterialTextures';
 import { exportLightmap, ExportFormat } from './utils/exportLightmap';
@@ -109,6 +110,18 @@ export type LightmapBakerOptions = {
   bounces?: number;
   /** Atlas resolution. Default 1024. */
   resolution?: number;
+  /**
+   * Supersample factor. Bake at `resolution × superSample` internally, then
+   * downscale to `resolution` with hardware bilinear. Produces smoother
+   * lightmaps than baking at `resolution` directly because high-res captures
+   * finer detail that gets anti-aliased during downscale.
+   *
+   * Cost: trace count scales with internal texel count (superSample=2 → 4× rays,
+   * superSample=3 → 9×). Memory: internal-res RTs stay resident on the result.
+   *
+   * Default 1 (no supersampling). Range 1–4. Power of 2 recommended.
+   */
+  superSample?: number;
   /** Run dilation + bilateral denoise after the bake. Default true. */
   denoise?: boolean;
   /** Fine-grained refinement controls; merged onto sensible defaults. */
@@ -248,6 +261,15 @@ function validateOptions(opts: LightmapBakerOptions): void {
   if (!isPowerOfTwo(resolution))
     throw new BakeError(`resolution must be a power of two, got ${resolution}`, 'validation');
 
+  const superSample = opts.superSample ?? 1;
+  if (!Number.isInteger(superSample) || superSample < 1 || superSample > 4)
+    throw new BakeError(`superSample must be integer 1-4, got ${superSample}`, 'validation');
+  if (resolution * superSample > 4096)
+    throw new BakeError(
+      `resolution × superSample must be ≤ 4096, got ${resolution * superSample}`,
+      'validation',
+    );
+
   if (opts.light?.intensity !== undefined && opts.light.intensity < 0)
     throw new BakeError(`light.intensity must be >= 0, got ${opts.light.intensity}`, 'validation');
   if (opts.light?.size !== undefined && opts.light.size < 0)
@@ -353,7 +375,16 @@ type GroupInternals = {
   composite: CompositeResult;
   refinement: PostProcessResult | null;
   atlasDispose: () => void;
+  /** Public-facing group resolution = what `mesh.lightMap` sees. */
   resolution: number;
+  /** Internal bake resolution = resolution × superSample. */
+  internalResolution: number;
+  /**
+   * Downscale wrapper. Non-null when `superSample > 1` — wraps the internal-res
+   * final texture and exposes a stable target-res texture for mesh binding.
+   * Refreshed when refinement re-runs (rebakeAO path).
+   */
+  downscale: DownscaleResult | null;
   /** Meshes assigned to this group (for the public `groups` accessor). */
   meshes: Mesh[];
   /**
@@ -379,8 +410,21 @@ type GroupInternals = {
 export type BakeGroupView = {
   /** Meshes assigned to this group (read-only — do NOT mutate). */
   readonly meshes: ReadonlyArray<Mesh>;
-  /** Lightmap side length for every mesh in this group. */
+  /**
+   * Lightmap side length bound to `mesh.lightMap` (the public/delivery res).
+   *
+   * NOTE: When `superSample > 1`, the textures in `textures.*` are at the
+   * INTERNAL bake resolution (`resolution × superSample`), not at `resolution`.
+   * The downscaled target-res texture is what meshes actually use — fetch it
+   * via `LightmapBakeResult.lightmaps.get(mesh)`. Use `internalResolution`
+   * for read-render-target / pixel-count operations against `textures.*`.
+   */
   readonly resolution: number;
+  /**
+   * Pixel side length of every texture exposed in `textures.*`. Equals
+   * `resolution × superSample`. Same as `resolution` when SS=1.
+   */
+  readonly internalResolution: number;
   /**
    * Live bounce mapper instance for this group. Read-only handle —
    * lifetime is owned by the result; do NOT call `.dispose()`. Useful for
@@ -462,6 +506,7 @@ export class LightmapBakeResult {
     return this.internals.groups.map((g) => ({
       meshes: g.meshes as ReadonlyArray<Mesh>,
       resolution: g.resolution,
+      internalResolution: g.internalResolution,
       lightmapper: g.lightmapper,
       aoMapper: g.aoMapper,
       textures: {
@@ -488,6 +533,7 @@ export class LightmapBakeResult {
         return {
           meshes: g.meshes as ReadonlyArray<Mesh>,
           resolution: g.resolution,
+          internalResolution: g.internalResolution,
           lightmapper: g.lightmapper,
           aoMapper: g.aoMapper,
           textures: {
@@ -534,7 +580,10 @@ export class LightmapBakeResult {
     const groups = this.internals.groups;
     for (let i = 0; i < groups.length; i++) {
       const g = groups[i]!;
-      const finalTex = g.refinement?.texture ?? g.composite.texture;
+      // When superSample > 1, export the downscaled (target-res) texture, not
+      // the internal-res source — exportLightmap reads pixels at the supplied
+      // resolution and would otherwise read past the end of the buffer.
+      const finalTex = g.downscale?.texture ?? g.refinement?.texture ?? g.composite.texture;
       const name = groups.length > 1 ? `${base}_group${i}` : base;
       await exportLightmap(this.renderer, finalTex, g.resolution, name, fmt);
     }
@@ -542,6 +591,7 @@ export class LightmapBakeResult {
 
   dispose(): void {
     for (const g of this.internals.groups) {
+      g.downscale?.dispose();
       g.refinement?.dispose();
       g.composite.dispose();
       g.aoMapper.dispose();
@@ -584,7 +634,7 @@ export class LightmapBakeResult {
     for (let gi = 0; gi < groups.length; gi++) {
       const g = groups[gi]!;
       const aoOpts: AORaycastOptions = {
-        resolution: g.resolution,
+        resolution: g.internalResolution,
         aoSamples: opts.samples,
         ambientDistance: opts.distance,
         targetSamples: opts.targetSamples,
@@ -607,13 +657,26 @@ export class LightmapBakeResult {
           this.renderer,
           g.composite.texture,
           g.positionTex,
-          g.resolution,
+          g.internalResolution,
           this.internals.refinementOptions,
         );
-        const finalTex = g.refinement.texture;
-        for (const [mesh, res] of this.meshResolutions) {
-          if (res === g.resolution) this.meshLightmaps.set(mesh, finalTex);
+        // If supersampling, the downscale wraps refinement's NEW texture and
+        // its target ref stays stable — only the source pointer changes. Mesh
+        // bindings keep pointing at downscale.texture; no Map update needed.
+        // For SS=1, the refinement texture itself is the new ref → update Map.
+        if (g.downscale) {
+          g.downscale.setSource(g.refinement.texture);
+          g.downscale.refresh();
+        } else {
+          const finalTex = g.refinement.texture;
+          for (const [mesh, res] of this.meshResolutions) {
+            if (res === g.resolution) this.meshLightmaps.set(mesh, finalTex);
+          }
         }
+      } else if (g.downscale) {
+        // No refinement — downscale source is composite.texture (stable ref);
+        // just re-blit so the new AO accumulator flows through.
+        g.downscale.refresh();
       }
     }
   }
@@ -646,6 +709,7 @@ export class LightmapBaker {
       castsPerFrame: opts.castsPerFrame ?? 5,
       bounces: Math.min(4, Math.max(1, opts.bounces ?? 1)),
       resolution: opts.resolution ?? 1024,
+      superSample: opts.superSample ?? 1,
       denoise: opts.denoise ?? true,
       filtering: opts.filtering ?? 'linear',
       texelsPerMeter: opts.texelsPerMeter ?? 0,
@@ -808,22 +872,23 @@ export class LightmapBaker {
     for (let gi = 0; gi < groupKeys.length; gi++) {
       const key = groupKeys[gi]!;
       const res = groupResolution(key);
+      const internalRes = res * this.opts.superSample;
       const groupMeshes = groups.get(key)!;
 
       hooks.onProgress?.('bake', gi / groupKeys.length);
       checkAbort('bake');
 
-      const atlas = renderAtlas(this.renderer, groupMeshes, res, true);
+      const atlas = renderAtlas(this.renderer, groupMeshes, internalRes, true);
 
       const raycastOpts: RaycastOptions = buildRaycastOpts(
         this.opts,
-        res,
+        internalRes,
         sceneLights,
         skyColor,
         matTex,
         tp,
       );
-      const aoOpts: AORaycastOptions = buildAORaycastOpts(this.opts, res, tp);
+      const aoOpts: AORaycastOptions = buildAORaycastOpts(this.opts, internalRes, tp);
 
       const lightmapper = generateLightmapper(
         this.renderer,
@@ -851,7 +916,7 @@ export class LightmapBaker {
           indirect: lightmapper.textures.indirect,
           ao: aoMapper.texture,
         },
-        res,
+        internalRes,
         {
           directIntensity: 1.0,
           giIntensity: this.opts.gi.intensity,
@@ -880,12 +945,22 @@ export class LightmapBaker {
           this.renderer,
           composite.texture,
           atlas.positionTexture,
-          res,
+          internalRes,
           this.opts.refinementOptions,
         );
       }
 
-      const finalTex = refinement?.texture ?? composite.texture;
+      // Final texture chosen by user options (refinement output, or raw composite).
+      // Still at INTERNAL resolution at this point. If superSample > 1, run a
+      // bilinear passthrough into a target-res RT — the result is what mesh.lightMap
+      // binds to. Hardware bilinear (source LinearFilter) does the anti-aliasing.
+      const finalInternalTex = refinement?.texture ?? composite.texture;
+      const downscale =
+        this.opts.superSample > 1
+          ? createDownscale(this.renderer, finalInternalTex, res)
+          : null;
+      const finalTex = downscale?.texture ?? finalInternalTex;
+
       groupResults.push({
         lightmapper,
         aoMapper,
@@ -893,6 +968,8 @@ export class LightmapBaker {
         refinement,
         atlasDispose: atlas.dispose,
         resolution: res,
+        internalResolution: internalRes,
+        downscale,
         meshes: groupMeshes,
         positionTex: atlas.positionTexture,
         normalTex: atlas.normalTexture,
