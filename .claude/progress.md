@@ -26,7 +26,7 @@ patterns see [`docs/FAILED-APPROACHES.md`](../docs/FAILED-APPROACHES.md).
 | `BakeHooks.onFrame` + per-RAF composite refresh | ✅ Done (S11 P2) |
 | `BakeGroupView` / `result.groups` / `getGroupForMesh` | ✅ Done (S11 P3a) |
 | Demo `→ LightmapBaker.bake()` migration (P3b + P4) | ✅ Done (S12.1) |
-| Task 10 — Lightmap downscaling | ⬜ |
+| Task 10 — Lightmap downscaling (superSample) | ✅ Done |
 | Task 11 — Light probes (SH) | ⬜ |
 | Post-bake TDR mitigations (HalfFloat composite, GPU drain, dummy-LM pin) | ✅ Done (S12) |
 
