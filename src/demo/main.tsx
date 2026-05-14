@@ -1,3 +1,4 @@
+import './scenes/presets';
 import { effect } from '@preact/signals';
 import { render } from 'preact';
 import { loadXAtlasThree } from '../lib';

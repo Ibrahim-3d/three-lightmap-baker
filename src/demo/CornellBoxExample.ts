@@ -923,4 +923,18 @@ export class CornellBoxExample {
       glError: gl.getError(),
     };
   }
+
+  /**
+   * T-D10/T-D11 — load a scene preset registered via `sceneRegistry`. Delegates
+   * to `SceneController.loadPresetById`. After the scene swap, the regular
+   * onSceneChanged hook prunes/rebuilds per-mesh UI state and notifies the
+   * Preact shell. No bake is triggered (user clicks Bake).
+   */
+  async loadScenePreset(id: string): Promise<void> {
+    await this.sceneController.loadPresetById(id);
+    // Per-mesh state from the prior scene is keyed by uuid; new uuids => stale.
+    this.options.perMesh = {};
+    this.buildPerMeshUI();
+    this.startLoop();
+  }
 }

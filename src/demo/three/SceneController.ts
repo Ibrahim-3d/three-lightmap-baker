@@ -25,6 +25,7 @@ import { TransformControls } from 'three/examples/jsm/controls/TransformControls
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Diagnostics } from '../../lib';
+import { sceneRegistry } from '../scenes/registry';
 import type { SceneObj } from './types';
 
 // Classic Cornell box dims: 10×10×10 unit room centered at (0, 5, 0)
@@ -432,5 +433,67 @@ export class SceneController {
     const lightColorLinear = new Color(colorHex).convertSRGBToLinear();
     this.visualLight.color.copy(lightColorLinear);
     this.visualLight.intensity = 30 * intensity;
+  }
+
+  /**
+   * Load a registered scene preset by id. Tears down bake-owned GPU resources,
+   * swaps the active root, builds the new scene via `preset.build(scene)`, then
+   * walks newly-added meshes (skipping `userData.lightmapIgnore` and gizmo/light
+   * marker children) into `this.meshes` and re-pins dummy lightmaps.
+   *
+   * Appended for T-D10/T-D11 (preset registry). Existing rebuildScene path is
+   * unchanged.
+   */
+  async loadPresetById(presetId: string): Promise<void> {
+    const preset = sceneRegistry.get(presetId);
+    if (!preset) {
+      console.warn(`[scene-loader] unknown preset id: ${presetId}`);
+      return;
+    }
+    this.hooks.disposeBake();
+    if (this.cornellRoot) this.scene.remove(this.cornellRoot);
+    this.cornellRoot = new Object3D();
+    this.cornellRoot.name = `preset:${presetId}`;
+    this.scene.add(this.cornellRoot);
+    this.meshes = [];
+
+    // Snapshot pre-build meshes so the post-build traversal only picks up new ones.
+    const preExisting = new Set<Mesh>();
+    this.scene.traverse((obj) => {
+      if ((obj as Mesh).isMesh) preExisting.add(obj as Mesh);
+    });
+
+    const result = await preset.build(this.scene);
+
+    // Walk newly-added meshes into this.meshes. Skip lightmap-ignored meshes
+    // (mirror/glass/emissive markers) and children of the lightDummy (the
+    // visual-only emissive marker disc).
+    this.scene.traverse((obj) => {
+      const m = obj as Mesh;
+      if (!m.isMesh) return;
+      if (preExisting.has(m)) return;
+      if (m.userData.lightmapIgnore === true) return;
+      // Walk up to detect descendants of lightDummy (visual light marker).
+      let p: Object3D | null = m.parent;
+      while (p) {
+        if (p === this.lightDummy) return;
+        p = p.parent;
+      }
+      if (!this.meshes.includes(m as SceneObj)) {
+        this.meshes.push(m as SceneObj);
+      }
+    });
+
+    // Apply hints.
+    if (result.background !== undefined) this.scene.background = new Color(result.background);
+    if (result.camera) {
+      this.camera.position.set(...result.camera.position);
+      this.controls.target.set(...result.camera.target);
+      this.controls.update();
+    }
+    if (result.lightDummy) this.lightDummy.position.set(...result.lightDummy.position);
+
+    this.hooks.installDummyLightmaps(this.meshes);
+    this.hooks.onSceneChanged(this.meshes);
   }
 }
