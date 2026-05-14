@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ────────────────────────────────────────────────────────────────────────────
+ *  DCC-editor theme tokens. Referenced by tailwind.config.js as CSS vars so the
+ *  palette can be swapped without rebuilding utility classes.
+ * ──────────────────────────────────────────────────────────────────────────── */
+:root {
+    --color-bg-0: #1a1a1d; /* viewport bg */
+    --color-bg-1: #1e1e22; /* panel bg */
+    --color-bg-2: #25252a; /* row alt */
+    --color-bg-3: #2e2e34; /* hover */
+    --color-border: #3a3a40;
+    --color-accent: #4a9eff; /* selection / focus / progress */
+    --color-stale: #f59e0b; /* re-bake warning amber */
+    --color-text-0: #e5e5e9;
+    --color-text-1: #9a9aa3;
+    --color-text-2: #6a6a73;
+}
+
+html,
+body,
+#app {
+    height: 100%;
+    margin: 0;
+}
+
+body {
+    background: var(--color-bg-0);
+    color: var(--color-text-0);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 13px;
+    line-height: 1.4;
+    overflow: hidden;
+}

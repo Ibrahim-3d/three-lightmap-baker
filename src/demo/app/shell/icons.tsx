@@ -1,0 +1,37 @@
+import type { JSX } from 'preact';
+import {
+    ChevronDown as LucideChevronDown,
+    ChevronUp as LucideChevronUp,
+    Eye as LucideEye,
+    EyeOff as LucideEyeOff,
+    GitCompareArrows as LucideGitCompareArrows,
+    Info as LucideInfo,
+    Layers as LucideLayers,
+    Lightbulb as LucideLightbulb,
+    Play as LucidePlay,
+    Plus as LucidePlus,
+    Settings as LucideSettings,
+    Square as LucideSquare,
+} from 'lucide-preact';
+
+/**
+ * `lucide-preact` types its icons with `ComponentChildren` return which TS 4.4
+ * (this project's pinned version) rejects as a valid JSX element. Cast once
+ * here so consumers stay clean. The icons themselves are unchanged.
+ */
+type IconProps = JSX.SVGAttributes<SVGSVGElement> & { size?: number | string };
+type IconFC = (props: IconProps) => JSX.Element;
+const cast = <T,>(c: T) => c as unknown as IconFC;
+
+export const ChevronDown = cast(LucideChevronDown);
+export const ChevronUp = cast(LucideChevronUp);
+export const Eye = cast(LucideEye);
+export const EyeOff = cast(LucideEyeOff);
+export const GitCompareArrows = cast(LucideGitCompareArrows);
+export const Info = cast(LucideInfo);
+export const Layers = cast(LucideLayers);
+export const Lightbulb = cast(LucideLightbulb);
+export const Play = cast(LucidePlay);
+export const Plus = cast(LucidePlus);
+export const Settings = cast(LucideSettings);
+export const Square = cast(LucideSquare);

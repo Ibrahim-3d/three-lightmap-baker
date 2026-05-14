@@ -12,6 +12,7 @@
 		"moduleResolution": "Node",
 		"esModuleInterop": true,
 		"jsx": "react-jsx",
+		"jsxImportSource": "preact",
 		"allowSyntheticDefaultImports": true,
 		"experimentalDecorators": true,
 		"alwaysStrict": false,

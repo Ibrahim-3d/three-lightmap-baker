@@ -29,6 +29,7 @@ patterns see [`docs/FAILED-APPROACHES.md`](../docs/FAILED-APPROACHES.md).
 | Task 10 — Lightmap downscaling (superSample) | ✅ Done |
 | Task 11 — Light probes (SH) | ⬜ |
 | Post-bake TDR mitigations (HalfFloat composite, GPU drain, dummy-LM pin) | ✅ Done (S12) |
+| T-D1 — Demo restructure: SceneController + BakeController + modes.ts | ✅ Done (S13) |
 
 **iGPU validation of Task 08 / S12 TDR work** — still deferred to user environment.
 
@@ -66,6 +67,7 @@ code. Authoritative analysis lives in
   pipeline for hot spots, conflicts, dead code, redundant GPU work. Demo is
   now a thin consumer of the public API, so optimization can land in `lib/`
   with confidence the demo will follow.
+- **Demo redesign roadmap (T-D2 → T-D13)** — Preact + Tailwind + signals UI; DCC-editor shell; scene preset registry; asset library; 8 preset scenes. Full design: `docs/plans/2026-05-14-demo-redesign-design.md`. Tasks in `.claude/tasks/d-2…d-13`.
 
 ---
 
@@ -145,3 +147,30 @@ When closing a session:
 3. Update the Status table if a track changed state.
 4. If the "Recent" section grows beyond ~3 sessions, archive the oldest into
    `.claude/archive/` and leave a one-line pointer.
+
+---
+
+## Recent: Session 13 — 2026-05-14 — T-D1 demo restructure baseline
+
+**Task completed:** Extract 1858-LOC `CornellBoxExample.ts` monolith into modular vanilla-TS controllers. Zero behavior change. Migration baseline for T-D2 Preact/Tailwind work.
+
+| File | Change |
+|---|---|
+| `src/demo/three/types.ts` (NEW, 19 LOC) | Shared `SceneObj`, `PerMeshEntry`, `PerMeshMap`, `RenderModeOptions` types. |
+| `src/demo/three/SceneController.ts` (NEW, 333 LOC) | Scene, camera, renderer, OrbitControls, TransformControls, light dummy/marker, Cornell build factories, GLB import, scene rebuild, resize, context-loss listeners. Hook-based callbacks keep it framework-free. |
+| `src/demo/three/BakeController.ts` (NEW, 417 LOC) | `LightmapBaker` call site, bake groups, `bakeResult` lifetime, dummy-LM pin, AO-only re-bake, refinement runner, per-RAF `tick()`, `refreshAllComposites`. |
+| `src/demo/three/modes.ts` (NEW, 237 LOC) | `LAYERS` table, `Layer` type, `RenderModeRunner` class. Fixed P1: `DEBUG` flag now gates the `applyRenderMode` diagnostic log (was unconditional). |
+| `src/demo/CornellBoxExample.ts` (1858 → 824 LOC) | Thin orchestrator: Tweakpane bindings, `options` bag, DOM widgets, RAF loop, bake ETA, export buttons, atlas viewer. Wires controllers; two legacy getters preserved for `index.ts`. |
+| `.claude/tasks/d-1-restructure-controllers.md` (NEW) | Per-task plan + step checklist. |
+| `.claude/tasks/d-1-map.md` (NEW) | 42-entry section map of the old monolith. |
+| `docs/plans/2026-05-14-demo-redesign-design.md` (NEW) | Full 13-task roadmap design doc (T-D1 → T-D13). |
+
+**Decisions made:**
+1. Hook-based callbacks on controllers (`onSceneChanged`, `installDummyLightmaps`, `disposeBake`) rather than EventEmitter — keeps controllers framework-free, orchestrator stays in charge of UI rebuild. Avoids EventEmitter dependency.
+2. All 8 S12 failure-mode watch-items (dummy-LM pin, `lightmapIgnore` flag, TC/OC drag guard, composite cache chain, secondary DirLight inject/remove, `firstPostBakeRender` gate, `if (g)` group guard, 5 view-time sliders) explicitly preserved and verified by code-reviewer subagent before merge.
+
+**Carry-overs / not changed:** Visual Cornell check (red/green bleed, soft shadow, ceiling tint) deferred to user environment per established convention. ESLint skipped — yarn-lockfile tooling error pre-existing, not introduced here.
+
+**Next session:** T-D2 — install Preact + Tailwind + signals into the demo shell; replace Tweakpane bindings in `CornellBoxExample.ts` with signal-driven Preact components. Controllers unchanged; orchestrator becomes the signals bridge.
+
+**Verification.** `npx tsc --noEmit` clean. `npm run build` green at 913.61 KiB / 237.19 KiB gz (Δ +3.64 KiB vs S12.1 — within ±5 KB target for pure restructure). `npx prettier --check src/demo/` clean. Code-reviewer verified all 8 S12 failure modes preserved; 1 P1 fixed.

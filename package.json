@@ -10,21 +10,32 @@
 		"format": "prettier --write src/",
 		"format:check": "prettier --check src/",
 		"typecheck": "tsc --noEmit",
-		"check": "npm run typecheck && npm run lint && npm run format:check"
+		"check": "npm run typecheck && npm run lint && npm run format:check",
+		"test": "playwright test",
+		"test:headed": "playwright test --headed",
+		"test:smoke": "playwright test smoke"
 	},
 	"dependencies": {
+		"@preact/signals": "^1.3.0",
 		"@tweakpane/core": "^1.0.3",
+		"lucide-preact": "^0.460.0",
+		"preact": "^10.24.0",
 		"three": "^0.161.0",
 		"three-mesh-bvh": "^0.7.3",
 		"tweakpane": "^3.0.2",
 		"xatlas-three": "^0.2.0"
 	},
 	"devDependencies": {
+		"@playwright/test": "^1.60.0",
+		"@preact/preset-vite": "^2.9.0",
 		"@types/three": "^0.161.0",
 		"@typescript-eslint/eslint-plugin": "^8.59.0",
 		"@typescript-eslint/parser": "^8.59.0",
+		"autoprefixer": "^10.4.0",
 		"eslint": "^10.2.1",
+		"postcss": "^8.4.0",
 		"prettier": "^3.8.3",
+		"tailwindcss": "^3.4.0",
 		"typescript": "^4.4.4",
 		"vite": "^2.6.13"
 	}
