@@ -1,5 +1,6 @@
-import { Color, type Texture } from 'three';
+import { Color, type Texture, Vector3 } from 'three';
 import { Pane } from 'tweakpane';
+import type { AssetSpec } from './assets/primitives';
 import {
   AtlasViewer,
   AtlasViewerCorner,
@@ -936,5 +937,26 @@ export class CornellBoxExample {
     this.options.perMesh = {};
     this.buildPerMeshUI();
     this.startLoop();
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  //  T-D7 — Asset Library proxies
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /** Drag-drop / test-API entry point. Accepts a world-space Vector3 OR a raw
+   *  `[x,y,z]` tuple (the Playwright spec hands a JSON-friendly tuple). */
+  addAsset(spec: AssetSpec, worldPos: Vector3 | [number, number, number]): string {
+    const vec = Array.isArray(worldPos)
+      ? new Vector3(worldPos[0], worldPos[1], worldPos[2])
+      : worldPos;
+    return this.sceneController.addAsset(spec, vec);
+  }
+
+  removeNode(id: string): void {
+    this.sceneController.removeNode(id);
+  }
+
+  pickGroundPoint(clientX: number, clientY: number): Vector3 {
+    return this.sceneController.pickGroundPoint(clientX, clientY);
   }
 }

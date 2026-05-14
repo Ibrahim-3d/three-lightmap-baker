@@ -1,3 +1,4 @@
+import { AssetLibrary } from './AssetLibrary';
 import { Eye, EyeOff, Layers, Lightbulb, Plus, Square } from './icons';
 import { Splitter } from './Splitter';
 import { getOrchestrator } from '../../state/orchestrator';
@@ -40,9 +41,11 @@ export function Outliner() {
                 )}
             </div>
 
-            <div class="border-t border-border bg-bg-2 h-7 px-2 flex items-center text-text-1">
+            <div class="border-t border-border bg-bg-2 h-7 px-2 flex items-center text-text-1 flex-shrink-0">
                 <span class="font-medium text-text-0">Assets</span>
-                <span class="ml-2 text-text-2 italic">(T-D7)</span>
+            </div>
+            <div class="flex-1 min-h-0 max-h-[50%] flex flex-col border-t border-border/40">
+                <AssetLibrary />
             </div>
 
             <Splitter

@@ -3,11 +3,13 @@ import {
   BoxGeometry,
   Color,
   DoubleSide,
+  type Light,
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
   Object3D,
   PerspectiveCamera,
+  Plane,
   PlaneGeometry,
   PointLight,
   Raycaster,
@@ -25,6 +27,7 @@ import { TransformControls } from 'three/examples/jsm/controls/TransformControls
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Diagnostics } from '../../lib';
+import { createAsset, type AssetSpec } from '../assets/primitives';
 import { sceneRegistry } from '../scenes/registry';
 import type { SceneObj } from './types';
 
@@ -435,6 +438,90 @@ export class SceneController {
     this.visualLight.intensity = 30 * intensity;
   }
 
+  // ──────────────────────────────────────────────────────────────────────────
+  //  T-D7 — Asset Library: drag-drop add, delete, ground-plane pick
+  // ──────────────────────────────────────────────────────────────────────────
+
+  private groundPlane = new Plane(new Vector3(0, 1, 0), 0);
+
+  /** Raycast a screen-space point against the y=0 ground plane. Returns origin
+   *  fallback if the ray misses (camera looking up). */
+  pickGroundPoint(clientX: number, clientY: number): Vector3 {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    this.pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const hit = new Vector3();
+    const ok = this.raycaster.ray.intersectPlane(this.groundPlane, hit);
+    if (!ok) return new Vector3(0, 0, 0);
+    return hit;
+  }
+
+  /**
+   * Add an asset (primitive mesh or light) to the scene at `worldPos`.
+   * Meshes are parented to `cornellRoot` so they participate in the next bake.
+   * Lights are parented to `this.scene` directly and do NOT get a dummy lightmap.
+   * Returns the new node's uuid; fires `onSceneChanged` + `onStaleChange`.
+   */
+  addAsset(spec: AssetSpec, worldPos: Vector3): string {
+    const node = createAsset(spec);
+    if (!node) {
+      console.warn('[baker] addAsset: unknown or disabled asset spec', spec);
+      return '';
+    }
+    node.position.copy(worldPos);
+
+    if (spec.kind === 'primitive') {
+      if (!this.cornellRoot) {
+        this.cornellRoot = new Object3D();
+        this.scene.add(this.cornellRoot);
+      }
+      const mesh = node as Mesh;
+      // Lift primitive so its bottom rests on ground (best-effort for unit shapes).
+      if (spec.id !== 'plane') node.position.y = Math.max(node.position.y, 0.5);
+      this.cornellRoot.add(mesh);
+      this.meshes.push(mesh as SceneObj);
+      this.hooks.installDummyLightmaps([mesh as SceneObj]);
+    } else {
+      // Light path — parent directly to scene; no dummy lightmap install.
+      this.scene.add(node as Light);
+    }
+
+    this.hooks.onSceneChanged(this.meshes);
+    this.hooks.onStaleChange?.();
+    return node.uuid;
+  }
+
+  /**
+   * Remove a node (mesh or scene-added light) by uuid. No-ops for the built-in
+   * light dummy (id === LIGHT_DUMMY_ID). Fires both hooks on success.
+   */
+  removeNode(id: string): void {
+    if (!id || id === LIGHT_DUMMY_ID) return;
+
+    const meshIdx = this.meshes.findIndex((m) => m.uuid === id);
+    if (meshIdx !== -1) {
+      const mesh = this.meshes[meshIdx]!;
+      mesh.parent?.remove(mesh);
+      mesh.geometry?.dispose();
+      const mat = mesh.material as MeshStandardMaterial | MeshStandardMaterial[] | undefined;
+      if (Array.isArray(mat)) mat.forEach((mm) => mm.dispose());
+      else mat?.dispose();
+      this.meshes.splice(meshIdx, 1);
+      this.hooks.onSceneChanged(this.meshes);
+      this.hooks.onStaleChange?.();
+      return;
+    }
+
+    // Light path — walk scene.children for an Object3D matching uuid.
+    const target = this.scene.children.find((o) => o.uuid === id);
+    if (target && target !== this.lightDummy) {
+      this.scene.remove(target);
+      this.hooks.onSceneChanged(this.meshes);
+      this.hooks.onStaleChange?.();
+    }
+  }
+
   /**
    * Load a registered scene preset by id. Tears down bake-owned GPU resources,
    * swaps the active root, builds the new scene via `preset.build(scene)`, then
@@ -452,6 +539,11 @@ export class SceneController {
     }
     this.hooks.disposeBake();
     if (this.cornellRoot) this.scene.remove(this.cornellRoot);
+    // Presets add their own root named 'sceneRoot' to `scene`. Clean up any
+    // stragglers from a previous loadPresetById before snapshotting preExisting.
+    for (const child of [...this.scene.children]) {
+      if (child.name === 'sceneRoot') this.scene.remove(child);
+    }
     this.cornellRoot = new Object3D();
     this.cornellRoot.name = `preset:${presetId}`;
     this.scene.add(this.cornellRoot);

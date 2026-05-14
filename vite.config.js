@@ -7,5 +7,10 @@ export default defineConfig({
     server: {
         port: 5173,
         strictPort: true,
+        fs: {
+            // Vite 2.6 server.fs.strict blocks @fs paths to node_modules/@prefresh
+            // (used by @preact/preset-vite HMR). Disabled to unblock dev server.
+            strict: false,
+        },
     },
 })

@@ -1,7 +1,12 @@
 import type { JSX } from 'preact';
 import {
+    AlertTriangle as LucideAlertTriangle,
+    Box as LucideBox,
     ChevronDown as LucideChevronDown,
     ChevronUp as LucideChevronUp,
+    Circle as LucideCircle,
+    Cylinder as LucideCylinder,
+    Disc as LucideDisc,
     Download as LucideDownload,
     Eye as LucideEye,
     EyeOff as LucideEyeOff,
@@ -16,6 +21,8 @@ import {
     Save as LucideSave,
     Settings as LucideSettings,
     Square as LucideSquare,
+    Sun as LucideSun,
+    Triangle as LucideTriangle,
 } from 'lucide-preact';
 
 /**
@@ -27,8 +34,13 @@ type IconProps = JSX.SVGAttributes<SVGSVGElement> & { size?: number | string };
 type IconFC = (props: IconProps) => JSX.Element;
 const cast = <T,>(c: T) => c as unknown as IconFC;
 
+export const AlertTriangle = cast(LucideAlertTriangle);
+export const Box = cast(LucideBox);
 export const ChevronDown = cast(LucideChevronDown);
 export const ChevronUp = cast(LucideChevronUp);
+export const Circle = cast(LucideCircle);
+export const Cylinder = cast(LucideCylinder);
+export const Disc = cast(LucideDisc);
 export const Download = cast(LucideDownload);
 export const Eye = cast(LucideEye);
 export const EyeOff = cast(LucideEyeOff);
@@ -43,3 +55,5 @@ export const Plus = cast(LucidePlus);
 export const Save = cast(LucideSave);
 export const Settings = cast(LucideSettings);
 export const Square = cast(LucideSquare);
+export const Sun = cast(LucideSun);
+export const Triangle = cast(LucideTriangle);

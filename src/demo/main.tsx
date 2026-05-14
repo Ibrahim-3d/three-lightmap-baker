@@ -2,6 +2,7 @@ import './scenes/presets';
 import { effect } from '@preact/signals';
 import { render } from 'preact';
 import { loadXAtlasThree } from '../lib';
+import type { AssetSpec } from './assets/primitives';
 import { App } from './app/App';
 import './app/theme.css';
 import { CornellBoxExample } from './CornellBoxExample';
@@ -66,14 +67,55 @@ function wireSelectionEffects(app: CornellBoxExample): void {
     });
 }
 
-/** W/E/R = translate/rotate/scale. Escape = deselect. */
-function wireHotkeys(): void {
+/** W/E/R = translate/rotate/scale. Escape = deselect. Delete = remove selected
+ *  mesh (skipped for the built-in light dummy). B = re-bake when stale. */
+function wireHotkeys(app: CornellBoxExample): void {
     window.addEventListener('keydown', (e) => {
         if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
         if (e.key === 'w' || e.key === 'W') gizmoMode.value = 'translate';
         else if (e.key === 'e' || e.key === 'E') gizmoMode.value = 'rotate';
         else if (e.key === 'r' || e.key === 'R') gizmoMode.value = 'scale';
         else if (e.key === 'Escape') selectedId.value = null;
+        else if (e.key === 'Delete' || e.key === 'Backspace') {
+            const id = selectedId.value;
+            if (!id || id === LIGHT_DUMMY_ID) return;
+            app.removeNode(id);
+            selectedId.value = null;
+        } else if (e.key === 'b' || e.key === 'B') {
+            if (isStale.value && bakeStatus.value !== 'baking') {
+                void app.requestBake();
+            }
+        }
+    });
+}
+
+/** Wire drag-drop on the renderer canvas. Tiles in `<AssetLibrary/>` set a
+ *  JSON-encoded `AssetSpec` on the `application/x-baker-asset` mime; we parse
+ *  it here, raycast the drop point to the ground plane, and route to
+ *  `SceneController.addAsset`. */
+function wireDragDrop(app: CornellBoxExample): void {
+    const canvas = app.sceneController.renderer.domElement;
+    canvas.addEventListener('dragover', (e: DragEvent) => {
+        if (!e.dataTransfer) return;
+        if (!Array.from(e.dataTransfer.types).includes('application/x-baker-asset')) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+    });
+    canvas.addEventListener('drop', (e: DragEvent) => {
+        if (!e.dataTransfer) return;
+        const payload = e.dataTransfer.getData('application/x-baker-asset');
+        if (!payload) return;
+        e.preventDefault();
+        let spec: AssetSpec;
+        try {
+            spec = JSON.parse(payload) as AssetSpec;
+        } catch {
+            console.warn('[baker] bad asset drop payload', payload);
+            return;
+        }
+        const worldPos = app.pickGroundPoint(e.clientX, e.clientY);
+        const uuid = app.addAsset(spec, worldPos);
+        if (uuid) selectedId.value = uuid;
     });
 }
 
@@ -109,7 +151,8 @@ void (async () => {
         render(<App />, mount);
         startStatusSync(app);
         wireSelectionEffects(app);
-        wireHotkeys();
+        wireHotkeys(app);
+        wireDragDrop(app);
     }
 
     if (isTestMode()) {
