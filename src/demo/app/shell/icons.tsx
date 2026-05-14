@@ -2,14 +2,18 @@ import type { JSX } from 'preact';
 import {
     ChevronDown as LucideChevronDown,
     ChevronUp as LucideChevronUp,
+    Download as LucideDownload,
     Eye as LucideEye,
     EyeOff as LucideEyeOff,
+    FolderOpen as LucideFolderOpen,
+    Github as LucideGithub,
     GitCompareArrows as LucideGitCompareArrows,
     Info as LucideInfo,
     Layers as LucideLayers,
     Lightbulb as LucideLightbulb,
     Play as LucidePlay,
     Plus as LucidePlus,
+    Save as LucideSave,
     Settings as LucideSettings,
     Square as LucideSquare,
 } from 'lucide-preact';
@@ -25,13 +29,17 @@ const cast = <T,>(c: T) => c as unknown as IconFC;
 
 export const ChevronDown = cast(LucideChevronDown);
 export const ChevronUp = cast(LucideChevronUp);
+export const Download = cast(LucideDownload);
 export const Eye = cast(LucideEye);
 export const EyeOff = cast(LucideEyeOff);
+export const FolderOpen = cast(LucideFolderOpen);
+export const Github = cast(LucideGithub);
 export const GitCompareArrows = cast(LucideGitCompareArrows);
 export const Info = cast(LucideInfo);
 export const Layers = cast(LucideLayers);
 export const Lightbulb = cast(LucideLightbulb);
 export const Play = cast(LucidePlay);
 export const Plus = cast(LucidePlus);
+export const Save = cast(LucideSave);
 export const Settings = cast(LucideSettings);
 export const Square = cast(LucideSquare);

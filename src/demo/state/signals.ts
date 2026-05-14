@@ -31,6 +31,9 @@ export const sceneTree = signal<SceneNode[]>([]);
 /** Active transform-gizmo mode. */
 export const gizmoMode = signal<'translate' | 'rotate' | 'scale'>('translate');
 
+/** Compare ⇄ split-screen toggle (T-D9). Off by default; UI logs flip. */
+export const compareMode = signal<boolean>(false);
+
 /** Bumps whenever Inspector field writes touch `orchestrator.options`. Inspector
  *  components read this in their render path so the UI re-renders when an edit
  *  writes back to vanilla TS state. */
