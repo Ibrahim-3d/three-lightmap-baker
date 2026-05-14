@@ -82,7 +82,10 @@ Visual verification against Cornell Box:
 
 - Upgrade Three.js or any dependency version
 - Modify xatlas integration (UV unwrapping works — don't touch it)
-- Add React, R3F, or any framework — this is raw Three.js
+- Add React, R3F, or any framework to `src/lib/` — the library stays raw Three.js
+  so consumers can drop it into any stack. (The DCC-style demo under `src/demo/`
+  uses Preact + @preact/signals + Tailwind v3 as of T-D2 — this is an exception
+  scoped to the demo bundle. The library bundle has zero framework imports.)
 - Add postprocessing (SSAO, bloom, tone mapping) — they mask bake quality issues
 - Over-engineer — this is a focused library, not an engine
 

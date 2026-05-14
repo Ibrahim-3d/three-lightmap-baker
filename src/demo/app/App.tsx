@@ -1,8 +1,10 @@
 import { useEffect } from 'preact/hooks';
 import { Inspector } from './shell/Inspector';
+import { MobileSplash } from './shell/MobileSplash';
 import { Outliner } from './shell/Outliner';
 import { StaleBanner } from './shell/StaleBanner';
 import { StatusBar } from './shell/StatusBar';
+import { Toast } from './shell/Toast';
 import { Topbar } from './shell/Topbar';
 import { layout } from '../state/signals';
 
@@ -50,15 +52,19 @@ export function App() {
     }, []);
 
     return (
-        <div class="fixed inset-0 flex flex-col pointer-events-none z-40">
-            <Topbar />
-            <div class="flex-1 flex min-h-0 relative">
-                <Outliner />
-                <div class="flex-1 pointer-events-none" />
-                <Inspector />
-                <StaleBanner />
+        <>
+            <div class="fixed inset-0 flex flex-col pointer-events-none z-40">
+                <Topbar />
+                <div class="flex-1 flex min-h-0 relative">
+                    <Outliner />
+                    <div class="flex-1 pointer-events-none" />
+                    <Inspector />
+                    <StaleBanner />
+                </div>
+                <StatusBar />
             </div>
-            <StatusBar />
-        </div>
+            <Toast />
+            <MobileSplash />
+        </>
     );
 }

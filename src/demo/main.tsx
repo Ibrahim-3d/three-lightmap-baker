@@ -4,6 +4,7 @@ import { render } from 'preact';
 import { loadXAtlasThree } from '../lib';
 import type { AssetSpec } from './assets/primitives';
 import { App } from './app/App';
+import { showToast } from './app/shell/Toast';
 import './app/theme.css';
 import { CornellBoxExample } from './CornellBoxExample';
 import { LIGHT_DUMMY_ID } from './three/SceneController';
@@ -135,6 +136,9 @@ void (async () => {
         },
         onViewportPick: (id) => {
             selectedId.value = id;
+        },
+        onBakeError: (msg) => {
+            showToast('error', `Bake failed: ${msg}`);
         },
     };
     // Initial tree population (constructor already built the scene). Pre-select

@@ -98,6 +98,7 @@ export class CornellBoxExample {
     onStaleChange?: () => void;
     onSceneChanged?: () => void;
     onViewportPick?: (id: string | null) => void;
+    onBakeError?: (msg: string) => void;
   } = {};
 
   constructor() {
@@ -190,11 +191,19 @@ export class CornellBoxExample {
 
     this.sceneController.syncVisualLight(this.options.lightColor, this.options.lightIntensity);
 
-    await this.bakeController.runBake(
-      this.sceneController.meshes,
-      this.sceneController.lightDummy.position,
-      this.options,
-    );
+    try {
+      await this.bakeController.runBake(
+        this.sceneController.meshes,
+        this.sceneController.lightDummy.position,
+        this.options,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[baker] bake failed:', err);
+      this.externalHooks.onBakeError?.(msg);
+      this.options.pause = true;
+      return;
+    }
 
     this.options.refinementStatus = 'idle';
     this.options.samples = this.options.targetSamples;
