@@ -3,10 +3,10 @@ import tsparser from '@typescript-eslint/parser';
 
 export default [
   {
-    ignores: ['dist/**', 'node_modules/**', 'src/demo/legacy/**', '*.config.js', '*.config.ts'],
+    ignores: ['dist/**', 'node_modules/**', '*.config.js', '*.config.ts'],
   },
   {
-    files: ['src/**/*.ts'],
+    files: ['packages/**/*.{ts,tsx}', 'apps/**/*.{ts,tsx}'],
     languageOptions: {
       parser: tsparser,
       parserOptions: {
@@ -19,11 +19,9 @@ export default [
       '@typescript-eslint': tseslint,
     },
     rules: {
-      // Use recommended (syntactic) rules only. The type-aware
-      // recommended-requiring-type-checking set fires hundreds of times on
-      // Tweakpane's `any`-typed bindings and Three.js uniform shapes — TypeScript
-      // strict mode is the real safety net; the value-add of those lint rules is
-      // marginal here.
+      // Recommended (syntactic) rules only — type-aware variants fire too
+      // noisily against Three.js uniform shapes; TypeScript strict mode is
+      // the real safety net.
       ...tseslint.configs.recommended.rules,
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-non-null-assertion': 'warn',
@@ -43,11 +41,10 @@ export default [
     },
   },
   {
-    files: ['src/demo/**/*.ts'],
+    // Apps (playground glue + scene presets) loosen `no-console` and
+    // `no-explicit-any` since they're demo wiring, not library code.
+    files: ['apps/**/*.{ts,tsx}'],
     rules: {
-      // Demo glues Tweakpane returns (`any`) into UI plumbing — accepting that
-      // here keeps the lib/ rules strict without poisoning the demo with
-      // `as unknown as <SpecificTweakpaneBinding>` ceremony.
       'no-console': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
     },

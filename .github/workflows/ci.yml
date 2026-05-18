@@ -57,9 +57,9 @@ jobs:
       - name: Circular imports (madge)
         run: |
           set +e
-          npx -y madge --circular --extensions ts,tsx src/
+          npx -y madge --circular --extensions ts,tsx packages/ apps/
           if [ $? -ne 0 ]; then
-            echo "::warning::Circular imports detected — see log above. CLAUDE.md forbids cycles; this job will flip to hard-fail after Roadmap Step 2."
+            echo "::warning::Circular imports detected — see log above. CLAUDE.md forbids cycles; this job will flip to hard-fail once existing oversized files are split."
           fi
           exit 0
 
@@ -69,11 +69,11 @@ jobs:
             echo "## Files exceeding 300 LOC"
             echo ""
             echo "CLAUDE.md targets \`≤300 LOC\` per file. Currently advisory."
-            echo "Will flip to hard-fail after Roadmap Step 2 restructures the legacy oversized files."
+            echo "Will flip to hard-fail once the remaining legacy oversized files are split."
             echo ""
             echo "| File | LOC |"
             echo "|---|---|"
-            find src -type f \( -name '*.ts' -o -name '*.tsx' \) -exec wc -l {} + \
+            find packages apps -type f \( -name '*.ts' -o -name '*.tsx' \) -exec wc -l {} + \
               | awk '$2 != "total" && $1 > 300 { printf "%d %s\n", $1, $2 }' \
               | sort -rn \
               | awk '{ printf "| `%s` | %d |\n", $2, $1 }'

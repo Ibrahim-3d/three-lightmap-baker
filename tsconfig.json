@@ -3,6 +3,13 @@
 		"module": "esnext",
 		"target": "esnext",
 		"baseUrl": ".",
+		"paths": {
+			"shared": ["packages/shared/src/index.ts"],
+			"shared/*": ["packages/shared/src/*"],
+			"baker-classic": ["packages/baker-classic/src/index.ts"],
+			"baker-classic/ui": ["packages/baker-classic/src/ui/index.ts"],
+			"demo-shell": ["packages/demo-shell/src/index.ts"]
+		},
 		"lib": [
 			"es2015",
 			"ES2019",
@@ -26,14 +33,15 @@
 		"declaration": true,
 		"declarationMap": true,
 		"sourceMap": true,
-		"skipLibCheck": true
+		"skipLibCheck": true,
+		"ignoreDeprecations": "6.0"
 	},
 	"include": [
-		"./src/"
+		"./packages/*/src/**/*",
+		"./apps/*/src/**/*"
 	],
 	"exclude": [
 		"node_modules",
-		"test",
-		"src/demo/legacy"
+		"dist"
 	]
 }

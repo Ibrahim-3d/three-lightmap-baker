@@ -44,55 +44,44 @@ Pass 2 (ray tracing):
 This two-pass approach decouples UV mapping from ray tracing.
 The renderer is used normally — no modelMatrix/matrixWorld hacks needed.
 
-## Key Files (current — pre-restructure)
+## Key Files (post-Roadmap Step 2)
 
-Classic baker library:
-- `src/lib/LightmapBaker.ts` — main orchestrator (public API entry)
-- `src/lib/lightmap/LightmapperMaterial.ts` — inline GLSL3 BVH ray-trace shader
-- `src/lib/lightmap/AOMapper.ts` — AO sub-pass
-- `src/lib/lightmap/Lights.ts` — light packing → DataTexture
-- `src/lib/lightmap/Composite.ts` / `DenoiseMaterial.ts` / `DilationMaterial.ts` — post-process
-- `src/lib/atlas/renderAtlas.ts` — Pass 1 UV rasterization
-- `src/lib/utils/GeometryUtils.ts` — BVH merge + per-tri material extraction
-- `src/lib/utils/MaterialTextures.ts` — albedo/emissive DataTextures
+Classic baker library (`packages/baker-classic/src/`):
+- `LightmapBaker.ts` — main orchestrator (public API entry)
+- `lightmap/LightmapperMaterial.ts` — inline GLSL3 BVH ray-trace shader
+- `lightmap/AOMapper.ts` — AO sub-pass
+- `lightmap/Lights.ts` — light packing → DataTexture
+- `lightmap/Composite.ts` / `DenoiseMaterial.ts` / `DilationMaterial.ts` — post-process
+- `atlas/renderAtlas.ts` — Pass 1 UV rasterization
+- `utils/GeometryUtils.ts` — BVH merge + per-tri material extraction
+- `utils/MaterialTextures.ts` — albedo/emissive DataTextures
+- `ui/` — `BakePage`, `LightmapPage`, `LightPage`, `WorldPage` panels + `menus.ts` + `registerBakerClassicUI()` entry point
 
-Demo (today's mega-app):
-- `src/demo/main.tsx` — boot, scene loading, orchestrator wiring
-- `src/demo/three/SceneController.ts` — preset registry, asset add/remove
-- `src/demo/three/BakeController.ts` — bake orchestration
-- `src/demo/three/PTController.ts` — PT preview controller (PR #2)
-- `src/demo/app/shell/` — UI shell (PR #1: topbar, outliner, inspector, etc.)
+Shared primitives (`packages/shared/src/`):
+- `registries/panel-registry.ts` / `menu-registry.ts` / `orchestrator.ts` / `scene-registry.ts` — extension points renderers register into
+- `signals/ui.ts` / `signals/bake.ts` — cross-cutting UI + bake-progress signals
+- `ui/Field.tsx` / `ui/helpers.ts` — generic inspector primitives
+- `assets/primitives.ts` — stock primitive + light catalog used by `<AssetLibrary/>`
 
-PT renderer (PR #2):
-- `src/pathtracer/BVHBuilder.ts` — SAH builder
-- `src/pathtracer/BVHSceneBuilder.ts` — scene → DataTextures
-- `src/pathtracer/PTRenderer.ts` — 3-pass ping-pong pipeline
-- `src/pathtracer/chunks.ts` — GLSL chunks from PathTracingCommon.js
+Demo shell (`packages/demo-shell/src/`):
+- `App.tsx` — root layout grid
+- `components/` — Topbar, Outliner, Inspector, Splitter, Toast, StaleBanner, StatusBar, MenuButton, AssetLibrary, ScenePicker, MobileSplash, icons
+- `inspector/ObjectPage.tsx`, `MaterialPage.tsx` — built-in generic inspector tabs (Light/World moved to baker-classic)
+- `menus/` — File/Edit/View/Help generic menu items
 
-## Planned layout — `packages/` + `apps/` (Step 2 of roadmap)
+Playground app (`apps/playground/src/`):
+- `main.tsx` — boot, registers baker-classic UI, mounts shell, signal wiring
+- `CornellBoxExample.ts` — orchestrator class implementing `BakerOrchestrator`
+- `three/SceneController.ts` — scene, camera, renderer, transform, asset add/remove
+- `three/BakeController.ts` — bake orchestration
+- `three/modes.ts` / `three/types.ts` — render-mode runner + shared types
+- `scenes/presets/` — built-in preset scenes (registered via `sceneRegistry`)
 
-After Step 1 (merge PR #1) lands, the repo restructures to:
-
-```
-packages/
-  baker-classic/   ← current src/lib/
-  demo-shell/      ← PR #1 generic UI (no baker-specific panels)
-  pt-renderer/     ← src/pathtracer/ (PR #2 rebased here)
-  pt-baker/        ← NEW — UV-space front-end on pt-renderer's sampler
-  shared/          ← common BVH / material / light packing helpers
-
-apps/
-  classic/         ← demo for baker-classic only
-  pt-preview/      ← demo for pt-renderer only
-  pt-baked/        ← demo for pt-baker + pt-renderer side by side
-  playground/      ← kitchen-sink demo (today's src/demo/)
-```
-
-Baker-specific inspector panels (`BakePage`, `LightmapPage`) move from the
-shell into their owning package. The shell exposes a panel-slot API so each
-package registers its own pages, menus, top-bar buttons. Each `apps/*` is a
-thin (≈30-50 LOC) wiring file that imports the shell + chooses which
-packages to plug in.
+PT renderer (PR #2 — rebased onto new layout in Step 3):
+- `packages/pt-renderer/src/BVHBuilder.ts` — SAH builder
+- `packages/pt-renderer/src/BVHSceneBuilder.ts` — scene → DataTextures
+- `packages/pt-renderer/src/PTRenderer.ts` — 3-pass ping-pong pipeline
+- `packages/pt-renderer/src/chunks.ts` — GLSL chunks from PathTracingCommon.js
 
 ## Folder Structure & Modularity (MUST FOLLOW)
 

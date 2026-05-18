@@ -1,20 +1,35 @@
 import { defineConfig } from 'vite'
 import preact from '@preact/preset-vite'
+import path from 'path'
+import { fileURLToPath } from 'url'
+
+const rootDir = path.dirname(fileURLToPath(import.meta.url))
+const r = (p) => path.resolve(rootDir, p)
 
 export default defineConfig({
     base: '/three-lightmap-baker/',
+    root: r('apps/playground'),
     plugins: [preact()],
+    resolve: {
+        alias: {
+            'shared': r('packages/shared/src/index.ts'),
+            'baker-classic/ui': r('packages/baker-classic/src/ui/index.ts'),
+            'baker-classic': r('packages/baker-classic/src/index.ts'),
+            'demo-shell/theme.css': r('packages/demo-shell/src/theme.css'),
+            'demo-shell': r('packages/demo-shell/src/index.ts'),
+        },
+    },
+    build: {
+        outDir: r('dist'),
+        emptyOutDir: true,
+    },
     server: {
         port: 5173,
         strictPort: true,
-        // Keep Vite's filesystem restriction on. The previous `strict: false`
-        // workaround opened arbitrary `@fs` paths to anything reachable on the
-        // dev port; instead explicitly allow only the workspace root, which is
-        // sufficient for @preact/preset-vite's prefresh HMR in this single-
-        // package repo.
+        // Allow the workspace root so Vite can resolve packages/* + apps/*.
         fs: {
             strict: true,
-            allow: ['.'],
+            allow: [rootDir],
         },
     },
 })
