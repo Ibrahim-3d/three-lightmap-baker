@@ -4,7 +4,6 @@ import {
     MeshStandardMaterial,
     Object3D,
     PointLight,
-    type Scene,
     SphereGeometry,
     TorusKnotGeometry,
 } from 'three';
@@ -14,10 +13,10 @@ function mat(color: number, roughness = 0.6, metalness = 0.0): MeshStandardMater
     return new MeshStandardMaterial({ color, roughness, metalness });
 }
 
-function build(scene: Scene): SceneBuildResult {
+function build(parent: Object3D): SceneBuildResult {
     const root = new Object3D();
     root.name = 'sceneRoot';
-    scene.add(root);
+    parent.add(root);
 
     // Backdrop floor + back wall for context.
     const floor = new Mesh(new BoxGeometry(20, 0.2, 20), mat(0x303030, 0.9));

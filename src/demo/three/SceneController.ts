@@ -331,15 +331,35 @@ export class SceneController {
   }
 
   /**
+   * Dispose every geometry+material under `cornellRoot`, detach the root from
+   * the scene, and clear `meshes`. Single cleanup path used by `rebuildScene`,
+   * `importGLB`, and `loadPresetById` — keeps GPU resource lifetime tied to
+   * the active scene root and avoids leaks across preset swaps.
+   */
+  private disposeCornellRoot(): void {
+    if (!this.cornellRoot) return;
+    this.cornellRoot.traverse((obj) => {
+      const mesh = obj as Mesh;
+      if (!mesh.isMesh) return;
+      mesh.geometry?.dispose();
+      const mat = mesh.material as MeshStandardMaterial | MeshStandardMaterial[] | undefined;
+      if (Array.isArray(mat)) mat.forEach((mm) => mm.dispose());
+      else mat?.dispose();
+    });
+    this.scene.remove(this.cornellRoot);
+    this.cornellRoot = null;
+    this.meshes = [];
+  }
+
+  /**
    * Rebuild Cornell scene from a preset. Tears down bake-owned GPU resources
    * via the hook so BakeController stays internally consistent.
    */
   rebuildScene(preset: ScenePreset): void {
     this.hooks.disposeBake();
-    if (this.cornellRoot) this.scene.remove(this.cornellRoot);
+    this.disposeCornellRoot();
     this.cornellRoot = new Object3D();
     this.scene.add(this.cornellRoot);
-    this.meshes = [];
 
     this.buildWalls();
     this.buildClassicBlocks();
@@ -370,11 +390,10 @@ export class SceneController {
 
     this.hooks.disposeBake();
 
-    if (this.cornellRoot) this.scene.remove(this.cornellRoot);
+    this.disposeCornellRoot();
     this.cornellRoot = new Object3D();
     this.scene.add(this.cornellRoot);
     this.cornellRoot.add(gltf.scene);
-    this.meshes = [];
 
     gltf.scene.traverse((obj: Object3D) => {
       const mesh = obj as Mesh;
@@ -523,13 +542,13 @@ export class SceneController {
   }
 
   /**
-   * Load a registered scene preset by id. Tears down bake-owned GPU resources,
-   * swaps the active root, builds the new scene via `preset.build(scene)`, then
-   * walks newly-added meshes (skipping `userData.lightmapIgnore` and gizmo/light
-   * marker children) into `this.meshes` and re-pins dummy lightmaps.
+   * Load a registered scene preset by id. Tears down bake-owned GPU resources
+   * and the previous cornellRoot (disposing every geometry/material under it),
+   * then builds the new scene into a fresh `cornellRoot` and walks bake-eligible
+   * meshes into `this.meshes`. Skips `userData.lightmapIgnore` and the
+   * lightDummy's visual-marker descendants.
    *
-   * Appended for T-D10/T-D11 (preset registry). Existing rebuildScene path is
-   * unchanged.
+   * Appended for T-D10/T-D11 (preset registry).
    */
   async loadPresetById(presetId: string): Promise<void> {
     const preset = sceneRegistry.get(presetId);
@@ -538,42 +557,22 @@ export class SceneController {
       return;
     }
     this.hooks.disposeBake();
-    if (this.cornellRoot) this.scene.remove(this.cornellRoot);
-    // Presets add their own root named 'sceneRoot' to `scene`. Clean up any
-    // stragglers from a previous loadPresetById before snapshotting preExisting.
-    for (const child of [...this.scene.children]) {
-      if (child.name === 'sceneRoot') this.scene.remove(child);
-    }
+    this.disposeCornellRoot();
     this.cornellRoot = new Object3D();
     this.cornellRoot.name = `preset:${presetId}`;
     this.scene.add(this.cornellRoot);
-    this.meshes = [];
 
-    // Snapshot pre-build meshes so the post-build traversal only picks up new ones.
-    const preExisting = new Set<Mesh>();
-    this.scene.traverse((obj) => {
-      if ((obj as Mesh).isMesh) preExisting.add(obj as Mesh);
-    });
+    const result = await preset.build(this.cornellRoot);
 
-    const result = await preset.build(this.scene);
-
-    // Walk newly-added meshes into this.meshes. Skip lightmap-ignored meshes
-    // (mirror/glass/emissive markers) and children of the lightDummy (the
-    // visual-only emissive marker disc).
-    this.scene.traverse((obj) => {
+    // Walk newly-added meshes (scoped to cornellRoot — preset content all lives
+    // there by contract). Skip lightmap-ignored meshes (mirror/glass/emissive
+    // markers); the lightDummy is parented to `scene`, not cornellRoot, so its
+    // visual-marker disc cannot be picked up here.
+    this.cornellRoot.traverse((obj) => {
       const m = obj as Mesh;
       if (!m.isMesh) return;
-      if (preExisting.has(m)) return;
       if (m.userData.lightmapIgnore === true) return;
-      // Walk up to detect descendants of lightDummy (visual light marker).
-      let p: Object3D | null = m.parent;
-      while (p) {
-        if (p === this.lightDummy) return;
-        p = p.parent;
-      }
-      if (!this.meshes.includes(m as SceneObj)) {
-        this.meshes.push(m as SceneObj);
-      }
+      this.meshes.push(m as SceneObj);
     });
 
     // Apply hints.

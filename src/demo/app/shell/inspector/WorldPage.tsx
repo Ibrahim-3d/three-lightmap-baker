@@ -14,10 +14,8 @@ export function WorldPage() {
     optionsTick.value;
     const app = getOrchestrator();
     if (!app) return null;
-    const sc = (app as unknown as { sceneController: { scene: { background: Color | null } } }).sceneController;
-    const o = (app as unknown as {
-        options: { skyColor: string; skyIntensity: number };
-    }).options;
+    const sc = app.sceneController;
+    const o = app.options;
 
     const bgHex = sc.scene.background instanceof Color
         ? `#${(sc.scene.background as Color).getHexString()}`

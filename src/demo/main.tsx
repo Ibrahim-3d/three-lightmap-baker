@@ -43,9 +43,7 @@ function startStatusSync(app: CornellBoxExample): void {
         const status = app.getBakeStatus();
         if (bakeStatus.value !== status) bakeStatus.value = status;
 
-        const opts = (app as unknown as {
-            options: { samples: number; targetSamples: number; etaSec: number };
-        }).options;
+        const opts = app.options;
         const total = opts.targetSamples;
         const pct = total > 0 ? Math.min(100, (opts.samples / total) * 100) : 0;
         bakeProgress.value = {
@@ -53,7 +51,7 @@ function startStatusSync(app: CornellBoxExample): void {
             samples: opts.samples,
             atlas: app.getBakeGroupCount(),
             total,
-            elapsedMs: 0,
+            elapsedMs: status === 'baking' ? app.getBakeElapsedMs() : 0,
         };
     }, 250);
 }

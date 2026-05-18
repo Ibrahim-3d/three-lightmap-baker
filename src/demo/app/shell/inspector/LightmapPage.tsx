@@ -16,11 +16,7 @@ export function LightmapPage() {
 
     const app = getOrchestrator();
     if (!app) return null;
-    const options = (app as unknown as {
-        options: {
-            perMesh: Record<string, { scaleInLightmap: number; exclude: boolean }>;
-        };
-    }).options;
+    const options = app.options;
 
     if (!options.perMesh[obj.uuid]) {
         options.perMesh[obj.uuid] = { scaleInLightmap: 1.0, exclude: false };

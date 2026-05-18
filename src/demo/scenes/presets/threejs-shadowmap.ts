@@ -6,7 +6,6 @@ import {
     Mesh,
     MeshStandardMaterial,
     Object3D,
-    type Scene,
     SphereGeometry,
 } from 'three';
 import { sceneRegistry, type SceneBuildResult } from '../registry';
@@ -15,10 +14,10 @@ function mat(color: number, roughness = 0.85, metalness = 0.0): MeshStandardMate
     return new MeshStandardMaterial({ color, roughness, metalness });
 }
 
-function build(scene: Scene): SceneBuildResult {
+function build(parent: Object3D): SceneBuildResult {
     const root = new Object3D();
     root.name = 'sceneRoot';
-    scene.add(root);
+    parent.add(root);
 
     // Large ground plane (use a thin box for proper UV unwrapping).
     const ground = new Mesh(new BoxGeometry(40, 0.4, 40), mat(0x808080));

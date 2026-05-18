@@ -9,7 +9,6 @@ const MENUS: MenuId[] = ['File', 'Edit', 'View', 'Render', 'Help'];
 
 function toggleCompare(): void {
     compareMode.value = !compareMode.value;
-    console.log('[demo] compare toggled', compareMode.value);
 }
 
 /**

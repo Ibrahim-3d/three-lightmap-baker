@@ -25,16 +25,22 @@ import {
 import type { PerMeshMap } from './types';
 
 /**
- * One bake group = one atlas. Each group owns its own xatlas pack, position +
- * normal G-buffers, lightmapper, view-time composite, and (lazy) refinement RT.
- * BVH + per-tri material textures live INSIDE LightmapBakeResult, not here.
+ * One bake group = one atlas. Demo-side handle into a single group of the
+ * library's `LightmapBakeResult`.
+ *
+ * Demo-OWNED (disposed in `disposeAllGroups`):
+ *   - `composite` — view-time composite created here via `runComposite()`
+ *   - `refinement` — lazy dilation/denoise RT created by `runRefinement()`
+ *
+ * Library-OWNED (freed by `LightmapBakeResult.dispose()` — do NOT dispose here):
+ *   - `lightmapper`, `aoMapper`, `positionTexture`, `normalTexture`,
+ *     BVH, per-tri material textures, atlas RT.
  */
 export type BakeGroup = {
   atlasIdx: number;
   meshes: Mesh[];
   positionTexture: Texture;
   normalTexture: Texture;
-  atlasDispose: () => void;
   lightmapper: Lightmapper;
   /** Standalone AO bake — independent ray budget; AO-only re-bake on slider change. */
   aoMapper: AOMapper;
@@ -103,8 +109,6 @@ export type BakeTickResult = {
 export class BakeController {
   bakeGroups: BakeGroup[] = [];
   meshToGroup: Map<Mesh, BakeGroup> = new Map();
-  /** Disposer for the previous bake's LightmapBakeResult; runs on next bake start. */
-  matTexDispose: (() => void) | null = null;
   bakeResult: LightmapBakeResult | null = null;
 
   /** Set true on the RAF immediately after `runBake` returns — orchestrator instruments that frame. */
@@ -151,17 +155,19 @@ export class BakeController {
     }
   }
 
-  /** Tear down every group + its GPU resources. Safe to call repeatedly. */
+  /** Tear down every group + its GPU resources. Safe to call repeatedly.
+   *  Releases demo-owned per-group artifacts (composite, refinement) and then
+   *  routes library-owned resources (lightmapper/aoMapper/atlas/matTex/BVH)
+   *  through a single `LightmapBakeResult.dispose()` call. */
   disposeAllGroups(): void {
     for (const g of this.bakeGroups) {
       g.refinement?.dispose();
       g.composite.dispose();
-      g.aoMapper.dispose();
-      g.lightmapper.dispose();
-      g.atlasDispose();
     }
     this.bakeGroups = [];
     this.meshToGroup.clear();
+    this.bakeResult?.dispose();
+    this.bakeResult = null;
   }
 
   /**
@@ -189,10 +195,8 @@ export class BakeController {
       return;
     }
 
-    // Tear down previous bake.
+    // Tear down previous bake (disposes both demo-owned and library-owned resources).
     this.disposeAllGroups();
-    this.matTexDispose?.();
-    this.matTexDispose = null;
 
     // Secondary directional light: collectLightsFromScene reads scene lights only,
     // so the demo's UI-driven directional must be parented to the scene for the bake.
@@ -300,7 +304,6 @@ export class BakeController {
         meshes: [...gv.meshes],
         positionTexture: gv.textures.position,
         normalTexture: gv.textures.normal,
-        atlasDispose: () => composite.dispose(),
         lightmapper: gv.lightmapper,
         aoMapper: gv.aoMapper,
         composite,
@@ -309,8 +312,6 @@ export class BakeController {
       this.bakeGroups.push(group);
       for (const m of group.meshes) this.meshToGroup.set(m, group);
     }
-
-    this.matTexDispose = () => result.dispose();
 
     this.diag.snap('after baker.bake() return, before applyRenderMode');
     this.firstPostBakeRender = true;

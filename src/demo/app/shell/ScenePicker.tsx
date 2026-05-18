@@ -45,10 +45,7 @@ export function ScenePicker() {
 
     const pick = (id: string) => {
         activeSceneId.value = id;
-        const orch = getOrchestrator() as unknown as {
-            loadScenePreset?: (id: string) => Promise<void>;
-        } | null;
-        void orch?.loadScenePreset?.(id);
+        void getOrchestrator()?.loadScenePreset(id);
         setOpen(false);
     };
 

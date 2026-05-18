@@ -4,7 +4,6 @@ import {
     MeshStandardMaterial,
     Object3D,
     PointLight,
-    type Scene,
     SphereGeometry,
 } from 'three';
 import { sceneRegistry, type SceneBuildResult } from '../registry';
@@ -17,10 +16,10 @@ function mat(color: number, roughness = 0.9, metalness = 0.0): MeshStandardMater
     return new MeshStandardMaterial({ color, roughness, metalness });
 }
 
-function build(scene: Scene): SceneBuildResult {
+function build(parent: Object3D): SceneBuildResult {
     const root = new Object3D();
     root.name = 'sceneRoot';
-    scene.add(root);
+    parent.add(root);
 
     const wallMat = () => mat(0xe0e0e0);
 

@@ -1,4 +1,4 @@
-import { BoxGeometry, Mesh, MeshStandardMaterial, Object3D, type Scene } from 'three';
+import { BoxGeometry, Mesh, MeshStandardMaterial, Object3D } from 'three';
 import { sceneRegistry, type SceneBuildResult } from '../registry';
 
 const ROOM = 10;
@@ -9,10 +9,10 @@ function mat(color: number, roughness = 0.95, metalness = 0.0): MeshStandardMate
     return new MeshStandardMaterial({ color, roughness, metalness });
 }
 
-function build(scene: Scene): SceneBuildResult {
+function build(parent: Object3D): SceneBuildResult {
     const root = new Object3D();
     root.name = 'sceneRoot';
-    scene.add(root);
+    parent.add(root);
 
     const white = () => mat(0xf0f0f0);
     const red = () => mat(0xd62728);

@@ -107,8 +107,6 @@ export class CornellBoxExample {
       installDummyLightmaps: (meshes) => this.bakeController.installDummyLightmaps(meshes),
       disposeBake: () => {
         this.bakeController.disposeAllGroups();
-        this.bakeController.matTexDispose?.();
-        this.bakeController.matTexDispose = null;
       },
       onStaleChange: () => this.externalHooks.onStaleChange?.(),
       onViewportPick: (id) => this.externalHooks.onViewportPick?.(id),
@@ -466,6 +464,12 @@ export class CornellBoxExample {
 
   getBakeGroupCount(): number {
     return this.bakeController.bakeGroups.length;
+  }
+
+  /** ms since the last `bake()` invocation. Returns 0 while no bake has run yet. */
+  getBakeElapsedMs(): number {
+    if (!this.bakeStartTime) return 0;
+    return performance.now() - this.bakeStartTime;
   }
 
   getSceneTree(): ReturnType<typeof this.sceneController.buildSceneTree> {

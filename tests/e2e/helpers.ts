@@ -3,10 +3,14 @@ import { type Page, expect } from '@playwright/test';
 /**
  * Shared helpers for Playwright specs. All specs append `?test=1` so
  * `window.__baker` is exposed (see main.tsx).
+ *
+ * URLs are written relative (no leading `/`) so Playwright resolves them against
+ * `baseURL` — which includes the project path `/three-lightmap-baker/`. A
+ * leading slash would drop that path and navigate to `http://localhost:5173/?…`.
  */
 
-export const TEST_URL = '/?test=1';
-export const LEGACY_URL = '/?test=1&legacy=1';
+export const TEST_URL = '?test=1';
+export const LEGACY_URL = '?test=1&legacy=1';
 
 /** Wait for the app to mount: xatlas loaded, SceneController constructed, scene built. */
 export async function waitReady(page: Page, timeoutMs = 30_000): Promise<void> {

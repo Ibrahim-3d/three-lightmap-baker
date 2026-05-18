@@ -24,22 +24,7 @@ export function LightPage() {
             </div>
         );
     }
-    const o = (app as unknown as {
-        options: {
-            lightColor: string;
-            lightIntensity: number;
-            lightSize: number;
-            directLightEnabled: boolean;
-            secondaryLightEnabled: boolean;
-            secondaryColor: string;
-            secondaryIntensity: number;
-            secondaryDirX: number;
-            secondaryDirY: number;
-            secondaryDirZ: number;
-            indirectLightEnabled: boolean;
-            giIntensity: number;
-        };
-    }).options;
+    const o = app.options;
 
     return (
         <div class="text-[12px]">

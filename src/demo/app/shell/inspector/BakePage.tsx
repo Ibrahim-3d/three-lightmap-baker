@@ -8,25 +8,7 @@ export function BakePage() {
     optionsTick.value; // re-render on writes
     const app = getOrchestrator();
     if (!app) return null;
-    const o = (app as unknown as {
-        options: {
-            quality: string;
-            lightMapSize: number;
-            casts: number;
-            targetSamples: number;
-            bounces: number;
-            safeMode: boolean;
-            texelsPerMeter: number;
-            ambientLightEnabled: boolean;
-            ambientDistance: number;
-            aoSamples: number;
-            aoIntensity: number;
-            aoExponent: number;
-            denoiseEnabled: boolean;
-            denoiseSigma: number;
-            autoBake: boolean;
-        };
-    }).options;
+    const o = app.options;
 
     return (
         <div class="text-[12px]">

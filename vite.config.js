@@ -7,10 +7,14 @@ export default defineConfig({
     server: {
         port: 5173,
         strictPort: true,
+        // Keep Vite's filesystem restriction on. The previous `strict: false`
+        // workaround opened arbitrary `@fs` paths to anything reachable on the
+        // dev port; instead explicitly allow only the workspace root, which is
+        // sufficient for @preact/preset-vite's prefresh HMR in this single-
+        // package repo.
         fs: {
-            // Vite 2.6 server.fs.strict blocks @fs paths to node_modules/@prefresh
-            // (used by @preact/preset-vite HMR). Disabled to unblock dev server.
-            strict: false,
+            strict: true,
+            allow: ['.'],
         },
     },
 })

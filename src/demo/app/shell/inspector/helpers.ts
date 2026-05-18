@@ -7,9 +7,7 @@ export function lookupSelected(id: string | null): Object3D | null {
     if (!id) return null;
     const app = getOrchestrator();
     if (!app) return null;
-    // Reach through the sceneController via the public test surface used elsewhere.
-    return (app as unknown as { sceneController: { lookupObject: (id: string) => Object3D | null } })
-        .sceneController.lookupObject(id);
+    return app.sceneController.lookupObject(id);
 }
 
 export function isMesh(obj: Object3D | null): obj is Mesh {

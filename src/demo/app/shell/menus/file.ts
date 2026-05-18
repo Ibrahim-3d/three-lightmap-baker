@@ -38,8 +38,7 @@ menuRegistry.register('File', {
     label: 'Export Lightmap PNG',
     separatorBefore: true,
     action: () => {
-        const orch = getOrchestrator() as unknown as { exportFinal?: () => unknown } | null;
-        void orch?.exportFinal?.();
+        void getOrchestrator()?.exportFinal();
     },
 });
 
@@ -47,7 +46,6 @@ menuRegistry.register('File', {
     id: 'file.export-glb',
     label: 'Export Scene as GLB',
     action: () => {
-        const orch = getOrchestrator() as unknown as { exportSceneGLB?: () => unknown } | null;
-        void orch?.exportSceneGLB?.();
+        void getOrchestrator()?.exportSceneGLB();
     },
 });

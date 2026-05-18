@@ -1,4 +1,4 @@
-import type { Scene } from 'three';
+import type { Object3D } from 'three';
 
 /**
  * Scene preset registry. Stub scaffold for parallel agent work; populated by
@@ -22,9 +22,11 @@ export type ScenePreset = {
     thumb?: string;
     source?: LicenseInfo;
     referenceUrl?: string;
-    /** Build the scene contents into `scene` (or a child Object3D added to it).
+    /** Build the scene contents into `parent` (typically the `SceneController.cornellRoot`).
+     *  All preset-created meshes and lights must be parented under `parent` so the
+     *  loader can dispose them as a unit on the next preset swap.
      *  Return the camera/light hints the loader applies after build. */
-    build: (scene: Scene) => Promise<SceneBuildResult> | SceneBuildResult;
+    build: (parent: Object3D) => Promise<SceneBuildResult> | SceneBuildResult;
     defaultBakeSettings?: {
         lightMapSize?: number;
         targetSamples?: number;

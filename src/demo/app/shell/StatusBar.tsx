@@ -64,7 +64,7 @@ export function StatusBar() {
                 </span>
                 {p.atlas > 0 && (
                     <span>
-                        Atlas {p.atlas}/{p.total > 0 ? p.atlas : 0}
+                        Atlases: {p.atlas}
                     </span>
                 )}
                 <span>{(p.elapsedMs / 1000).toFixed(1)}s</span>
