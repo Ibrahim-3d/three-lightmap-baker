@@ -26,9 +26,9 @@ class PanelRegistry {
   private items: PanelDescriptor[] = [];
 
   register(item: PanelDescriptor): void {
-    const filtered = this.items.filter((i) => i.id !== item.id);
-    filtered.push(item);
-    this.items = filtered;
+    const idx = this.items.findIndex((i) => i.id === item.id);
+    if (idx >= 0) this.items[idx] = item;
+    else this.items.push(item);
     panelTick.value++;
   }
 
