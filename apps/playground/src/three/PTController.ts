@@ -26,7 +26,7 @@ import {
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 
 import { PTRenderer } from 'pt-renderer';
-import { ptSettings } from 'shared';
+import { ptSettings, hdriTexture } from 'shared';
 import { buildBVHScene, disposeBVHSceneData, type BVHSceneData } from 'pt-renderer';
 import bvhFrag from 'pt-renderer/shaders/bvh-scene.frag.glsl?raw';
 
@@ -172,6 +172,13 @@ export class PTController {
   }
 
   get isActive(): boolean { return this.active; }
+
+  /** Expose light DataTexture + count for pt-baker to share. */
+  get lightTextureState(): { tex: DataTexture; count: number } | null {
+    if (!this.lightTex) return null;
+    const count = (this.pt?.uniforms['uNumPTLights']?.value as number) ?? 0;
+    return { tex: this.lightTex, count };
+  }
 
   dispose(): void {
     this.deactivate();

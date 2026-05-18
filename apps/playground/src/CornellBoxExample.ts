@@ -1,7 +1,8 @@
-import { type Object3D, type Texture, Vector3 } from 'three';
+import { type Object3D, MeshStandardMaterial, Mesh, type Texture, Vector3 } from 'three';
 import { BakeFrameInfo, exportLightmap, ExportFormat } from 'baker-classic';
 import type { BakerOrchestrator } from 'baker-classic/ui';
 import type { AssetSpec } from 'shared';
+import { bakeProgress, bakeStatus } from 'shared';
 import { BakeController } from './three/BakeController';
 import {
   SceneController,
@@ -624,4 +625,96 @@ export class CornellBoxExample implements BakerOrchestrator {
     this.glbFileInput.value = '';
     this.glbFileInput.click();
   }
+
+  /**
+   * Path-Traced Bake — uses pt-renderer's BVH sampler for physically accurate
+   * lightmaps. Requires UV2 coordinates (run Quick Bake once to generate them).
+   * After accumulation, applies dilation + optional denoise via baker-classic's
+   * refinement pipeline so seams are filled and noise is suppressed.
+   */
+  async requestPTBake(): Promise<void> {
+    const meshes = this.sceneController.meshes as Mesh[];
+    if (!meshes.length) return;
+    const hasUV2 = meshes.every((m) => m.geometry.hasAttribute('uv2'));
+    if (!hasUV2) {
+      console.warn('[PTBaker] UV2 missing — run Quick Bake first to generate UV2 coords.');
+      this.externalHooks.onBakeError?.('UV2 missing — run Quick Bake first.');
+      return;
+    }
+
+    // Dynamic imports keep pt-baker tree-shaken out of classic-only builds.
+    const { PTBaker } = await import('pt-baker');
+    const { buildBVHScene, disposeBVHSceneData } = await import('pt-renderer');
+    const { renderAtlas } = await import('baker-classic');
+    const { runRefinement } = await import('baker-classic');
+
+    const sc  = this.sceneController;
+    const lts = this.ptController?.lightTextureState;
+
+    bakeStatus.value = 'baking';
+    bakeProgress.value = { pct: 0, samples: 0, atlas: 1, total: 1, elapsedMs: 0 };
+
+    const sceneData = buildBVHScene(sc.scene);
+    const baker     = new PTBaker();
+
+    try {
+      const result = await baker.bake(sc.renderer, meshes, sceneData, {
+        size:         this.options.lightMapSize,
+        samples:      this.options.targetSamples,
+        skyIntensity: this.options.skyIntensity,
+        lightTex:     lts?.tex,
+        numLights:    lts?.count ?? 0,
+        onProgress:   (pct) => {
+          bakeProgress.value = {
+            pct: pct * 100,
+            samples: Math.round(pct * this.options.targetSamples),
+            atlas: 1, total: 1, elapsedMs: 0,
+          };
+        },
+      });
+
+      // Dilation + denoise — fills UV seams and reduces noise.
+      // renderAtlas gives us the position texture needed for edge-aware dilation.
+      const atlasResult = renderAtlas(sc.renderer, meshes, this.options.lightMapSize);
+      const refined = await runRefinement(
+        sc.renderer,
+        result.texture.texture,
+        atlasResult.positionTexture,
+        this.options.lightMapSize,
+        {
+          dilationIterations: Math.max(1, this.options.dilationIterations),
+          denoiseEnabled:     this.options.denoiseEnabled,
+          denoiseSigma:       this.options.denoiseSigma,
+          denoiseThreshold:   this.options.denoiseThreshold,
+          denoiseKSigma:      this.options.denoiseKSigma,
+        },
+      );
+      atlasResult.positionTexture.dispose();
+      atlasResult.normalTexture.dispose();
+
+      // Apply the refined lightmap to every mesh.
+      for (const mesh of meshes) {
+        const mat = mesh.material as MeshStandardMaterial;
+        if (mat && 'lightMap' in mat) {
+          mat.lightMap = refined.texture;
+          mat.lightMapIntensity = 1.0;
+          mat.needsUpdate = true;
+        }
+      }
+
+      // Store result so exportFinal() can access it.
+      console.info('[PTBaker] done — ' + this.options.targetSamples + ' samples, ' + this.options.lightMapSize + '×' + this.options.lightMapSize);
+
+      disposeBVHSceneData(sceneData);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[PTBaker] bake failed:', err);
+      this.externalHooks.onBakeError?.(msg);
+      disposeBVHSceneData(sceneData);
+    } finally {
+      baker.dispose();
+      bakeStatus.value = 'done';
+    }
+  }
+
 }

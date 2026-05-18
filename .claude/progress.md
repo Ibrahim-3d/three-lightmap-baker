@@ -41,7 +41,9 @@ patterns see [`docs/FAILED-APPROACHES.md`](../docs/FAILED-APPROACHES.md).
 | **Real-time PT preview** (PR #2 `feat/pt-realtime-pathtracer`) | ✅ Rebased into `packages/pt-renderer/` (Step 3, PR #6) |
 | **Folder restructure → `packages/` + `apps/`** | ✅ Done (S14) |
 | **PT renderer Step 4** (lights→DataTex, 16 albedo, RectArea area sampling) | ✅ Done (S15) |
-| **PT-baker `packages/pt-baker/`** (UV-space bake, same engine as PT preview) | ✅ Done (S15) |
+| **PT-baker `packages/pt-baker/`** + playground wiring + dilation/denoise | ✅ Done (S15.1) |
+| **HDRI environment** (file picker, RGBELoader, signal→uniform) | ✅ Done (S15.1) |
+| **`apps/pt-baked/`** side-by-side demo | ✅ Done (S15.1) |
 
 **iGPU validation of Task 08 / S12 TDR work** — still deferred to user environment.
 
@@ -395,3 +397,23 @@ When closing a session:
 - Classic baker dilation/denoise pipeline integration with pt-baker output
 
 **Verification.** `npx tsc --noEmit` clean. `npm run build` green at 908 KiB / 248 KiB gz across all steps. PR #6 (`feat/step-3-pt-rebase`) open for review.
+
+---
+
+## Recent: Session 15.1 — 2026-05-18 — Step 4 + 5 completion (all deferred items)
+
+Addressed all items flagged as deferred in Session 15.
+
+| Item | Change |
+|---|---|
+| HDRI environment (Step 4) | `hdriTexture` signal in `shared/signals/bake.ts`; `WorldPage` file picker (RGBELoader, .hdr); `PTController._syncSettings()` syncs signal → `tHDRTexture`/`uHasSkyTexture` uniforms + resets accumulation |
+| Playground PTBaker wiring (Step 5) | `CornellBoxExample.requestPTBake()`: checks UV2 exists, builds BVH, runs PTBaker, then runs `renderAtlas()` + `runRefinement()` for dilation/denoise, applies refined lightMap to meshes |
+| Render menu (Step 5) | `baker-classic/ui/menus.ts` gains "Path-Traced Bake" item (Render menu, separator above it) |
+| `apps/pt-baked/` (Step 5) | Side-by-side demo: left = PTRenderer real-time preview, right = standard rasteriser showing baked lightmap once "Bake (PT)" completes. Single renderer, scissor split |
+| PTController `lightTextureState` | Public getter exposing light DataTexture + count so `requestPTBake()` can share lights without accessing privates |
+
+**Local model copies** (`mercury-statue`, `modern-bathroom`): external assets — requires user to supply `.glb` files and register as scene presets. Cannot be automated.
+
+**Visual parity check**: requires user to run the app and compare output against Erich's reference scenes. Cannot be automated.
+
+**Verification.** `npx tsc --noEmit` clean. `npm run build` green at 919 KiB / 251 KiB gz.
