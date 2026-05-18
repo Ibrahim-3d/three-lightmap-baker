@@ -1,9 +1,10 @@
-import { Color, type Texture, Vector3 } from 'three';
+import { Color, type Object3D, type Texture, Vector3 } from 'three';
 import { BakeFrameInfo, exportLightmap, ExportFormat } from '../lib';
 import type { AssetSpec } from './assets/primitives';
 import { BakeController } from './three/BakeController';
-import { SceneController, type SceneControllerHooks, type ScenePreset } from './three/SceneController';
+import { SceneController, type SceneControllerHooks, type ScenePreset, type TransformSnap } from './three/SceneController';
 import { RenderModeRunner } from './three/modes';
+import { PTController } from './three/PTController';
 import type { PerMeshMap, RenderModeOptions, SceneObj } from './three/types';
 
 /**
@@ -32,6 +33,8 @@ export class CornellBoxExample {
   sceneController: SceneController;
   bakeController: BakeController;
   renderModeRunner: RenderModeRunner;
+
+  ptController: PTController | null = null;
 
   options = {
     preset: 'advanced' as 'classic' | 'advanced',
@@ -99,6 +102,10 @@ export class CornellBoxExample {
     onSceneChanged?: () => void;
     onViewportPick?: (id: string | null) => void;
     onBakeError?: (msg: string) => void;
+    /** Fired at gizmo drag-end for undo/redo push. */
+    onTransformChange?: (obj: Object3D, before: TransformSnap, after: TransformSnap) => void;
+    /** Fired before any full scene replacement (preset load / GLB import). */
+    onSceneLoad?: () => void;
   } = {};
 
   constructor() {
@@ -112,6 +119,8 @@ export class CornellBoxExample {
       },
       onStaleChange: () => this.externalHooks.onStaleChange?.(),
       onViewportPick: (id) => this.externalHooks.onViewportPick?.(id),
+      onTransformChange: (obj, before, after) =>
+        this.externalHooks.onTransformChange?.(obj, before, after),
     };
     this.sceneController = new SceneController(hooks);
     this.bakeController = new BakeController(
@@ -136,6 +145,23 @@ export class CornellBoxExample {
 
     this.initGLBInput();
     this.rebuildScene();
+    // Init PT viewport (async, resolves before user can switch mode)
+    void this._initPT();
+  }
+
+  private async _initPT(): Promise<void> {
+    const sc = this.sceneController;
+    // matrixWorld is lazy — must force update before PTController reads it
+    sc.scene.updateMatrixWorld(true);
+    this.ptController = new PTController({
+      renderer: sc.renderer,
+      camera:   sc.camera,
+      controls: sc.controls,
+      getScene: () => sc.scene,
+    });
+    await this.ptController.init();
+    // Prime BVH with initial Cornell scene so first activate() works immediately.
+    await this.ptController.setScene(sc.scene, sc.camera);
   }
 
   private onSceneChanged(): void {
@@ -174,6 +200,7 @@ export class CornellBoxExample {
   }
 
   private async importGLB(file: File): Promise<void> {
+    this.externalHooks.onSceneLoad?.();
     await this.sceneController.importGLB(file);
     this.options.perMesh = {};
     if (this.options.autoBake) await this.bake();
@@ -406,7 +433,10 @@ export class CornellBoxExample {
         );
         this.bakeController.diag.snap('after FIRST post-bake scene render');
       } else {
-        this.sceneController.renderer.render(this.sceneController.scene, this.sceneController.camera);
+        // PT mode: PTController owns the render loop — skip normal Three.js render
+        if (!this.ptController?.isActive) {
+          this.sceneController.renderer.render(this.sceneController.scene, this.sceneController.camera);
+        }
       }
     };
     tick();
@@ -447,6 +477,18 @@ export class CornellBoxExample {
   setLayer(id: string): void {
     this.options.layer = id;
     this.renderModeRunner.apply();
+  }
+
+  setRenderMode(mode: string): void {
+    if (mode === 'pathtraced') {
+      const sc = this.sceneController;
+      // Always rebuild BVH from the current live scene before entering PT mode.
+      void this.ptController?.setScene(sc.scene, sc.camera).then(() => {
+        this.ptController?.activate();
+      });
+    } else {
+      this.ptController?.deactivate();
+    }
   }
 
   setAutoBake(on: boolean): void {
@@ -523,9 +565,21 @@ export class CornellBoxExample {
   }
 
   async loadScenePreset(id: string): Promise<void> {
+    this.externalHooks.onSceneLoad?.();
+    // Deactivate PT during load to avoid rendering a half-built scene.
+    const wasPT = this.ptController?.isActive ?? false;
+    this.ptController?.deactivate();
+
     await this.sceneController.loadPresetById(id);
     this.options.perMesh = {};
     this.startLoop();
+
+    // Rebuild BVH from the new scene so PT mode works on next activate().
+    const sc = this.sceneController;
+    if (this.ptController) {
+      await this.ptController.setScene(sc.scene, sc.camera);
+      if (wasPT) this.ptController.activate();
+    }
   }
 
   addAsset(spec: AssetSpec, worldPos: Vector3 | [number, number, number]): string {
@@ -541,6 +595,18 @@ export class CornellBoxExample {
 
   pickGroundPoint(clientX: number, clientY: number): Vector3 {
     return this.sceneController.pickGroundPoint(clientX, clientY);
+  }
+
+  frameSelected(id: string): void {
+    this.sceneController.frameObject(id);
+  }
+
+  extractNode(id: string): { node: import('three').Object3D; kind: 'mesh' | 'light' } | null {
+    return this.sceneController.extractNode(id);
+  }
+
+  reinsertNode(node: import('three').Object3D, kind: 'mesh' | 'light'): void {
+    this.sceneController.reinsertNode(node, kind);
   }
 
   /** Public so Preact menus can fire AO-only re-bake / Open .glb / refinement. */

@@ -79,6 +79,20 @@ export const inspectorTab = signal<'object' | 'light' | 'material' | 'lightmap' 
     'object',
 );
 
+/** Path Tracer settings — shared with baker sky/env for unified control. */
+export type PTSettings = {
+    skyIntensity: number;  // 0=dark sky, 3=bright sky (feeds both baker GI fill and PT environment)
+    lightScale:   number;  // global multiplier for all scene lights (default 0.15 — normalises arbitrary THREE.js intensities)
+    aperture:     number;  // 0=pinhole, >0=DOF blur amount
+    focusDist:    number;  // DOF focal plane distance in world units
+};
+export const ptSettings = signal<PTSettings>({
+    skyIntensity: 1.0,
+    lightScale:   0.15,   // 0.15 works well for most scenes; tune per scene in World tab
+    aperture:     0.0,
+    focusDist:    100.0,
+});
+
 /** Convenience: are we mid-bake? */
 export const isBaking = computed(() => bakeStatus.value === 'baking');
 
