@@ -38,10 +38,10 @@ patterns see [`docs/FAILED-APPROACHES.md`](../docs/FAILED-APPROACHES.md).
 | Post-bake TDR mitigations (HalfFloat composite, GPU drain, dummy-LM pin) | ✅ Done (S12) |
 | T-D1 — Demo restructure: SceneController + BakeController + modes.ts | ✅ Done (S13) |
 | **Demo UI shell** (PR #1 `feat/demo-redesign`) | ✅ Merged (Session 13.5) |
-| **Real-time PT preview** (PR #2 `feat/pt-realtime-pathtracer`) | 🟡 Open PR — rebases onto new layout in Step 3 |
+| **Real-time PT preview** (PR #2 `feat/pt-realtime-pathtracer`) | ✅ Rebased into `packages/pt-renderer/` (Step 3, PR #6) |
 | **Folder restructure → `packages/` + `apps/`** | ✅ Done (S14) |
-| **PT renderer "definition of done"** list | ⬜ Needs user input (Roadmap Step 4) |
-| **PT-baker on Erich's sampler** | ⬜ Planned (Roadmap Step 5) |
+| **PT renderer Step 4** (lights→DataTex, 16 albedo, RectArea area sampling) | ✅ Done (S15) |
+| **PT-baker `packages/pt-baker/`** (UV-space bake, same engine as PT preview) | ✅ Done (S15) |
 
 **iGPU validation of Task 08 / S12 TDR work** — still deferred to user environment.
 
@@ -370,3 +370,28 @@ When closing a session:
 **Next session:** T-D2 — install Preact + Tailwind + signals into the demo shell; replace Tweakpane bindings in `CornellBoxExample.ts` with signal-driven Preact components. Controllers unchanged; orchestrator becomes the signals bridge.
 
 **Verification.** `npx tsc --noEmit` clean. `npm run build` green at 913.61 KiB / 237.19 KiB gz (Δ +3.64 KiB vs S12.1 — within ±5 KB target for pure restructure). `npx prettier --check src/demo/` clean. Code-reviewer verified all 8 S12 failure modes preserved; 1 P1 fixed.
+
+---
+
+## Recent: Session 15 — 2026-05-18 — Steps 3, 4, 5 (PT monorepo completion)
+
+**Goal:** Finish all steps planned in the roadmap.
+
+| Step | Work | Commits |
+|---|---|---|
+| 2 merged | Folder restructure → `packages/` + `apps/` | PR #5 merged (`46b0c6c`) |
+| 3 | PT renderer ported to `packages/pt-renderer/`; PTController to `apps/playground/`; ViewportToggle; `registerPTRendererUI()` | `b49189f` |
+| 4 | Lights upgraded to DataTexture (16 max, 4 texels/light); albedo slots 8→16; RectAreaLight area sampling | `feat/step-3-pt-rebase` |
+| 5 | `packages/pt-baker/` — UV-space PT bake shader + PTBaker orchestrator | `feat/step-3-pt-rebase` |
+
+**Deferred (Step 4 remainder):**
+- HDRI UI wiring (shader already supports tHDRTexture — just needs file picker + EXR loader)
+- Local model copies for `mercury-statue` / `modern-bathroom`
+- Visual parity check vs Erich's reference scenes (needs user environment)
+
+**Deferred (Step 5 remainder):**
+- `apps/pt-baked/` side-by-side demo
+- Playground orchestrator wiring of PTBaker ("Path-Traced Bake" button)
+- Classic baker dilation/denoise pipeline integration with pt-baker output
+
+**Verification.** `npx tsc --noEmit` clean. `npm run build` green at 908 KiB / 248 KiB gz across all steps. PR #6 (`feat/step-3-pt-rebase`) open for review.

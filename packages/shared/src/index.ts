@@ -1,7 +1,7 @@
 /**
  * Cross-package primitives. Registries, generic signals, and reusable UI
  * controls live here. Both `demo-shell/` and renderer packages
- * (`baker-classic/`, future `pt-renderer/` etc.) import from here so they
+ * (`baker-classic/`, `pt-renderer/`, etc.) import from here so they
  * never need to import from each other directly.
  */
 
@@ -49,8 +49,9 @@ export {
   renderMode,
   compareMode,
   isBaking,
+  ptSettings,
 } from './signals/bake';
-export type { BakeStatus } from './signals/bake';
+export type { BakeStatus, PTSettings } from './signals/bake';
 
 // UI primitives — generic fields + helpers used by both shell and panel packages.
 export {

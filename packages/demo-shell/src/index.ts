@@ -7,3 +7,4 @@
  */
 export { App } from './App';
 export { Toast, showToast } from './components/Toast';
+export { ViewportToggle } from './components/ViewportToggle';

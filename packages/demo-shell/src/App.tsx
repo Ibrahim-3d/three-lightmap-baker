@@ -7,6 +7,7 @@ import { StaleBanner } from './components/StaleBanner';
 import { StatusBar } from './components/StatusBar';
 import { Toast } from './components/Toast';
 import { Topbar } from './components/Topbar';
+import { ViewportToggle } from './components/ViewportToggle';
 
 const STORAGE_KEY = 'lightmap-studio.layout.v1';
 
@@ -43,6 +44,9 @@ function saveLayout(): void {
  * region is intentionally empty + pointer-events:none so OrbitControls and
  * TransformControls reach the canvas underneath. Topbar/Outliner/Inspector/
  * StatusBar all set pointer-events:auto on themselves.
+ *
+ * ViewportToggle is an absolute-positioned overlay inside the viewport column
+ * (pointer-events:auto on itself only, matching the canvas beneath).
  */
 export function App() {
   useEffect(() => {
@@ -57,7 +61,9 @@ export function App() {
         <Topbar />
         <div class="flex-1 flex min-h-0 relative">
           <Outliner />
-          <div class="flex-1 pointer-events-none" />
+          <div class="flex-1 relative pointer-events-none">
+            <ViewportToggle />
+          </div>
           <Inspector />
           <StaleBanner />
         </div>
