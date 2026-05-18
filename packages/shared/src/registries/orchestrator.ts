@@ -31,6 +31,13 @@ export interface Orchestrator {
 
 let instance: Orchestrator | null = null;
 
+/**
+ * Module-level `instance` is the deliberate exception to "no module-level
+ * mutable state" — every other registry in this package uses a class for the
+ * same job, but the orchestrator is a singleton reference set exactly once at
+ * app boot and never reassigned in normal flow, so a free variable is the
+ * smaller surface. Tests reset via `setOrchestrator(...)`.
+ */
 export function setOrchestrator(o: Orchestrator): void {
   instance = o;
 }

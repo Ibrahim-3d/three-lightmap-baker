@@ -1,5 +1,7 @@
 import type { Object3D } from 'three';
 
+const DEBUG = import.meta.env.DEV;
+
 /**
  * Scene preset registry. Stub scaffold for parallel agent work; populated by
  * `scenes/presets/*.ts` files which call `sceneRegistry.register(...)`.
@@ -51,7 +53,7 @@ class Registry {
   private presets: ScenePreset[] = [];
   register(p: ScenePreset): void {
     if (this.presets.find((q) => q.id === p.id)) {
-      console.warn(`[scene-registry] duplicate id ${p.id} — replacing`);
+      if (DEBUG) console.warn(`[baker] scene-registry: duplicate id ${p.id} — replacing`);
       this.presets = this.presets.filter((q) => q.id !== p.id);
     }
     this.presets.push(p);
