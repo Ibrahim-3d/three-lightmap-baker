@@ -7,6 +7,13 @@ The reconciliation audit done at the end of S9 lives at
 [`.claude/archive/AUDIT-2026-04-27.md`](archive/AUDIT-2026-04-27.md) — read
 that if you ever doubt the journal vs. the code.
 
+**Scope expansion 2026-05-18 (Session 13 — planning).** Project pivots from
+single-baker library to a multi-renderer monorepo. Two in-flight PRs (#1 demo
+UI shell, #2 real-time PT preview) define the new shape. The classic baker
+stays in tree as the safe fallback. A new PT-baker on top of PR #2's sampler
+will follow so the bake and the preview share one engine. See "Roadmap"
+below for the ordered sequence.
+
 For current pipeline shape see [`docs/architecture.md`](../docs/architecture.md).
 For decisions see [`docs/DECISIONS.md`](../docs/DECISIONS.md). For dead-end
 patterns see [`docs/FAILED-APPROACHES.md`](../docs/FAILED-APPROACHES.md).
@@ -29,8 +36,82 @@ patterns see [`docs/FAILED-APPROACHES.md`](../docs/FAILED-APPROACHES.md).
 | Task 10 — Lightmap downscaling (superSample) | ✅ Done |
 | Task 11 — Light probes (SH) | ⬜ |
 | Post-bake TDR mitigations (HalfFloat composite, GPU drain, dummy-LM pin) | ✅ Done (S12) |
+| **Demo UI shell** (PR #1 `feat/demo-redesign`) | 🟡 Open PR — code review then merge |
+| **Real-time PT preview** (PR #2 `feat/pt-realtime-pathtracer`) | 🟡 Open PR — sits on top of #1 |
+| **Folder restructure → `packages/` + `apps/`** | ⬜ Planned (Roadmap Step 2) |
+| **PT renderer "definition of done"** list | ⬜ Needs user input (Roadmap Step 4) |
+| **PT-baker on Erich's sampler** | ⬜ Planned (Roadmap Step 5) |
 
 **iGPU validation of Task 08 / S12 TDR work** — still deferred to user environment.
+
+---
+
+## Roadmap — current sprint (Sessions 13–17 target)
+
+Strict ordering. Each step must land green before the next starts. Detailed
+rationale: the user's reason for adding the real-time PT was to give 3D
+designers a preview that predicts the baked result. The classic baker
+(diffuse-only) and the PT (unified PBR + NEE + glass) produce visibly
+different images — same scene, different BRDFs. Right fix is one shared
+sampler core with two front-ends; classic baker stays alive as insurance.
+
+**Step 1 — Merge PR #1 (demo UI shell).**
+Code review + merge as-is. Foundational. No restructure work yet. Owns:
+top-bar menus, outliner, inspector, transforms, undo/redo, file system,
+asset library, scene preset registry, mobile splash, error toast.
+
+**Step 2 — Folder restructure into `packages/` + `apps/`.**
+Mechanical move + import-path fix. No behavior changes. Target shape:
+- `packages/baker-classic/` ← today's `src/lib/`
+- `packages/demo-shell/` ← PR #1's generic UI
+- `packages/shared/` ← BVH builder, material/light packing helpers
+- `apps/playground/` ← today's mega-demo, wires everything
+- During the move: pull baker-specific inspector panels (`BakePage`,
+  `LightmapPage`) out of `demo-shell/` and into `baker-classic/`. Add a
+  shell "panel slot" API so packages register their own pages, menus,
+  top-bar buttons. Each `apps/*` becomes a ≈30-50 LOC wiring file.
+
+**Step 3 — Rebase PR #2 onto the new layout.**
+- `packages/pt-renderer/` ← `src/pathtracer/`
+- `apps/pt-preview/` ← new small demo, PT only, uses `demo-shell/`
+- PT-specific inspector panels (settings, world, aperture/focus) live in
+  `pt-renderer/` and register via the shell slot.
+
+**Step 4 — Finish the PT renderer to "done."**
+Definition of done (needs user confirmation — initial list from PR #2
+description):
+- [ ] Raise light limit beyond 4 (uniform → DataTexture)
+- [ ] Raise albedo texture limit beyond 8 (texture array or atlas)
+- [ ] RectAreaLight as true area light, not point approximation
+- [ ] HDRI environment (replace placeholder in World tab)
+- [ ] Local model copies for `mercury-statue` / `modern-bathroom`
+- [ ] Visual parity check against Erich's reference scenes
+
+**Step 5 — New PT-baker (`packages/pt-baker/`).**
+- UV-space front-end on `pt-renderer/`'s sampler. Replace
+  `gl_Position = projection*view*model*pos` with `gl_Position = vec4(uv2*2-1, 0, 1)`;
+  write accumulation to a UV-space RT.
+- Reuse classic baker's dilation / denoise / supersample pipeline
+  (`Refinement.ts`, `DenoiseMaterial.ts`, `DilationMaterial.ts`) — already
+  shader-agnostic.
+- `apps/pt-baked/` ← new demo: PT preview + PT bake side by side.
+- Cornell Box parity gate: red/green bleed, soft shadow, ceiling tint.
+- Classic baker NOT removed at this step. Both bakers ship; users pick
+  ("Quick Bake" vs "Path-Traced Bake"). Retirement of classic baker is a
+  later decision once PT-baker has matured.
+
+---
+
+## In-flight PRs (as of 2026-05-18)
+
+| # | Branch | Base | Status | Notes |
+|---|---|---|---|---|
+| 1 | `feat/demo-redesign` | `master` | Open, awaiting code review | T-D9..T-D13. Foundational. Merges first. |
+| 2 | `feat/pt-realtime-pathtracer` | `master` | Open | Sits on top of #1. After #1 lands + Step 2 restructure, gets rebased onto new layout. |
+
+PR #2 currently includes `SUB-REPOS-FOR-REFERNCE/` submodules and a
+`dist/assets/index.de478d98.js` bundle (+4926 LOC) in the diff — confirm
+these are intentional before merge or strip during the rebase in Step 3.
 
 ---
 
@@ -66,6 +147,34 @@ code. Authoritative analysis lives in
   pipeline for hot spots, conflicts, dead code, redundant GPU work. Demo is
   now a thin consumer of the public API, so optimization can land in `lib/`
   with confidence the demo will follow.
+
+---
+
+## Recent: Session 13 — 2026-05-18 — Scope expansion + planning (no code)
+
+Planning session, zero code changes. Two open PRs (#1 demo UI shell, #2
+real-time PT preview) prompted a re-think of project scope. Decisions made:
+
+| Topic | Decision |
+|---|---|
+| Why the real-time PT was added | So 3D designers can preview the lit look before committing to a bake. Currently broken because classic baker (diffuse-only) and PT (PBR+NEE) produce visibly different images for the same scene. |
+| How to fix the preview/bake mismatch | Build a new PT-baker on top of Erich's PT sampler — same engine for viewport and bake. Don't try to patch the classic baker's BRDF; the gap is structural. |
+| Fate of the classic baker | Stays in tree as the safe fallback / "Quick Bake" option. Not deleted. Retirement decision deferred until PT-baker has matured. |
+| Folder layout | Restructure into `packages/` + `apps/` monorepo. Each package independently consumable for bigger products. Each `apps/*` is a thin (~30-50 LOC) wiring of the shell + chosen packages. |
+| UI shell reuse | One `demo-shell/` package shared by all apps. NO duplication. Shell exposes a panel-slot API so each renderer package registers its own inspector pages / menus / top-bar buttons. Baker-specific panels (`BakePage`, `LightmapPage`) move out of the shell during Step 2. |
+| Step ordering | (1) merge PR #1, (2) folder restructure, (3) rebase PR #2 onto new layout, (4) finish PT to "done", (5) build PT-baker. Strict order — no concurrent steps. |
+| PT engine choice | Stick with Erich's (PR #2). Already working. Skip three-gpu-pathtracer migration for now — user confirmed Erich's is real-time on their hardware and the other is heavier. |
+| BVH choice | Keep custom SAH builder from PR #2. Revisit if maintenance hurts. |
+| Material / light conventions | PT's conventions (incl. `ptLightScale`) become canonical when PT-baker lands. Don't migrate them backwards to the classic baker. |
+
+Also updated `CLAUDE.md`: Stack now lists both BVH stacks (mesh-bvh for
+classic, custom SAH for PT). Architecture section flagged as describing the
+*classic* baker only. Key Files section refreshed (was stale — referenced
+`src/lightmap-baker.ts` from before the `src/lib/` split). New "Planned
+layout — `packages/` + `apps/`" section added.
+
+No code changed. No build run. Next session picks up with Step 1 (PR #1 code
+review).
 
 ---
 

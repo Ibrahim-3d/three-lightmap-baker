@@ -5,16 +5,27 @@
 Browser-native lightmap baker with path-traced global illumination for Three.js.
 Fork of lucas-jones/three-lightmap-baker, extended with multi-bounce GI.
 
+**Scope expansion 2026-05-18:** project is becoming a multi-renderer monorepo
+(`packages/` + `apps/`). Real-time GPU path tracer (Erich Loftis-style) is
+landing in PR #2 to give designers a preview that predicts the bake look.
+A new PT-baker (UV-space front-end on the same sampler) will follow so the
+preview and the bake share one engine. The current classic baker stays in tree
+as the safe fallback. See `.claude/progress.md` "Roadmap" for the sequence.
+
 ## Stack
 
 - Three.js (check package.json for exact version — DO NOT upgrade)
-- three-mesh-bvh (GPU-accelerated BVH raycasting)
-- three-gpu-pathtracer (reference for path tracing shader code)
+- three-mesh-bvh (GPU-accelerated BVH raycasting) — used by the **classic baker**
+- Custom SAH BVH builder (ported from Erich Loftis' BVH_Quick_Builder.js) — used by the **PT renderer** (PR #2)
 - xatlas-three (auto UV2 unwrapping)
 - TypeScript strict mode
 - Vite dev server
 
-## Architecture — Two-Pass Bake
+## Architecture — Classic Baker (Two-Pass)
+
+This describes the **classic baker** in `src/lib/` today. The PT renderer in
+PR #2 is a separate screen-space progressive tracer; the planned PT-baker
+will reuse the PT renderer's sampler but write to a UV-space RT.
 
 Pass 1 (UV-space rasterization):
 - Render each mesh's geometry with gl_Position = uv2 * 2 - 1
@@ -33,12 +44,163 @@ Pass 2 (ray tracing):
 This two-pass approach decouples UV mapping from ray tracing.
 The renderer is used normally — no modelMatrix/matrixWorld hacks needed.
 
-## Key Files
+## Key Files (current — pre-restructure)
 
-- src/lightmap-baker.ts — main orchestrator
-- src/shaders/ — GLSL shaders for both passes
-- src/xatlas/ — UV unwrapping integration
-- src/scene.ts — Cornell Box test scene (and other test scenes)
+Classic baker library:
+- `src/lib/LightmapBaker.ts` — main orchestrator (public API entry)
+- `src/lib/lightmap/LightmapperMaterial.ts` — inline GLSL3 BVH ray-trace shader
+- `src/lib/lightmap/AOMapper.ts` — AO sub-pass
+- `src/lib/lightmap/Lights.ts` — light packing → DataTexture
+- `src/lib/lightmap/Composite.ts` / `DenoiseMaterial.ts` / `DilationMaterial.ts` — post-process
+- `src/lib/atlas/renderAtlas.ts` — Pass 1 UV rasterization
+- `src/lib/utils/GeometryUtils.ts` — BVH merge + per-tri material extraction
+- `src/lib/utils/MaterialTextures.ts` — albedo/emissive DataTextures
+
+Demo (today's mega-app):
+- `src/demo/main.tsx` — boot, scene loading, orchestrator wiring
+- `src/demo/three/SceneController.ts` — preset registry, asset add/remove
+- `src/demo/three/BakeController.ts` — bake orchestration
+- `src/demo/three/PTController.ts` — PT preview controller (PR #2)
+- `src/demo/app/shell/` — UI shell (PR #1: topbar, outliner, inspector, etc.)
+
+PT renderer (PR #2):
+- `src/pathtracer/BVHBuilder.ts` — SAH builder
+- `src/pathtracer/BVHSceneBuilder.ts` — scene → DataTextures
+- `src/pathtracer/PTRenderer.ts` — 3-pass ping-pong pipeline
+- `src/pathtracer/chunks.ts` — GLSL chunks from PathTracingCommon.js
+
+## Planned layout — `packages/` + `apps/` (Step 2 of roadmap)
+
+After Step 1 (merge PR #1) lands, the repo restructures to:
+
+```
+packages/
+  baker-classic/   ← current src/lib/
+  demo-shell/      ← PR #1 generic UI (no baker-specific panels)
+  pt-renderer/     ← src/pathtracer/ (PR #2 rebased here)
+  pt-baker/        ← NEW — UV-space front-end on pt-renderer's sampler
+  shared/          ← common BVH / material / light packing helpers
+
+apps/
+  classic/         ← demo for baker-classic only
+  pt-preview/      ← demo for pt-renderer only
+  pt-baked/        ← demo for pt-baker + pt-renderer side by side
+  playground/      ← kitchen-sink demo (today's src/demo/)
+```
+
+Baker-specific inspector panels (`BakePage`, `LightmapPage`) move from the
+shell into their owning package. The shell exposes a panel-slot API so each
+package registers its own pages, menus, top-bar buttons. Each `apps/*` is a
+thin (≈30-50 LOC) wiring file that imports the shell + chooses which
+packages to plug in.
+
+## Folder Structure & Modularity (MUST FOLLOW)
+
+**These are HARD rules. Verify before every commit. Violations get reverted —
+not patched.**
+
+### Folder layout (post-Roadmap Step 2)
+
+- `packages/<name>/` — reusable code. Each package is independently
+  consumable in a bigger product. Each has its own `index.ts` with explicit
+  named exports, its own README, its own types. No code outside `packages/`
+  or `apps/`.
+- `apps/<name>/` — demos only. THIN wiring. Each `apps/<name>/main.tsx`
+  must be ≤100 LOC: import shell, import packages, glue, render. No feature
+  code in `apps/`. If you find yourself writing logic in an app, it belongs
+  in a package.
+- `packages/shared/` — common helpers (BVH, material packing, light data).
+  Sibling packages share through here.
+- Packages MUST NOT import from `apps/`.
+- Packages MUST NOT import from sibling packages directly — go through
+  `packages/shared/` or compose at the app layer.
+- Renderer-specific UI panels live in the OWNING package
+  (`baker-classic/`, `pt-renderer/`, `pt-baker/`), NOT in `demo-shell/`.
+  Shell exposes a panel-slot API; packages register at boot.
+
+### Modularity hard limits
+
+- Max **300 lines** per file. Hit it → split.
+- Max **50 lines** per function. Hit it → extract helpers.
+- Max **5 project imports** per file. Hit it → the file is doing too much.
+- **No circular imports.** Run `npx madge --circular packages/ apps/`
+  before every commit.
+- **No module-level mutable state.** Functions take + return; classes own
+  state. No top-level `let`, no top-level singletons.
+- Every WebGL resource (texture, RT, buffer, material, geometry) is
+  tracked and explicitly disposed. Try/finally for renderer state changes.
+
+### Naming
+
+- Files: `kebab-case.ts` — never `camelCase.ts` or `PascalCase.ts`.
+- Types & classes: `PascalCase`.
+- Functions & variables: `camelCase`.
+- True constants: `SCREAMING_SNAKE`.
+- Prefer named exports over default — better tree-shaking.
+
+### Before committing — required checks
+
+1. `npx tsc --noEmit` — zero errors
+2. `npx eslint packages/ apps/` (or `src/` pre-restructure) — zero errors
+3. `npx prettier --check .` — all formatted
+4. `npx madge --circular packages/ apps/` — no cycles
+5. Quick scan: any new file > 300 LOC? Split it. Any new file with > 5
+   project imports? Refactor it.
+6. CI must be green (see `.github/workflows/`).
+
+## CI / CD Workflows
+
+Workflows live in `.github/workflows/`. The old `deploy.yml` pushes
+`dist/` to GitHub Pages on push to `main`. The plan for everything else is
+below — current tier in green, deferred tiers documented so future
+sessions know what's parked.
+
+### Tier 1 — live in `.github/workflows/ci.yml`
+
+- **`check` job** — `tsc --noEmit`, `eslint`, `prettier --check`,
+  `vite build`. Hard fail. Minimum bar for merge.
+- **`modularity` job** — `madge --circular` + report of every TS file > 300
+  LOC. **Currently advisory** (warns, does not fail) because legacy files
+  (`LightmapBaker.ts` 1316 LOC, `LightmapperMaterial.ts` 423 LOC,
+  `CornellBoxExample.ts` 1858 LOC) predate the rule. Flip to hard-fail
+  after Roadmap Step 2 splits them.
+- **`deps-pinned` job** — fails if `three` / `three-mesh-bvh` /
+  `xatlas-three` version strings change. To deliberately upgrade, update
+  the `EXPECT_*` constants inside `ci.yml` in the same PR.
+
+### Tier 2 — add after Roadmap Step 2 (restructure lands)
+
+- **Bundle-size check** — per-app gzip size, comment PR with delta vs.
+  master. Fail on > 10 % growth without `allow-bundle-growth` label.
+- **Per-app build matrix** — once `apps/*` exists, build each independently
+  to catch package-internal regressions.
+- **Tighten `modularity`** — flip from advisory to hard-fail once legacy
+  oversized files are split.
+- **Playwright smoke tests** — boot each app, canvas mounts, no console
+  errors, "Bake" completes on Cornell. Config already added in PR #1.
+
+### Tier 3 — add after PT-baker ships (Roadmap Step 5)
+
+- **Visual regression on Cornell Box** — headless boot of `apps/playground/`,
+  bake with each engine, compare output PNG to baselines (`pixelmatch` or
+  `odiff`). Runs nightly + on shader-touching PRs.
+- **PR preview deploys** — push each PR's `apps/playground/` build to a
+  preview URL (Cloudflare Pages, Vercel, or GitHub Pages branch deploy).
+  Designer-friendly review.
+
+### Tier 4 — when packages are ready to publish
+
+- **`release.yml`** with [changesets](https://github.com/changesets/changesets)
+  — cross-package version management. Each PR adds a `.changeset/*.md`
+  describing the bump. Merging the auto-opened "Release PR" publishes to
+  npm + tags git.
+
+### Pre-commit hooks (local, parallel to CI)
+
+Not wired yet. When ready: [husky](https://typicode.github.io/husky/) +
+[lint-staged](https://github.com/lint-staged/lint-staged). Minimum:
+prettier-fix + eslint-fix on staged files, `tsc --noEmit` on changed
+packages. Keep heavy work (build, e2e, visual) in CI only.
 
 ## Conventions
 
@@ -85,6 +247,10 @@ Visual verification against Cornell Box:
 - Add React, R3F, or any framework — this is raw Three.js
 - Add postprocessing (SSAO, bloom, tone mapping) — they mask bake quality issues
 - Over-engineer — this is a focused library, not an engine
+- Add code outside `packages/` or `apps/` once Roadmap Step 2 lands
+- Cross-import between sibling packages (use `packages/shared/` or compose at the app layer)
+- Put renderer-specific code in `packages/demo-shell/` — it stays generic
+- Let a file grow past 300 LOC, a function past 50 LOC, or imports past 5 — split first
 
 ## Workflow Orchestration
 
@@ -185,25 +351,6 @@ All code must follow CONTRIBUTING.md. Key rules:
 - Yield to browser every 100ms during bake operations
 - Console logs prefixed with `[baker]`, behind DEBUG flag in production
 - See CONTRIBUTING.md for full rules
-
-## File Naming
-
-- kebab-case for files: `gap-flood.ts` not `gapFlood.ts`
-- See CONTRIBUTING.md naming table for full conventions
-
-## Before Committing
-
-1. `npx tsc --noEmit` — zero errors
-2. `npx eslint src/` — zero errors, warnings acceptable but fix if easy
-3. `npx prettier --check src/` — all files formatted
-
-## Modularity
-
-- Max 300 lines per file, 50 lines per function
-- Max 5 project imports per file
-- No circular imports, no module-level mutable state
-- See CONTRIBUTING.md "Code Modularity Rules" for full details
-- CHECK THESE BEFORE EVERY COMMIT
 
 ## Context-Driven Development
 

@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Typecheck / Lint / Format / Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript
+        run: npm run typecheck
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Prettier
+        run: npm run format:check
+
+      - name: Vite build
+        run: npm run build
+
+  modularity:
+    name: Modularity (advisory)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Circular imports (madge)
+        run: |
+          set +e
+          npx -y madge --circular --extensions ts,tsx src/
+          if [ $? -ne 0 ]; then
+            echo "::warning::Circular imports detected — see log above. CLAUDE.md forbids cycles; this job will flip to hard-fail after Roadmap Step 2."
+          fi
+          exit 0
+
+      - name: Files over 300 LOC (CLAUDE.md hard rule)
+        run: |
+          {
+            echo "## Files exceeding 300 LOC"
+            echo ""
+            echo "CLAUDE.md targets \`≤300 LOC\` per file. Currently advisory."
+            echo "Will flip to hard-fail after Roadmap Step 2 restructures the legacy oversized files."
+            echo ""
+            echo "| File | LOC |"
+            echo "|---|---|"
+            find src -type f \( -name '*.ts' -o -name '*.tsx' \) -exec wc -l {} + \
+              | awk '$2 != "total" && $1 > 300 { printf "%d %s\n", $1, $2 }' \
+              | sort -rn \
+              | awk '{ printf "| `%s` | %d |\n", $2, $1 }'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deps-pinned:
+    name: Pinned deps (no upgrades without approval)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify three / three-mesh-bvh / xatlas-three versions unchanged
+        run: |
+          EXPECT_THREE='^0.161.0'
+          EXPECT_MESHBVH='^0.7.3'
+          EXPECT_XATLAS='^0.2.0'
+
+          THREE=$(jq -r '.dependencies.three' package.json)
+          MESHBVH=$(jq -r '.dependencies["three-mesh-bvh"]' package.json)
+          XATLAS=$(jq -r '.dependencies["xatlas-three"]' package.json)
+
+          echo "three          = $THREE   (expected $EXPECT_THREE)"
+          echo "three-mesh-bvh = $MESHBVH (expected $EXPECT_MESHBVH)"
+          echo "xatlas-three   = $XATLAS  (expected $EXPECT_XATLAS)"
+
+          fail=0
+          [ "$THREE"   = "$EXPECT_THREE"   ] || fail=1
+          [ "$MESHBVH" = "$EXPECT_MESHBVH" ] || fail=1
+          [ "$XATLAS"  = "$EXPECT_XATLAS"  ] || fail=1
+
+          if [ "$fail" = "1" ]; then
+            echo ""
+            echo "::error::Pinned dependency version changed."
+            echo "CLAUDE.md forbids upgrading three / three-mesh-bvh / xatlas-three without explicit approval."
+            echo "If this upgrade is intentional, update EXPECT_* values in .github/workflows/ci.yml in the same PR."
+            exit 1
+          fi
