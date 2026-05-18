@@ -48,7 +48,7 @@ const MAX_TRIANGLES = (TEX_SIZE * TEX_SIZE) / 8; // 524,288 — 8 texels per tri
 export interface BVHSceneData {
   triangleTexture: DataTexture;
   aabbTexture:     DataTexture;
-  albedoTextures:  Texture[];     // up to 8 unique diffuse maps from scene materials
+  albedoTextures:  Texture[];     // up to 16 unique diffuse maps from scene materials
   triangleCount:   number;
 }
 
@@ -78,14 +78,14 @@ export function buildBVHScene(scene: Scene): BVHSceneData {
 
   if (meshes.length === 0) return _emptyScene();
 
-  // ── 2. Collect unique albedo textures (max 8) ────────────────────────────
+  // ── 2. Collect unique albedo textures (max 16) ────────────────────────────
 
   const albedoTextures: Texture[] = [];
   for (const mesh of meshes) {
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     for (const mat of mats) {
       if (mat instanceof MeshStandardMaterial && mat.map) {
-        if (!albedoTextures.includes(mat.map) && albedoTextures.length < 8)
+        if (!albedoTextures.includes(mat.map) && albedoTextures.length < 16)
           albedoTextures.push(mat.map);
       }
     }

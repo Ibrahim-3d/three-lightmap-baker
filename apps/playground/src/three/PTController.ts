@@ -1,15 +1,15 @@
 /**
  * PTController — scene-agnostic path-traced viewport controller.
  *
- * Per-frame syncs all THREE.js lights (PointLight, DirectionalLight,
- * SpotLight, RectAreaLight) from the live scene into PT uniforms so changes
- * to light intensity/color/position are immediately reflected in the tracer.
+ * Syncs THREE.js lights into a DataTexture each frame so changes to
+ * intensity/color/position are immediately reflected. Supports up to 16
+ * lights (raised from 4 via DataTexture; uniform arrays capped at MAX=4).
  */
 
 import {
-  Color,
   DataTexture,
   DirectionalLight,
+  FloatType,
   NearestFilter,
   NoColorSpace,
   PointLight,
@@ -32,13 +32,38 @@ import bvhFrag from 'pt-renderer/shaders/bvh-scene.frag.glsl?raw';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const MAX_ALBEDO_TEXTURES = 8;
-const MAX_PT_LIGHTS       = 4;
+/** Max albedo textures — extended to 16 to match the updated shader. */
+const MAX_ALBEDO_TEXTURES = 16;
+
+/**
+ * Max lights supported by the DataTexture layout.
+ * Each light occupies 4 RGBA texels → 64-texel wide 1D texture = 16 lights.
+ *
+ * Texel layout for light i at offset i*4:
+ *   texel i*4+0 : pos.xyz,   type  (0=dir, 1=point, 2=spot, 3=rectarea)
+ *   texel i*4+1 : color.rgb, dist
+ *   texel i*4+2 : dir.xyz,   spotCos
+ *   texel i*4+3 : width,     height, 0, 0
+ */
+const MAX_PT_LIGHTS   = 16;
+const TEXELS_PER_LIGHT = 4;
+const LIGHT_TEX_WIDTH  = MAX_PT_LIGHTS * TEXELS_PER_LIGHT; // 64
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function makeWhiteTex(): DataTexture {
   const t = new DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, RGBAFormat, UnsignedByteType);
+  t.colorSpace = NoColorSpace;
+  t.minFilter = t.magFilter = NearestFilter;
+  t.generateMipmaps = false;
+  t.needsUpdate = true;
+  return t;
+}
+
+/** Create the empty 64×1 RGBA32F light DataTexture. */
+function makeLightTexture(): DataTexture {
+  const data = new Float32Array(LIGHT_TEX_WIDTH * 4); // 256 floats
+  const t = new DataTexture(data, LIGHT_TEX_WIDTH, 1, RGBAFormat, FloatType);
   t.colorSpace = NoColorSpace;
   t.minFilter = t.magFilter = NearestFilter;
   t.generateMipmaps = false;
@@ -53,18 +78,6 @@ function albedoUniforms(textures: Texture[], fallback: DataTexture): Record<stri
   return out;
 }
 
-function makeLightUniforms() {
-  return {
-    uNumPTLights:    { value: 0 },
-    uPTLightPos:     { value: Array.from({ length: MAX_PT_LIGHTS }, () => new Vector3()) },
-    uPTLightDir:     { value: Array.from({ length: MAX_PT_LIGHTS }, () => new Vector3(0, -1, 0)) },
-    uPTLightColor:   { value: Array.from({ length: MAX_PT_LIGHTS }, () => new Color(0, 0, 0)) },
-    uPTLightType:    { value: new Float32Array(MAX_PT_LIGHTS) },
-    uPTLightDist:    { value: new Float32Array(MAX_PT_LIGHTS) },
-    uPTLightSpotCos: { value: new Float32Array(MAX_PT_LIGHTS) },
-  };
-}
-
 // ── PTController ──────────────────────────────────────────────────────────────
 
 export interface PTControllerDeps {
@@ -75,15 +88,17 @@ export interface PTControllerDeps {
 }
 
 export class PTController {
-  private pt:        PTRenderer | null = null;
-  private sceneData: BVHSceneData | null = null;
-  private whiteTex:  DataTexture | null = null;
+  private pt:          PTRenderer | null = null;
+  private sceneData:   BVHSceneData | null = null;
+  private whiteTex:    DataTexture | null = null;
+  private lightTex:    DataTexture | null = null;
+  private _lightData:  Float32Array = new Float32Array(0);
 
   private active = false;
   private rafId  = 0;
   private lastMs = 0;
 
-  // Reusable scratch vectors — avoids GC pressure in render loop
+  // Reusable scratch vectors — avoids GC pressure in render loop.
   private readonly _lightPos = new Vector3();
   private readonly _lightTgt = new Vector3();
   private readonly _lightDir = new Vector3();
@@ -94,6 +109,9 @@ export class PTController {
 
   async init(): Promise<void> {
     this.whiteTex = makeWhiteTex();
+    this.lightTex = makeLightTexture();
+    this._lightData = this.lightTex.image.data as unknown as Float32Array;
+
     this.pt = new PTRenderer({
       fragmentShader: bvhFrag,
       sceneIsDynamic: false,
@@ -104,7 +122,8 @@ export class PTController {
         uHasSkyTexture:     { value: false },
         tHDRTexture:        { value: null },
         uSkyLightIntensity: { value: 1.0 },
-        ...makeLightUniforms(),
+        tLightTexture:      { value: this.lightTex },
+        uNumPTLights:       { value: 0 },
         ...albedoUniforms([], this.whiteTex),
       },
     });
@@ -163,6 +182,8 @@ export class PTController {
     this.sceneData = null;
     this.whiteTex?.dispose();
     this.whiteTex = null;
+    this.lightTex?.dispose();
+    this.lightTex = null;
   }
 
   // ── Private ────────────────────────────────────────────────────────────────
@@ -194,84 +215,114 @@ export class PTController {
     if (u['uFocusDistance']) u['uFocusDistance'].value = s.focusDist;
   }
 
+  /**
+   * Pack scene lights into the 64×1 RGBA32F DataTexture.
+   * 4 texels per light (see TEXELS_PER_LIGHT comment above).
+   * Marks texture.needsUpdate = true when count > 0.
+   */
   private _syncLights(): void {
-    if (!this.pt) return;
+    if (!this.pt || !this.lightTex) return;
     const u = this.pt.uniforms;
-    if (!u['uNumPTLights']) return;
 
-    const scene   = this.deps.getScene();
-    const posArr  = u['uPTLightPos']!.value  as Vector3[];
-    const dirArr  = u['uPTLightDir']!.value  as Vector3[];
-    const colArr  = u['uPTLightColor']!.value as Color[];
-    const typeArr = u['uPTLightType']!.value  as Float32Array;
-    const distArr = u['uPTLightDist']!.value  as Float32Array;
-    const cosArr  = u['uPTLightSpotCos']!.value as Float32Array;
+    const texData = this._lightData;
+    texData.fill(0);
 
-    let count  = 0;
+    let count    = 0;
     const lScale = ptSettings.value.lightScale;
+    const scene  = this.deps.getScene();
 
     scene.traverse((obj) => {
       if (count >= MAX_PT_LIGHTS) return;
+      const base = count * TEXELS_PER_LIGHT * 4; // float offset
 
       if (obj instanceof DirectionalLight) {
+        if (obj.userData.lightmapIgnore) return;
         obj.getWorldPosition(this._lightPos);
         obj.target.getWorldPosition(this._lightTgt);
         this._lightDir.subVectors(this._lightTgt, this._lightPos).normalize();
-        posArr[count]!.copy(this._lightPos);
-        dirArr[count]!.copy(this._lightDir);
-        colArr[count]!.setRGB(
-          obj.color.r * obj.intensity * lScale,
-          obj.color.g * obj.intensity * lScale,
-          obj.color.b * obj.intensity * lScale,
-        );
-        typeArr[count] = 0; distArr[count] = 0; cosArr[count] = 0;
+        // texel 0: pos.xyz, type=0
+        texData[base + 0] = this._lightPos.x;
+        texData[base + 1] = this._lightPos.y;
+        texData[base + 2] = this._lightPos.z;
+        texData[base + 3] = 0;
+        // texel 1: color.rgb × scale, dist=0
+        texData[base + 4] = obj.color.r * obj.intensity * lScale;
+        texData[base + 5] = obj.color.g * obj.intensity * lScale;
+        texData[base + 6] = obj.color.b * obj.intensity * lScale;
+        texData[base + 7] = 0;
+        // texel 2: dir.xyz, spotCos=0
+        texData[base + 8]  = this._lightDir.x;
+        texData[base + 9]  = this._lightDir.y;
+        texData[base + 10] = this._lightDir.z;
+        texData[base + 11] = 0;
         count++;
 
       } else if (obj instanceof SpotLight) {
+        if (obj.userData.lightmapIgnore) return;
         obj.getWorldPosition(this._lightPos);
         obj.target.getWorldPosition(this._lightTgt);
         this._lightDir.subVectors(this._lightTgt, this._lightPos).normalize();
-        posArr[count]!.copy(this._lightPos);
-        dirArr[count]!.copy(this._lightDir);
-        colArr[count]!.setRGB(
-          obj.color.r * obj.intensity * lScale,
-          obj.color.g * obj.intensity * lScale,
-          obj.color.b * obj.intensity * lScale,
-        );
-        typeArr[count] = 2;
-        distArr[count] = obj.distance || 0;
-        cosArr[count]  = Math.cos(obj.angle);
+        texData[base + 0] = this._lightPos.x;
+        texData[base + 1] = this._lightPos.y;
+        texData[base + 2] = this._lightPos.z;
+        texData[base + 3] = 2;
+        texData[base + 4] = obj.color.r * obj.intensity * lScale;
+        texData[base + 5] = obj.color.g * obj.intensity * lScale;
+        texData[base + 6] = obj.color.b * obj.intensity * lScale;
+        texData[base + 7] = obj.distance || 0;
+        texData[base + 8]  = this._lightDir.x;
+        texData[base + 9]  = this._lightDir.y;
+        texData[base + 10] = this._lightDir.z;
+        texData[base + 11] = Math.cos(obj.angle);
         count++;
 
       } else if (obj instanceof PointLight) {
+        if (obj.userData.lightmapIgnore) return;
         obj.getWorldPosition(this._lightPos);
-        posArr[count]!.copy(this._lightPos);
-        dirArr[count]!.set(0, -1, 0);
-        colArr[count]!.setRGB(
-          obj.color.r * obj.intensity * lScale,
-          obj.color.g * obj.intensity * lScale,
-          obj.color.b * obj.intensity * lScale,
-        );
-        typeArr[count] = 1;
-        distArr[count] = obj.distance || 0;
-        cosArr[count]  = 0;
+        texData[base + 0] = this._lightPos.x;
+        texData[base + 1] = this._lightPos.y;
+        texData[base + 2] = this._lightPos.z;
+        texData[base + 3] = 1;
+        texData[base + 4] = obj.color.r * obj.intensity * lScale;
+        texData[base + 5] = obj.color.g * obj.intensity * lScale;
+        texData[base + 6] = obj.color.b * obj.intensity * lScale;
+        texData[base + 7] = obj.distance || 0;
+        texData[base + 8]  = 0;
+        texData[base + 9]  = -1;
+        texData[base + 10] = 0;
+        texData[base + 11] = 0;
         count++;
 
       } else if (obj instanceof RectAreaLight) {
-        const area = Math.max(obj.width * obj.height, 0.01);
+        // Type 3 — true area light. Shader picks random point on face.
         obj.getWorldPosition(this._lightPos);
-        posArr[count]!.copy(this._lightPos);
-        dirArr[count]!.set(0, -1, 0);
-        colArr[count]!.setRGB(
-          obj.color.r * obj.intensity * area * 0.25 * lScale,
-          obj.color.g * obj.intensity * area * 0.25 * lScale,
-          obj.color.b * obj.intensity * area * 0.25 * lScale,
-        );
-        typeArr[count] = 1; distArr[count] = 0; cosArr[count] = 0;
+        // Face normal direction: RectAreaLight faces -Z in local space.
+        this._lightDir.set(0, 0, -1).applyQuaternion(obj.quaternion).normalize();
+        texData[base + 0] = this._lightPos.x;
+        texData[base + 1] = this._lightPos.y;
+        texData[base + 2] = this._lightPos.z;
+        texData[base + 3] = 3;
+        texData[base + 4] = obj.color.r * obj.intensity * lScale;
+        texData[base + 5] = obj.color.g * obj.intensity * lScale;
+        texData[base + 6] = obj.color.b * obj.intensity * lScale;
+        texData[base + 7] = 0; // dist (unused for area)
+        texData[base + 8]  = this._lightDir.x;
+        texData[base + 9]  = this._lightDir.y;
+        texData[base + 10] = this._lightDir.z;
+        texData[base + 11] = 0; // spotCos (unused)
+        // texel 3: width, height
+        texData[base + 12] = obj.width;
+        texData[base + 13] = obj.height;
         count++;
       }
     });
 
-    u['uNumPTLights'].value = count;
+    if (u['uNumPTLights']) u['uNumPTLights'].value = count;
+    if (count > 0 || this._prevLightCount !== count) {
+      this.lightTex.needsUpdate = true;
+    }
+    this._prevLightCount = count;
   }
+
+  private _prevLightCount = 0;
 }
