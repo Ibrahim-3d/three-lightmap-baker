@@ -77,7 +77,11 @@ export class Diagnostics {
     const extReport: Record<string, boolean> = {};
     for (const e of exts) extReport[e] = !!gl.getExtension(e);
 
-    const memInfo = (performance as unknown as { memory?: { totalJSHeapSize: number; usedJSHeapSize: number; jsHeapSizeLimit: number } }).memory;
+    const memInfo = (
+      performance as unknown as {
+        memory?: { totalJSHeapSize: number; usedJSHeapSize: number; jsHeapSizeLimit: number };
+      }
+    ).memory;
 
     /* eslint-disable no-console */
     console.group('[diag] === GPU BANNER ===');
