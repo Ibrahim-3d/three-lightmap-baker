@@ -5,16 +5,27 @@
 Browser-native lightmap baker with path-traced global illumination for Three.js.
 Fork of lucas-jones/three-lightmap-baker, extended with multi-bounce GI.
 
+**Scope expansion 2026-05-18:** project is becoming a multi-renderer monorepo
+(`packages/` + `apps/`). Real-time GPU path tracer (Erich Loftis-style) is
+landing in PR #2 to give designers a preview that predicts the bake look.
+A new PT-baker (UV-space front-end on the same sampler) will follow so the
+preview and the bake share one engine. The current classic baker stays in tree
+as the safe fallback. See `.claude/progress.md` "Roadmap" for the sequence.
+
 ## Stack
 
 - Three.js (check package.json for exact version — DO NOT upgrade)
-- three-mesh-bvh (GPU-accelerated BVH raycasting)
-- three-gpu-pathtracer (reference for path tracing shader code)
+- three-mesh-bvh (GPU-accelerated BVH raycasting) — used by the **classic baker**
+- Custom SAH BVH builder (ported from Erich Loftis' BVH_Quick_Builder.js) — used by the **PT renderer** (PR #2)
 - xatlas-three (auto UV2 unwrapping)
 - TypeScript strict mode
 - Vite dev server
 
-## Architecture — Two-Pass Bake
+## Architecture — Classic Baker (Two-Pass)
+
+This describes the **classic baker** in `src/lib/` today. The PT renderer in
+PR #2 is a separate screen-space progressive tracer; the planned PT-baker
+will reuse the PT renderer's sampler but write to a UV-space RT.
 
 Pass 1 (UV-space rasterization):
 - Render each mesh's geometry with gl_Position = uv2 * 2 - 1
@@ -33,12 +44,55 @@ Pass 2 (ray tracing):
 This two-pass approach decouples UV mapping from ray tracing.
 The renderer is used normally — no modelMatrix/matrixWorld hacks needed.
 
-## Key Files
+## Key Files (current — pre-restructure)
 
-- src/lightmap-baker.ts — main orchestrator
-- src/shaders/ — GLSL shaders for both passes
-- src/xatlas/ — UV unwrapping integration
-- src/scene.ts — Cornell Box test scene (and other test scenes)
+Classic baker library:
+- `src/lib/LightmapBaker.ts` — main orchestrator (public API entry)
+- `src/lib/lightmap/LightmapperMaterial.ts` — inline GLSL3 BVH ray-trace shader
+- `src/lib/lightmap/AOMapper.ts` — AO sub-pass
+- `src/lib/lightmap/Lights.ts` — light packing → DataTexture
+- `src/lib/lightmap/Composite.ts` / `DenoiseMaterial.ts` / `DilationMaterial.ts` — post-process
+- `src/lib/atlas/renderAtlas.ts` — Pass 1 UV rasterization
+- `src/lib/utils/GeometryUtils.ts` — BVH merge + per-tri material extraction
+- `src/lib/utils/MaterialTextures.ts` — albedo/emissive DataTextures
+
+Demo (today's mega-app):
+- `src/demo/main.tsx` — boot, scene loading, orchestrator wiring
+- `src/demo/three/SceneController.ts` — preset registry, asset add/remove
+- `src/demo/three/BakeController.ts` — bake orchestration
+- `src/demo/three/PTController.ts` — PT preview controller (PR #2)
+- `src/demo/app/shell/` — UI shell (PR #1: topbar, outliner, inspector, etc.)
+
+PT renderer (PR #2):
+- `src/pathtracer/BVHBuilder.ts` — SAH builder
+- `src/pathtracer/BVHSceneBuilder.ts` — scene → DataTextures
+- `src/pathtracer/PTRenderer.ts` — 3-pass ping-pong pipeline
+- `src/pathtracer/chunks.ts` — GLSL chunks from PathTracingCommon.js
+
+## Planned layout — `packages/` + `apps/` (Step 2 of roadmap)
+
+After Step 1 (merge PR #1) lands, the repo restructures to:
+
+```
+packages/
+  baker-classic/   ← current src/lib/
+  demo-shell/      ← PR #1 generic UI (no baker-specific panels)
+  pt-renderer/     ← src/pathtracer/ (PR #2 rebased here)
+  pt-baker/        ← NEW — UV-space front-end on pt-renderer's sampler
+  shared/          ← common BVH / material / light packing helpers
+
+apps/
+  classic/         ← demo for baker-classic only
+  pt-preview/      ← demo for pt-renderer only
+  pt-baked/        ← demo for pt-baker + pt-renderer side by side
+  playground/      ← kitchen-sink demo (today's src/demo/)
+```
+
+Baker-specific inspector panels (`BakePage`, `LightmapPage`) move from the
+shell into their owning package. The shell exposes a panel-slot API so each
+package registers its own pages, menus, top-bar buttons. Each `apps/*` is a
+thin (≈30-50 LOC) wiring file that imports the shell + chooses which
+packages to plug in.
 
 ## Conventions
 
