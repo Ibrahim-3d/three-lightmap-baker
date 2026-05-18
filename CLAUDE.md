@@ -148,6 +148,60 @@ not patched.**
    project imports? Refactor it.
 6. CI must be green (see `.github/workflows/`).
 
+## CI / CD Workflows
+
+Workflows live in `.github/workflows/`. The old `deploy.yml` pushes
+`dist/` to GitHub Pages on push to `main`. The plan for everything else is
+below — current tier in green, deferred tiers documented so future
+sessions know what's parked.
+
+### Tier 1 — live in `.github/workflows/ci.yml`
+
+- **`check` job** — `tsc --noEmit`, `eslint`, `prettier --check`,
+  `vite build`. Hard fail. Minimum bar for merge.
+- **`modularity` job** — `madge --circular` + report of every TS file > 300
+  LOC. **Currently advisory** (warns, does not fail) because legacy files
+  (`LightmapBaker.ts` 1316 LOC, `LightmapperMaterial.ts` 423 LOC,
+  `CornellBoxExample.ts` 1858 LOC) predate the rule. Flip to hard-fail
+  after Roadmap Step 2 splits them.
+- **`deps-pinned` job** — fails if `three` / `three-mesh-bvh` /
+  `xatlas-three` version strings change. To deliberately upgrade, update
+  the `EXPECT_*` constants inside `ci.yml` in the same PR.
+
+### Tier 2 — add after Roadmap Step 2 (restructure lands)
+
+- **Bundle-size check** — per-app gzip size, comment PR with delta vs.
+  master. Fail on > 10 % growth without `allow-bundle-growth` label.
+- **Per-app build matrix** — once `apps/*` exists, build each independently
+  to catch package-internal regressions.
+- **Tighten `modularity`** — flip from advisory to hard-fail once legacy
+  oversized files are split.
+- **Playwright smoke tests** — boot each app, canvas mounts, no console
+  errors, "Bake" completes on Cornell. Config already added in PR #1.
+
+### Tier 3 — add after PT-baker ships (Roadmap Step 5)
+
+- **Visual regression on Cornell Box** — headless boot of `apps/playground/`,
+  bake with each engine, compare output PNG to baselines (`pixelmatch` or
+  `odiff`). Runs nightly + on shader-touching PRs.
+- **PR preview deploys** — push each PR's `apps/playground/` build to a
+  preview URL (Cloudflare Pages, Vercel, or GitHub Pages branch deploy).
+  Designer-friendly review.
+
+### Tier 4 — when packages are ready to publish
+
+- **`release.yml`** with [changesets](https://github.com/changesets/changesets)
+  — cross-package version management. Each PR adds a `.changeset/*.md`
+  describing the bump. Merging the auto-opened "Release PR" publishes to
+  npm + tags git.
+
+### Pre-commit hooks (local, parallel to CI)
+
+Not wired yet. When ready: [husky](https://typicode.github.io/husky/) +
+[lint-staged](https://github.com/lint-staged/lint-staged). Minimum:
+prettier-fix + eslint-fix on staged files, `tsc --noEmit` on changed
+packages. Keep heavy work (build, e2e, visual) in CI only.
+
 ## Conventions
 
 - All diagnostic/debug code behind `if (DEBUG)` flag
