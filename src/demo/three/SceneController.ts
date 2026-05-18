@@ -3,6 +3,7 @@ import {
   BoxGeometry,
   Color,
   DoubleSide,
+  Euler,
   type Light,
   Mesh,
   MeshBasicMaterial,
@@ -13,6 +14,7 @@ import {
   PlaneGeometry,
   PointLight,
   Raycaster,
+  SpotLight,
   Scene,
   SphereGeometry,
   SRGBColorSpace,
@@ -31,46 +33,32 @@ import { createAsset, type AssetSpec } from '../assets/primitives';
 import { sceneRegistry } from '../scenes/registry';
 import type { SceneObj } from './types';
 
-// Classic Cornell box dims: 10×10×10 unit room centered at (0, 5, 0)
 export const ROOM = 10;
 const HALF = ROOM / 2;
 
 export type ScenePreset = 'classic' | 'advanced';
 
-/** Callbacks fired by SceneController so the orchestrator and BakeController stay in sync. */
+/** Snapshot of an Object3D's local transform for undo/redo. */
+export type TransformSnap = { pos: Vector3; rot: Euler; scale: Vector3 };
+
 export type SceneControllerHooks = {
-  /** Fired after every scene rebuild / GLB import. Orchestrator rebuilds per-mesh UI here. */
   onSceneChanged: (meshes: SceneObj[]) => void;
-  /** Called after every scene rebuild — must pin the dummy lightmap onto every mesh
-   *  to prevent post-bake shader recompile (Session 12 mitigation). */
   installDummyLightmaps: (meshes: SceneObj[]) => void;
-  /** Notify the orchestrator when bake-owned GPU resources must be torn down
-   *  (e.g. before swapping geometry on GLB import). */
   disposeBake: () => void;
-  /** Fired when the scene mutates in a way that invalidates the current bake
-   *  (e.g. a mesh has been translated/rotated/scaled by the gizmo). */
   onStaleChange?: () => void;
-  /** Fired when the user clicks on an object in the viewport. Null = empty space. */
   onViewportPick?: (id: string | null) => void;
+  /** Fired at gizmo drag-end with before/after snapshots. Push to undo history. */
+  onTransformChange?: (obj: Object3D, before: TransformSnap, after: TransformSnap) => void;
 };
 
-/** Built-in id for the moveable scene light. Lights become uuid-keyed in T-D7. */
 export const LIGHT_DUMMY_ID = 'light:dummy';
 
-/**
- * Owns the THREE side of the demo: scene graph, camera, renderer, orbit/transform
- * controls, the visual+bake light dummy, scene-build factories (Cornell), and GLB
- * import. Knows nothing about the LightmapBaker call site — that lives in
- * BakeController. Knows nothing about Tweakpane / DOM — that stays in the
- * orchestrator until T-D2 (Preact).
- */
 export class SceneController {
   renderer: WebGLRenderer;
   camera: PerspectiveCamera;
   scene: Scene;
   controls: OrbitControls;
 
-  /** Visual-only point light. The baker reads `lightDummy.position` only. */
   visualLight: PointLight;
   lightDummy: Object3D;
   lightTransformController: TransformControls;
@@ -78,8 +66,11 @@ export class SceneController {
 
   cornellRoot: Object3D | null = null;
   meshes: SceneObj[] = [];
+  lights: Light[] = [];
+  lightMarkerMap: Map<string, string> = new Map();
 
   diag: Diagnostics;
+  private _preDragSnap: TransformSnap | null = null;
 
   constructor(private hooks: SceneControllerHooks) {
     this.scene = new Scene();
@@ -89,8 +80,6 @@ export class SceneController {
     this.camera.position.set(0, 5, 18);
     this.camera.lookAt(0, 5, 0);
 
-    // preserveDrawingBuffer=true when running under Playwright (`?test=1`) so
-    // `sampleCanvasPixel` readback works regardless of browser composite timing.
     const isTest =
       typeof window !== 'undefined' &&
       new URLSearchParams(window.location.search).get('test') === '1';
@@ -118,54 +107,61 @@ export class SceneController {
       e.preventDefault();
     });
     this.renderer.domElement.addEventListener('webglcontextrestored', () => {
-      console.error(
-        '[baker:debug] CONTEXT RESTORED — RT data lost, lightmap textures are now empty',
-        { meshes: this.meshes.length },
-      );
+      console.error('[baker:debug] CONTEXT RESTORED — RT data lost, lightmap textures are now empty', {
+        meshes: this.meshes.length,
+      });
     });
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.target.set(0, 5, 0);
     this.controls.update();
 
-    // Light dummy — baker reads .position to fire direct-light rays toward it.
     this.lightDummy = new Object3D();
     this.lightDummy.position.set(0, ROOM - 0.001, 0);
     this.scene.add(this.lightDummy);
 
-    // Visual-only: small emissive disc + point light so "Albedo/Standard" looks right.
     this.lightMarker = new Mesh(
       new PlaneGeometry(2.5, 2.5),
       new MeshBasicMaterial({ color: 0xffffff, side: DoubleSide }),
     );
     this.lightMarker.rotation.x = Math.PI / 2;
     this.lightDummy.add(this.lightMarker);
+    this.lightMarkerMap.set(this.lightMarker.uuid, LIGHT_DUMMY_ID);
 
     this.visualLight = new PointLight(0xffffff, 80, 0, 2);
-    // Display-only — `collectLightsFromScene` skips lights tagged this way, so
-    // this PointLight is not treated as a bake input.
     this.visualLight.userData.lightmapIgnore = true;
     this.lightDummy.add(this.visualLight);
 
     this.lightTransformController = new TransformControls(this.camera, this.renderer.domElement);
     this.lightTransformController.addEventListener('dragging-changed', (event) => {
       this.controls.enabled = !event.value;
-      // Mark stale when a drag of a non-light object ends (lightDummy moves are
-      // visual-only; only their position matters for bake, which is queried on
-      // bake start, not from gizmo events).
-      if (!event.value) {
+      if (event.value) {
         const target = this.lightTransformController.object;
-        if (target && target !== this.lightDummy) {
-          this.hooks.onStaleChange?.();
+        if (target) {
+          this._preDragSnap = {
+            pos: target.position.clone(),
+            rot: target.rotation.clone(),
+            scale: target.scale.clone(),
+          };
+        }
+      } else {
+        const target = this.lightTransformController.object;
+        if (target && this._preDragSnap) {
+          const before = this._preDragSnap;
+          this._preDragSnap = null;
+          const after: TransformSnap = {
+            pos: target.position.clone(),
+            rot: target.rotation.clone(),
+            scale: target.scale.clone(),
+          };
+          if (target !== this.lightDummy) this.hooks.onStaleChange?.();
+          this.hooks.onTransformChange?.(target, before, after);
         }
       }
     });
     this.lightTransformController.attach(this.lightDummy);
     this.scene.add(this.lightTransformController);
 
-    // Viewport click → raycast pick → notify orchestrator. We track pointerdown
-    // coords and only fire a pick on pointerup at (roughly) the same coords, so
-    // OrbitControls drags do not steal selection.
     let downX = 0;
     let downY = 0;
     this.renderer.domElement.addEventListener('pointerdown', (e) => {
@@ -173,7 +169,7 @@ export class SceneController {
       downY = e.clientY;
     });
     this.renderer.domElement.addEventListener('pointerup', (e) => {
-      if (e.button !== 0) return; // left-click only
+      if (e.button !== 0) return;
       if (this.lightTransformController.dragging) return;
       if (Math.abs(e.clientX - downX) > 3 || Math.abs(e.clientY - downY) > 3) return;
       const id = this.pickAt(e.clientX, e.clientY);
@@ -181,32 +177,37 @@ export class SceneController {
     });
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  //  Selection + gizmo + tree
-  // ──────────────────────────────────────────────────────────────────────────
+  // ── Selection + gizmo + tree ──────────────────────────────────────────────
   private raycaster = new Raycaster();
   private pointer = new Vector2();
 
-  /** Cast a ray from screen-space (client coords) to find the nearest mesh hit.
-   *  Returns the mesh uuid, or null if no mesh was hit. */
   pickAt(clientX: number, clientY: number): string | null {
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
     this.pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
     this.raycaster.setFromCamera(this.pointer, this.camera);
-    const hits = this.raycaster.intersectObjects(this.meshes, false);
-    return hits.length > 0 ? hits[0]!.object.uuid : null;
+
+    const markerMeshes: Mesh[] = [this.lightMarker];
+    for (const light of this.lights) {
+      for (const child of light.children) {
+        if (child.userData.isLightMarker) markerMeshes.push(child as Mesh);
+      }
+    }
+
+    const hits = this.raycaster.intersectObjects([...this.meshes, ...markerMeshes], false);
+    if (hits.length === 0) return null;
+    const hitUUID = hits[0]!.object.uuid;
+    return this.lightMarkerMap.get(hitUUID) ?? hitUUID;
   }
 
-  /** Resolve a tree-node id back to its Object3D. */
   lookupObject(id: string | null): Object3D | null {
     if (!id) return null;
     if (id === LIGHT_DUMMY_ID) return this.lightDummy;
-    return this.meshes.find((m) => m.uuid === id) ?? null;
+    const mesh = this.meshes.find((m) => m.uuid === id);
+    if (mesh) return mesh;
+    return this.lights.find((l) => l.uuid === id) ?? null;
   }
 
-  /** Attach the gizmo to a tree node (or the light dummy when null/light id).
-   *  When `obj` is null the gizmo detaches entirely. */
   attachGizmoTo(obj: Object3D | null): void {
     if (obj) {
       this.lightTransformController.attach(obj);
@@ -221,12 +222,13 @@ export class SceneController {
     this.lightTransformController.setMode(mode);
   }
 
-  /** Build a flat tree snapshot for the Outliner. Rebuilt by the orchestrator
-   *  on every scene mutation (rebuild / GLB import). */
   buildSceneTree(): { id: string; name: string; kind: 'mesh' | 'light'; visible: boolean }[] {
     const tree: { id: string; name: string; kind: 'mesh' | 'light'; visible: boolean }[] = [
       { id: LIGHT_DUMMY_ID, name: 'Scene Light', kind: 'light', visible: this.lightDummy.visible },
     ];
+    for (const l of this.lights) {
+      tree.push({ id: l.uuid, name: l.name || l.type, kind: 'light', visible: l.visible });
+    }
     for (const m of this.meshes) {
       tree.push({
         id: m.uuid,
@@ -243,7 +245,102 @@ export class SceneController {
     if (obj) obj.visible = visible;
   }
 
-  /** Wraps a MeshStandardMaterial so render-mode logic can find `_originalMap`. */
+  // ── Camera framing ────────────────────────────────────────────────────────
+
+  /**
+   * Frame the camera on a specific node. Preserves current viewing direction;
+   * adjusts orbit target + camera distance to fit the object's bounding box.
+   */
+  frameObject(id: string): void {
+    const obj = this.lookupObject(id);
+    if (!obj) return;
+
+    const box = new Box3();
+    if ((obj as Mesh).isMesh) {
+      box.expandByObject(obj);
+    } else {
+      // Light — no geometry; frame a unit sphere around its world position.
+      const wp = obj.getWorldPosition(new Vector3());
+      box.setFromCenterAndSize(wp, new Vector3(1, 1, 1));
+    }
+    if (box.isEmpty()) {
+      const wp = obj.getWorldPosition(new Vector3());
+      box.setFromCenterAndSize(wp, new Vector3(1, 1, 1));
+    }
+
+    const center = box.getCenter(new Vector3());
+    const size = box.getSize(new Vector3());
+    const radius = Math.max(size.x, size.y, size.z) * 1.2 || 2;
+
+    // Keep current viewing direction; slide camera along it.
+    const dir = new Vector3()
+      .subVectors(this.camera.position, this.controls.target)
+      .normalize();
+
+    this.controls.target.copy(center);
+    this.camera.position.copy(center).addScaledVector(dir, radius * 2.5);
+    this.controls.update();
+  }
+
+  // ── Undo-aware node extraction ────────────────────────────────────────────
+
+  /**
+   * Remove a node from the scene + tracking arrays WITHOUT disposing its GPU
+   * resources. Returns the node and its kind so the caller can re-insert it
+   * via `reinsertNode` (undo). History commands hold the ref; disposal happens
+   * naturally when the command is evicted from the stack.
+   *
+   * No-ops silently for LIGHT_DUMMY_ID or unknown ids.
+   */
+  extractNode(id: string): { node: Object3D; kind: 'mesh' | 'light' } | null {
+    if (!id || id === LIGHT_DUMMY_ID) return null;
+
+    const meshIdx = this.meshes.findIndex((m) => m.uuid === id);
+    if (meshIdx !== -1) {
+      const mesh = this.meshes[meshIdx]!;
+      mesh.parent?.remove(mesh);
+      this.meshes.splice(meshIdx, 1);
+      this.hooks.onSceneChanged(this.meshes);
+      this.hooks.onStaleChange?.();
+      return { node: mesh, kind: 'mesh' };
+    }
+
+    const lightIdx = this.lights.findIndex((l) => l.uuid === id);
+    if (lightIdx !== -1) {
+      const light = this.lights[lightIdx]!;
+      this.scene.remove(light);
+      this.lights.splice(lightIdx, 1);
+      // Keep lightMarkerMap entries — still valid on reinsertion.
+      this.hooks.onSceneChanged(this.meshes);
+      this.hooks.onStaleChange?.();
+      return { node: light, kind: 'light' };
+    }
+
+    return null;
+  }
+
+  /**
+   * Re-insert a node previously removed by `extractNode`. Mirrors addAsset
+   * pathing: meshes → cornellRoot, lights → scene + this.lights.
+   */
+  reinsertNode(node: Object3D, kind: 'mesh' | 'light'): void {
+    if (kind === 'mesh') {
+      if (!this.cornellRoot) {
+        this.cornellRoot = new Object3D();
+        this.scene.add(this.cornellRoot);
+      }
+      this.cornellRoot.add(node);
+      this.meshes.push(node as SceneObj);
+      this.hooks.installDummyLightmaps([node as SceneObj]);
+    } else {
+      this.scene.add(node);
+      this.lights.push(node as Light);
+    }
+    this.hooks.onSceneChanged(this.meshes);
+    this.hooks.onStaleChange?.();
+  }
+
+  // ── Material helpers ──────────────────────────────────────────────────────
   private mat(color: number, roughness = 0.95, metalness = 0.0): MeshStandardMaterial {
     const m = new MeshStandardMaterial({ color, roughness, metalness });
     (m as unknown as { _originalMap: Texture | null })._originalMap = null;
@@ -258,14 +355,13 @@ export class SceneController {
   }
 
   private buildWalls(): void {
-    const T = 0.2; // wall thickness
+    const T = 0.2;
     const white = this.mat(0xf0f0f0);
     const red = this.mat(0xd62728);
     const green = this.mat(0x2ca02c);
 
     const floor = new Mesh(new BoxGeometry(ROOM, T, ROOM), white);
-    floor.name = 'Floor';
-    floor.position.set(0, -T / 2, 0);
+    floor.name = 'Floor'; floor.position.set(0, -T / 2, 0);
     this.addMesh(floor);
 
     const ceil = new Mesh(new BoxGeometry(ROOM, T, ROOM), white.clone());
@@ -281,13 +377,11 @@ export class SceneController {
     this.addMesh(back);
 
     const left = new Mesh(new BoxGeometry(T, ROOM, ROOM), red);
-    left.name = 'Left Wall (Red)';
-    left.position.set(-HALF - T / 2, HALF, 0);
+    left.name = 'Left Wall (Red)'; left.position.set(-HALF - T / 2, HALF, 0);
     this.addMesh(left);
 
     const right = new Mesh(new BoxGeometry(T, ROOM, ROOM), green);
-    right.name = 'Right Wall (Green)';
-    right.position.set(HALF + T / 2, HALF, 0);
+    right.name = 'Right Wall (Green)'; right.position.set(HALF + T / 2, HALF, 0);
     this.addMesh(right);
   }
 
@@ -295,66 +389,49 @@ export class SceneController {
     const white = this.mat(0xe8e8e8);
 
     const tall = new Mesh(new BoxGeometry(3, 6, 3), white);
-    tall.name = 'Tall Block';
-    tall.position.set(-1.8, 3, -1.5);
-    tall.rotation.y = 0.29;
+    tall.name = 'Tall Block'; tall.position.set(-1.8, 3, -1.5); tall.rotation.y = 0.29;
     this.addMesh(tall);
 
     const short = new Mesh(new BoxGeometry(3, 3, 3), white.clone());
     short.name = 'Short Block';
     (short.material as unknown as { _originalMap: Texture | null })._originalMap = null;
-    short.position.set(1.8, 1.5, 1.5);
-    short.rotation.y = -0.29;
+    short.position.set(1.8, 1.5, 1.5); short.rotation.y = -0.29;
     this.addMesh(short);
   }
 
   private buildAdvancedExtras(): void {
     const sphere = new Mesh(new SphereGeometry(1.0, 48, 32), this.mat(0xf5f5f5, 0.4, 0.0));
-    sphere.name = 'Sphere';
-    sphere.position.set(2.4, 1.0, 3.0);
+    sphere.name = 'Sphere'; sphere.position.set(2.4, 1.0, 3.0);
     this.addMesh(sphere);
 
     const knot = new Mesh(
       new TorusKnotGeometry(0.55, 0.18, 160, 24),
       this.mat(0xffd166, 0.55, 0.0),
     );
-    knot.name = 'Torus Knot';
-    knot.position.set(0.0, 1.0, 2.8);
-    knot.rotation.x = Math.PI / 2;
+    knot.name = 'Torus Knot'; knot.position.set(0.0, 1.0, 2.8); knot.rotation.x = Math.PI / 2;
     this.addMesh(knot);
 
     const accent = new Mesh(new BoxGeometry(1.2, 1.2, 1.2), this.mat(0xc77a3a, 0.8, 0.0));
-    accent.name = 'Accent Block';
-    accent.position.set(-3.5, 0.6, 2.8);
-    accent.rotation.y = 0.45;
+    accent.name = 'Accent Block'; accent.position.set(-3.5, 0.6, 2.8); accent.rotation.y = 0.45;
     this.addMesh(accent);
   }
 
-  /**
-   * Rebuild Cornell scene from a preset. Tears down bake-owned GPU resources
-   * via the hook so BakeController stays internally consistent.
-   */
   rebuildScene(preset: ScenePreset): void {
     this.hooks.disposeBake();
     if (this.cornellRoot) this.scene.remove(this.cornellRoot);
     this.cornellRoot = new Object3D();
     this.scene.add(this.cornellRoot);
     this.meshes = [];
+    this._clearUserLights();
 
     this.buildWalls();
     this.buildClassicBlocks();
     if (preset === 'advanced') this.buildAdvancedExtras();
 
-    // Pin USE_LIGHTMAP shader variant on every mesh before first render.
     this.hooks.installDummyLightmaps(this.meshes);
     this.hooks.onSceneChanged(this.meshes);
   }
 
-  /**
-   * Import a GLB/GLTF and replace the active scene. Bake-eligible meshes (those
-   * carrying a `lightMap` field on their material) are kept; geometry is indexed
-   * if needed (xatlas + extractPerTriangleMaterials require it).
-   */
   async importGLB(file: File): Promise<void> {
     const buffer = await file.arrayBuffer();
     const loader = new GLTFLoader();
@@ -369,12 +446,12 @@ export class SceneController {
     }
 
     this.hooks.disposeBake();
-
     if (this.cornellRoot) this.scene.remove(this.cornellRoot);
     this.cornellRoot = new Object3D();
     this.scene.add(this.cornellRoot);
     this.cornellRoot.add(gltf.scene);
     this.meshes = [];
+    this._clearUserLights();
 
     gltf.scene.traverse((obj: Object3D) => {
       const mesh = obj as Mesh;
@@ -393,16 +470,10 @@ export class SceneController {
 
     this.cornellRoot.updateMatrixWorld(true);
     this.fitCameraAndLightToScene();
-
     this.hooks.installDummyLightmaps(this.meshes);
     this.hooks.onSceneChanged(this.meshes);
   }
 
-  /**
-   * Position camera + light from the world-space bbox of `this.meshes`. Sets
-   * OrbitControls target to the scene center, places the light above the bbox
-   * top, pulls the camera back proportional to the longest axis.
-   */
   fitCameraAndLightToScene(): void {
     const box = new Box3();
     for (const m of this.meshes) box.expandByObject(m);
@@ -425,27 +496,20 @@ export class SceneController {
     this.renderer.setPixelRatio(window.devicePixelRatio);
   }
 
-  /** Update gizmo visibility/enabled state (called from RAF). */
   syncGizmo(show: boolean): void {
     this.lightTransformController.visible = show;
     this.lightTransformController.enabled = show;
   }
 
-  /** Sync visual light to UI color/intensity. Called from bake start. */
   syncVisualLight(colorHex: string, intensity: number): void {
     const lightColorLinear = new Color(colorHex).convertSRGBToLinear();
     this.visualLight.color.copy(lightColorLinear);
     this.visualLight.intensity = 30 * intensity;
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  //  T-D7 — Asset Library: drag-drop add, delete, ground-plane pick
-  // ──────────────────────────────────────────────────────────────────────────
-
+  // ── Asset Library ─────────────────────────────────────────────────────────
   private groundPlane = new Plane(new Vector3(0, 1, 0), 0);
 
-  /** Raycast a screen-space point against the y=0 ground plane. Returns origin
-   *  fallback if the ray misses (camera looking up). */
   pickGroundPoint(clientX: number, clientY: number): Vector3 {
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
@@ -453,16 +517,9 @@ export class SceneController {
     this.raycaster.setFromCamera(this.pointer, this.camera);
     const hit = new Vector3();
     const ok = this.raycaster.ray.intersectPlane(this.groundPlane, hit);
-    if (!ok) return new Vector3(0, 0, 0);
-    return hit;
+    return ok ? hit : new Vector3(0, 0, 0);
   }
 
-  /**
-   * Add an asset (primitive mesh or light) to the scene at `worldPos`.
-   * Meshes are parented to `cornellRoot` so they participate in the next bake.
-   * Lights are parented to `this.scene` directly and do NOT get a dummy lightmap.
-   * Returns the new node's uuid; fires `onSceneChanged` + `onStaleChange`.
-   */
   addAsset(spec: AssetSpec, worldPos: Vector3): string {
     const node = createAsset(spec);
     if (!node) {
@@ -476,15 +533,25 @@ export class SceneController {
         this.cornellRoot = new Object3D();
         this.scene.add(this.cornellRoot);
       }
-      const mesh = node as Mesh;
-      // Lift primitive so its bottom rests on ground (best-effort for unit shapes).
       if (spec.id !== 'plane') node.position.y = Math.max(node.position.y, 0.5);
+      const mesh = node as Mesh;
       this.cornellRoot.add(mesh);
       this.meshes.push(mesh as SceneObj);
       this.hooks.installDummyLightmaps([mesh as SceneObj]);
     } else {
-      // Light path — parent directly to scene; no dummy lightmap install.
-      this.scene.add(node as Light);
+      const light = node as Light;
+      this.scene.add(light);
+      if (light instanceof SpotLight) this.scene.add(light.target);
+
+      const marker = new Mesh(
+        new SphereGeometry(0.18, 12, 8),
+        new MeshBasicMaterial({ color: 0xffee44, depthTest: false, transparent: true, opacity: 0.9 }),
+      );
+      marker.userData.lightmapIgnore = true;
+      marker.userData.isLightMarker = true;
+      light.add(marker);
+      this.lights.push(light);
+      this.lightMarkerMap.set(marker.uuid, light.uuid);
     }
 
     this.hooks.onSceneChanged(this.meshes);
@@ -492,10 +559,6 @@ export class SceneController {
     return node.uuid;
   }
 
-  /**
-   * Remove a node (mesh or scene-added light) by uuid. No-ops for the built-in
-   * light dummy (id === LIGHT_DUMMY_ID). Fires both hooks on success.
-   */
   removeNode(id: string): void {
     if (!id || id === LIGHT_DUMMY_ID) return;
 
@@ -513,24 +576,19 @@ export class SceneController {
       return;
     }
 
-    // Light path — walk scene.children for an Object3D matching uuid.
-    const target = this.scene.children.find((o) => o.uuid === id);
-    if (target && target !== this.lightDummy) {
-      this.scene.remove(target);
+    const lightIdx = this.lights.findIndex((l) => l.uuid === id);
+    if (lightIdx !== -1) {
+      const light = this.lights[lightIdx]!;
+      for (const child of light.children) {
+        if (child.userData.isLightMarker) this.lightMarkerMap.delete(child.uuid);
+      }
+      this.scene.remove(light);
+      this.lights.splice(lightIdx, 1);
       this.hooks.onSceneChanged(this.meshes);
       this.hooks.onStaleChange?.();
     }
   }
 
-  /**
-   * Load a registered scene preset by id. Tears down bake-owned GPU resources,
-   * swaps the active root, builds the new scene via `preset.build(scene)`, then
-   * walks newly-added meshes (skipping `userData.lightmapIgnore` and gizmo/light
-   * marker children) into `this.meshes` and re-pins dummy lightmaps.
-   *
-   * Appended for T-D10/T-D11 (preset registry). Existing rebuildScene path is
-   * unchanged.
-   */
   async loadPresetById(presetId: string): Promise<void> {
     const preset = sceneRegistry.get(presetId);
     if (!preset) {
@@ -539,8 +597,6 @@ export class SceneController {
     }
     this.hooks.disposeBake();
     if (this.cornellRoot) this.scene.remove(this.cornellRoot);
-    // Presets add their own root named 'sceneRoot' to `scene`. Clean up any
-    // stragglers from a previous loadPresetById before snapshotting preExisting.
     for (const child of [...this.scene.children]) {
       if (child.name === 'sceneRoot') this.scene.remove(child);
     }
@@ -548,8 +604,8 @@ export class SceneController {
     this.cornellRoot.name = `preset:${presetId}`;
     this.scene.add(this.cornellRoot);
     this.meshes = [];
+    this._clearUserLights();
 
-    // Snapshot pre-build meshes so the post-build traversal only picks up new ones.
     const preExisting = new Set<Mesh>();
     this.scene.traverse((obj) => {
       if ((obj as Mesh).isMesh) preExisting.add(obj as Mesh);
@@ -557,26 +613,19 @@ export class SceneController {
 
     const result = await preset.build(this.scene);
 
-    // Walk newly-added meshes into this.meshes. Skip lightmap-ignored meshes
-    // (mirror/glass/emissive markers) and children of the lightDummy (the
-    // visual-only emissive marker disc).
     this.scene.traverse((obj) => {
       const m = obj as Mesh;
       if (!m.isMesh) return;
       if (preExisting.has(m)) return;
       if (m.userData.lightmapIgnore === true) return;
-      // Walk up to detect descendants of lightDummy (visual light marker).
       let p: Object3D | null = m.parent;
       while (p) {
         if (p === this.lightDummy) return;
         p = p.parent;
       }
-      if (!this.meshes.includes(m as SceneObj)) {
-        this.meshes.push(m as SceneObj);
-      }
+      if (!this.meshes.includes(m as SceneObj)) this.meshes.push(m as SceneObj);
     });
 
-    // Apply hints.
     if (result.background !== undefined) this.scene.background = new Color(result.background);
     if (result.camera) {
       this.camera.position.set(...result.camera.position);
@@ -587,5 +636,13 @@ export class SceneController {
 
     this.hooks.installDummyLightmaps(this.meshes);
     this.hooks.onSceneChanged(this.meshes);
+  }
+
+  private _clearUserLights(): void {
+    for (const light of this.lights) this.scene.remove(light);
+    this.lights = [];
+    const entry = this.lightMarkerMap.get(this.lightMarker.uuid);
+    this.lightMarkerMap.clear();
+    if (entry) this.lightMarkerMap.set(this.lightMarker.uuid, entry);
   }
 }

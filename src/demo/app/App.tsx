@@ -6,6 +6,7 @@ import { StaleBanner } from './shell/StaleBanner';
 import { StatusBar } from './shell/StatusBar';
 import { Toast } from './shell/Toast';
 import { Topbar } from './shell/Topbar';
+import { ViewportToggle } from './shell/ViewportToggle';
 import { layout } from '../state/signals';
 
 const STORAGE_KEY = 'lightmap-studio.layout.v1';
@@ -37,13 +38,7 @@ function saveLayout(): void {
     }, 500);
 }
 
-/**
- * Root shell. CSS grid: 36px topbar / 1fr middle / 40px status. Middle row
- * is a 3-column flex (Outliner | Viewport | Inspector). The center "Viewport"
- * region is intentionally empty + pointer-events:none so OrbitControls and
- * TransformControls reach the canvas underneath. Topbar/Outliner/Inspector/
- * StatusBar all set pointer-events:auto on themselves.
- */
+/** Root shell. CSS grid: 36px topbar / 1fr middle / 40px status. */
 export function App() {
     useEffect(() => {
         loadLayout();
@@ -57,7 +52,9 @@ export function App() {
                 <Topbar />
                 <div class="flex-1 flex min-h-0 relative">
                     <Outliner />
-                    <div class="flex-1 pointer-events-none" />
+                    <div class="flex-1 pointer-events-none relative">
+                        <ViewportToggle />
+                    </div>
                     <Inspector />
                     <StaleBanner />
                 </div>

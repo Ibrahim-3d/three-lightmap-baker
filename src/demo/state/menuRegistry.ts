@@ -5,6 +5,8 @@ import { signal } from '@preact/signals';
  * `menuRegistry.register('File', { id, label, action, when, disabled })`.
  *
  * Reactive: when items mutate the bumped tick reactivates dropdowns.
+ * Dynamic disabled/label: use `disabledFn`/`labelFn` — called inside Preact
+ * render so signal reads are tracked safely without external effects.
  */
 
 export type MenuId = 'File' | 'Edit' | 'View' | 'Render' | 'Help';
@@ -15,8 +17,12 @@ export type MenuItem = {
     action: () => void;
     /** Display predicate. Re-evaluated on every render tick. */
     when?: () => boolean;
-    /** Greyed out (still visible). */
+    /** Greyed out (still visible). Static version. */
     disabled?: boolean;
+    /** Dynamic disabled predicate — called in Preact render, safe to read signals. */
+    disabledFn?: () => boolean;
+    /** Dynamic label — called in Preact render, safe to read signals. */
+    labelFn?: () => string;
     /** Optional separator inserted ABOVE this item. */
     separatorBefore?: boolean;
     /** Hotkey label (display only). */

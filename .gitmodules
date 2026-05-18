@@ -1,0 +1,6 @@
+[submodule "SUB-REPOS-FOR-REFERNCE/THREE.js-PathTracing-Renderer"]
+	path = SUB-REPOS-FOR-REFERNCE/THREE.js-PathTracing-Renderer
+	url = https://github.com/erichlof/THREE.js-PathTracing-Renderer.git
+[submodule "SUB-REPOS-FOR-REFERNCE/three-gpu-pathtracer"]
+	path = SUB-REPOS-FOR-REFERNCE/three-gpu-pathtracer
+	url = https://github.com/gkjohnson/three-gpu-pathtracer.git

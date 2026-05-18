@@ -3,8 +3,10 @@ import { defineConfig, devices } from '@playwright/test';
 /**
  * Playwright config for the demo e2e suite.
  *
- * - Headless Chromium with hardware GL where available (`--enable-gpu`,
- *   `--use-angle=gl`). Tests run under SwiftShader as fallback (slow but works).
+ * - Headless Chromium (new headless mode) with hardware GL and high-performance GPU forced.
+ * - `--headless=new` (Chrome 112+) shares GPU pipeline with headed mode — real WebGL.
+ * - `--force_high_performance_gpu` maps to chrome://flags/#force-high-performance-gpu.
+ * - `launchOptions` lives in top-level `use` so ALL projects inherit it by default.
  * - Boots the Vite dev server (`npm run start`) and waits for it before launching.
  * - Base URL appends `?test=1` per spec so `window.__baker` is exposed.
  * - Per-test timeout long enough for a Draft bake (~10s on SwiftShader).
@@ -21,21 +23,25 @@ export default defineConfig({
         trace: 'retain-on-failure',
         screenshot: 'only-on-failure',
         video: 'retain-on-failure',
+        launchOptions: {
+            args: [
+                '--headless=new',               // new headless — real GPU pipeline (Chrome 112+)
+                '--enable-gpu',
+                '--use-gl=angle',
+                '--use-angle=default',          // best ANGLE backend for current platform
+                '--enable-gpu-rasterization',
+                '--ignore-gpu-blocklist',       // bypass bad-driver blocklist
+                '--force_high_performance_gpu', // chrome://flags/#force-high-performance-gpu
+                '--disable-software-rasterizer',
+                '--enable-webgl',
+                '--enable-webgl2',
+            ],
+        },
     },
     projects: [
         {
             name: 'chromium',
-            use: {
-                ...devices['Desktop Chrome'],
-                launchOptions: {
-                    args: [
-                        '--enable-gpu',
-                        '--use-angle=gl',
-                        '--enable-webgl',
-                        '--ignore-gpu-blocklist',
-                    ],
-                },
-            },
+            use: { ...devices['Desktop Chrome'] },
         },
     ],
     webServer: {

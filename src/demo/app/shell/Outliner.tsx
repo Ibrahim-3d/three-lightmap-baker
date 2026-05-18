@@ -1,13 +1,12 @@
 import { AssetLibrary } from './AssetLibrary';
-import { Eye, EyeOff, Layers, Lightbulb, Plus, Square } from './icons';
+import { Eye, EyeOff, Layers, Lightbulb, Plus, Square, Trash2 } from './icons';
 import { Splitter } from './Splitter';
 import { getOrchestrator } from '../../state/orchestrator';
+import { history } from '../../state/history';
 import { layout, sceneTree, selectedId, type SceneNode } from '../../state/signals';
 
-/**
- * Left-side panel: scene tree (this task) + asset library (T-D7).
- * Tree is grouped by kind (Lights / Meshes); each row is select + visibility toggle.
- */
+const LIGHT_DUMMY_ID = 'light:dummy';
+
 export function Outliner() {
     const tree = sceneTree.value;
     const lights = tree.filter((n) => n.kind === 'light');
@@ -26,7 +25,7 @@ export function Outliner() {
                 <button
                     type="button"
                     class="p-1 text-text-1 hover:bg-bg-3 hover:text-text-0 rounded disabled:opacity-50"
-                    title="Add (T-D7)"
+                    title="Add object — drag from Assets below"
                     disabled
                 >
                     <Plus size={12} />
@@ -77,36 +76,86 @@ function TreeGroup(props: { label: string; nodes: SceneNode[] }) {
 
 function TreeRow(props: { node: SceneNode }) {
     const selected = selectedId.value === props.node.id;
+    const isDummy = props.node.id === LIGHT_DUMMY_ID;
+
+    function toggleVisible(e: MouseEvent): void {
+        e.stopPropagation();
+        const app = getOrchestrator();
+        if (!app) return;
+        const prev = props.node.visible;
+        const next = !prev;
+        const id = props.node.id;
+        const name = props.node.name;
+        app.setNodeVisible(id, next);
+        sceneTree.value = sceneTree.value.map((n) => n.id === id ? { ...n, visible: next } : n);
+        history.push({
+            label: `${next ? 'Show' : 'Hide'} "${name}"`,
+            do: () => {
+                app.setNodeVisible(id, next);
+                sceneTree.value = sceneTree.value.map((n) => n.id === id ? { ...n, visible: next } : n);
+            },
+            undo: () => {
+                app.setNodeVisible(id, prev);
+                sceneTree.value = sceneTree.value.map((n) => n.id === id ? { ...n, visible: prev } : n);
+            },
+        });
+    }
+
+    function deleteNode(e: MouseEvent): void {
+        e.stopPropagation();
+        if (isDummy) return;
+        const app = getOrchestrator();
+        if (!app) return;
+        const id = props.node.id;
+        const name = props.node.name;
+        const extracted = app.extractNode(id);
+        if (!extracted) return;
+        const { node, kind } = extracted;
+        if (selectedId.value === id) selectedId.value = null;
+        history.push({
+            label: `Delete "${name}"`,
+            undo: () => {
+                app.reinsertNode(node, kind);
+                selectedId.value = node.uuid;
+            },
+            do: () => {
+                app.extractNode(node.uuid);
+                if (selectedId.value === node.uuid) selectedId.value = null;
+            },
+        });
+    }
+
     return (
         <li
             class={`group flex items-center gap-1.5 px-2 h-[22px] cursor-pointer select-none ${
                 selected ? 'bg-accent/20 text-text-0' : 'text-text-1 hover:bg-bg-3 hover:text-text-0'
             }`}
-            onClick={() => {
-                selectedId.value = props.node.id;
-            }}
+            onClick={() => { selectedId.value = props.node.id; }}
         >
             <span class={`flex-shrink-0 ${selected ? 'text-accent' : 'text-text-2'}`}>
                 {props.node.kind === 'light' ? <Lightbulb size={12} /> : <Square size={12} />}
             </span>
             <span class="flex-1 truncate text-[12px]">{props.node.name}</span>
+
             <button
                 type="button"
                 class="p-0.5 opacity-0 group-hover:opacity-100 text-text-2 hover:text-text-0"
-                onClick={(e) => {
-                    e.stopPropagation();
-                    const next = !props.node.visible;
-                    getOrchestrator()?.setNodeVisible(props.node.id, next);
-                    // Tree signal needs refresh; orchestrator will not refire onSceneChanged,
-                    // so update the signal slice in place.
-                    sceneTree.value = sceneTree.value.map((n) =>
-                        n.id === props.node.id ? { ...n, visible: next } : n,
-                    );
-                }}
+                onClick={toggleVisible}
                 title={props.node.visible ? 'Hide' : 'Show'}
             >
                 {props.node.visible ? <Eye size={12} /> : <EyeOff size={12} />}
             </button>
+
+            {!isDummy && (
+                <button
+                    type="button"
+                    class="p-0.5 opacity-0 group-hover:opacity-100 text-text-2 hover:text-red-400"
+                    onClick={deleteNode}
+                    title="Delete (Del)"
+                >
+                    <Trash2 size={12} />
+                </button>
+            )}
         </li>
     );
 }

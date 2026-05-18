@@ -9,23 +9,25 @@ import './app/theme.css';
 import { CornellBoxExample } from './CornellBoxExample';
 import { LIGHT_DUMMY_ID } from './three/SceneController';
 import { setOrchestrator } from './state/orchestrator';
+import { history } from './state/history';
 import {
+    activeSceneId,
     bakeProgress,
     bakeStatus,
     gizmoMode,
+    inspectorTab,
     isStale,
+    objectTick,
     sceneTree,
     selectedId,
 } from './state/signals';
 
-/**
- * Demo entry point during the T-D1 → T-D12 migration.
- *
- * Default (`?legacy` absent or `?legacy=0`): bring up `CornellBoxExample`
- *   (existing tweakpane UI) AND mount the Preact `<App/>` shell on top.
- * `?legacy=1`: skip Preact entirely — escape hatch.
- * `?test=1`: expose `window.__baker` for Playwright + use preserveDrawingBuffer.
- */
+// ── URL param helpers ─────────────────────────────────────────────────────────
+
+function getSceneParam(): string | null {
+    return new URLSearchParams(window.location.search).get('scene');
+}
+
 function isLegacy(): boolean {
     return new URLSearchParams(window.location.search).get('legacy') === '1';
 }
@@ -34,10 +36,8 @@ function isTestMode(): boolean {
     return new URLSearchParams(window.location.search).get('test') === '1';
 }
 
-/**
- * 4Hz poll bridging vanilla bake state into reactive signals. Replaced by
- * signal-emitting controllers in a later phase if polling shows up in perf.
- */
+// ── Status / signals helpers ──────────────────────────────────────────────────
+
 function startStatusSync(app: CornellBoxExample): void {
     setInterval(() => {
         const status = app.getBakeStatus();
@@ -58,42 +58,69 @@ function startStatusSync(app: CornellBoxExample): void {
     }, 250);
 }
 
-/** Wire signals → orchestrator side-effects (gizmo attach, gizmo mode). */
 function wireSelectionEffects(app: CornellBoxExample): void {
+    effect(() => { app.setSelection(selectedId.value); });
+    effect(() => { app.setGizmoMode(gizmoMode.value); });
+    // Auto-switch inspector tab: light-dummy → Light tab, anything else → Object.
     effect(() => {
-        app.setSelection(selectedId.value);
-    });
-    effect(() => {
-        app.setGizmoMode(gizmoMode.value);
+        const id = selectedId.value;
+        if (!id) return;
+        inspectorTab.value = id === LIGHT_DUMMY_ID ? 'light' : 'object';
     });
 }
 
-/** W/E/R = translate/rotate/scale. Escape = deselect. Delete = remove selected
- *  mesh (skipped for the built-in light dummy). B = re-bake when stale. */
 function wireHotkeys(app: CornellBoxExample): void {
     window.addEventListener('keydown', (e) => {
         if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+        // Undo / Redo
+        if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+            e.preventDefault();
+            history.undo();
+            return;
+        }
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+            e.preventDefault();
+            history.redo();
+            return;
+        }
+
+        // Gizmo modes
         if (e.key === 'w' || e.key === 'W') gizmoMode.value = 'translate';
         else if (e.key === 'e' || e.key === 'E') gizmoMode.value = 'rotate';
         else if (e.key === 'r' || e.key === 'R') gizmoMode.value = 'scale';
+        // Frame selected (Blender convention)
+        else if (e.key === 'f' || e.key === 'F') {
+            const id = selectedId.value;
+            if (id) app.frameSelected(id);
+        }
         else if (e.key === 'Escape') selectedId.value = null;
         else if (e.key === 'Delete' || e.key === 'Backspace') {
             const id = selectedId.value;
             if (!id || id === LIGHT_DUMMY_ID) return;
-            app.removeNode(id);
+            const extracted = app.extractNode(id);
+            if (!extracted) return;
+            const { node, kind } = extracted;
+            const nodeName = node.name || id;
             selectedId.value = null;
-        } else if (e.key === 'b' || e.key === 'B') {
-            if (isStale.value && bakeStatus.value !== 'baking') {
-                void app.requestBake();
-            }
+            history.push({
+                label: `Delete "${nodeName}"`,
+                undo: () => {
+                    app.reinsertNode(node, kind);
+                    selectedId.value = node.uuid;
+                },
+                do: () => {
+                    app.extractNode(node.uuid);
+                    if (selectedId.value === node.uuid) selectedId.value = null;
+                },
+            });
+        }
+        else if (e.key === 'b' || e.key === 'B') {
+            if (isStale.value && bakeStatus.value !== 'baking') void app.requestBake();
         }
     });
 }
 
-/** Wire drag-drop on the renderer canvas. Tiles in `<AssetLibrary/>` set a
- *  JSON-encoded `AssetSpec` on the `application/x-baker-asset` mime; we parse
- *  it here, raycast the drop point to the ground plane, and route to
- *  `SceneController.addAsset`. */
 function wireDragDrop(app: CornellBoxExample): void {
     const canvas = app.sceneController.renderer.domElement;
     canvas.addEventListener('dragover', (e: DragEvent) => {
@@ -116,36 +143,90 @@ function wireDragDrop(app: CornellBoxExample): void {
         }
         const worldPos = app.pickGroundPoint(e.clientX, e.clientY);
         const uuid = app.addAsset(spec, worldPos);
-        if (uuid) selectedId.value = uuid;
+        if (!uuid) return;
+        selectedId.value = uuid;
+        // Undo add: extract (soft remove). Redo add: re-create at same position.
+        let currentUUID = uuid;
+        history.push({
+            label: `Add ${spec.id}`,
+            undo: () => {
+                app.extractNode(currentUUID);
+                if (selectedId.value === currentUUID) selectedId.value = null;
+            },
+            do: () => {
+                currentUUID = app.addAsset(spec, worldPos);
+                if (currentUUID) selectedId.value = currentUUID;
+            },
+        });
     });
 }
 
+/** Wire transform-change events from the gizmo into the undo history. */
+function wireTransformHistory(app: CornellBoxExample): void {
+    app.externalHooks.onTransformChange = (obj, before, after) => {
+        const moved =
+            !obj.position.equals(before.pos) ||
+            obj.rotation.x !== before.rot.x ||
+            obj.rotation.y !== before.rot.y ||
+            obj.rotation.z !== before.rot.z ||
+            !obj.scale.equals(before.scale);
+        if (!moved) return;
+
+        history.push({
+            label: `Move "${obj.name || 'object'}"`,
+            do: () => {
+                obj.position.copy(after.pos);
+                obj.rotation.copy(after.rot);
+                obj.scale.copy(after.scale);
+                objectTick.value++;
+            },
+            undo: () => {
+                obj.position.copy(before.pos);
+                obj.rotation.copy(before.rot);
+                obj.scale.copy(before.scale);
+                objectTick.value++;
+            },
+        });
+    };
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+
 void (async () => {
+    const sceneParam = getSceneParam();
+
+    // ── Gallery mode — no ?scene= param ───────────────────────────────────────
+    if (!sceneParam && !isTestMode()) {
+        const { GalleryPage } = await import('./gallery/GalleryPage');
+        const mount = document.createElement('div');
+        mount.id = 'app';
+        document.body.style.cssText = 'margin:0;padding:0;background:#0a0a0f';
+        document.body.appendChild(mount);
+        render(<GalleryPage />, mount);
+        return;
+    }
+
+    // ── Editor mode — ?scene= param present (or test mode) ────────────────────
     await loadXAtlasThree();
 
     const app = new CornellBoxExample();
     setOrchestrator(app);
 
-    // Hooks that flow vanilla controller events back into reactive signals.
     app.externalHooks = {
-        onSceneChanged: () => {
-            sceneTree.value = app.getSceneTree();
-        },
-        onStaleChange: () => {
-            isStale.value = true;
-        },
-        onViewportPick: (id) => {
-            selectedId.value = id;
-        },
-        onBakeError: (msg) => {
-            showToast('error', `Bake failed: ${msg}`);
-        },
+        // onSceneChanged fires on every mutation (add/remove/rebuild) — just refresh tree.
+        onSceneChanged: () => { sceneTree.value = app.getSceneTree(); },
+        // onSceneLoad fires only on full scene replacement — clear undo history.
+        onSceneLoad:    () => { history.clear(); },
+        onStaleChange:  () => { isStale.value = true; },
+        onViewportPick: (id) => { selectedId.value = id; },
+        onBakeError:    (msg) => { showToast('error', `Bake failed: ${msg}`); },
     };
-    // Initial tree population (constructor already built the scene). Pre-select
-    // the scene light so the gizmo keeps its T-D3 default attachment.
+
+    // Wire gizmo drag → history AFTER externalHooks object is set.
+    wireTransformHistory(app);
+
     sceneTree.value = app.getSceneTree();
     selectedId.value = LIGHT_DUMMY_ID;
-
     window.addEventListener('resize', () => app.updateSize());
 
     if (!isLegacy()) {
@@ -157,6 +238,17 @@ void (async () => {
         wireSelectionEffects(app);
         wireHotkeys(app);
         wireDragDrop(app);
+    }
+
+    // Auto-load the scene from the URL param — replaces the default Cornell Box.
+    if (sceneParam) {
+        activeSceneId.value = sceneParam;
+        try {
+            await app.loadScenePreset(sceneParam);
+        } catch (err) {
+            console.error('[baker] failed to load scene from URL:', sceneParam, err);
+            showToast('error', `Could not load scene "${sceneParam}"`);
+        }
     }
 
     if (isTestMode()) {

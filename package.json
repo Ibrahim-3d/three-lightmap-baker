@@ -20,6 +20,7 @@
 		"lucide-preact": "^0.460.0",
 		"preact": "^10.24.0",
 		"three": "^0.161.0",
+		"three-gpu-pathtracer": "^0.0.23",
 		"three-mesh-bvh": "^0.7.3",
 		"xatlas-three": "^0.2.0"
 	},
