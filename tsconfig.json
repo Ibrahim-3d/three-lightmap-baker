@@ -8,7 +8,9 @@
 			"shared/*": ["packages/shared/src/*"],
 			"baker-classic": ["packages/baker-classic/src/index.ts"],
 			"baker-classic/ui": ["packages/baker-classic/src/ui/index.ts"],
-			"demo-shell": ["packages/demo-shell/src/index.ts"]
+			"demo-shell": ["packages/demo-shell/src/index.ts"],
+			"pt-renderer": ["packages/pt-renderer/src/index.ts"],
+			"pt-renderer/*": ["packages/pt-renderer/src/*"]
 		},
 		"lib": [
 			"es2015",

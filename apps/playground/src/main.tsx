@@ -4,12 +4,14 @@ import { effect } from '@preact/signals';
 import { render } from 'preact';
 import { loadXAtlasThree } from 'baker-classic';
 import { registerBakerClassicUI } from 'baker-classic/ui';
+import { registerPTRendererUI } from 'pt-renderer/ui';
 import { App, showToast } from 'demo-shell';
 import {
   bakeProgress,
   bakeStatus,
   gizmoMode,
   isStale,
+  renderMode,
   sceneTree,
   selectedId,
   setOrchestrator,
@@ -19,8 +21,9 @@ import { CornellBoxExample } from './CornellBoxExample';
 import { LIGHT_DUMMY_ID } from './three/SceneController';
 
 /**
- * Playground entry. Mounts the demo shell, registers baker-classic's UI
- * panels + menu items, then wires Preact signals to the vanilla orchestrator.
+ * Playground entry. Mounts the demo shell, registers baker-classic UI panels
+ * + menu items, registers pt-renderer UI, then wires Preact signals to the
+ * vanilla orchestrator.
  *
  * `?legacy=1` skips Preact entirely — escape hatch.
  * `?test=1` exposes `window.__baker` for Playwright.
@@ -55,18 +58,13 @@ function startStatusSync(app: CornellBoxExample): void {
   }, 250);
 }
 
-/** Wire signals → orchestrator side-effects (gizmo attach, gizmo mode). */
 function wireSelectionEffects(app: CornellBoxExample): void {
-  effect(() => {
-    app.setSelection(selectedId.value);
-  });
-  effect(() => {
-    app.setGizmoMode(gizmoMode.value);
-  });
+  effect(() => { app.setSelection(selectedId.value); });
+  effect(() => { app.setGizmoMode(gizmoMode.value); });
 }
 
-/** W/E/R = translate/rotate/scale. Escape = deselect. Delete = remove selected
- *  mesh (skipped for the built-in light dummy). B = re-bake when stale. */
+/** W/E/R = translate/rotate/scale. Escape = deselect. Delete = remove node.
+ *  B = re-bake when stale. P = toggle path-traced mode. */
 function wireHotkeys(app: CornellBoxExample): void {
   window.addEventListener('keydown', (e) => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
@@ -81,17 +79,15 @@ function wireHotkeys(app: CornellBoxExample): void {
       app.removeNode(id);
       selectedId.value = null;
     } else if (k === 'b') {
-      if (isStale.value && bakeStatus.value !== 'baking') {
-        void app.requestBake();
-      }
+      if (isStale.value && bakeStatus.value !== 'baking') void app.requestBake();
+    } else if (k === 'p') {
+      const next = renderMode.value === 'pathtraced' ? 'combined' : 'pathtraced';
+      renderMode.value = next;
+      app.setRenderMode(next);
     }
   });
 }
 
-/** Wire drag-drop on the renderer canvas. Tiles in `<AssetLibrary/>` set a
- *  JSON-encoded `AssetSpec` on the `application/x-baker-asset` mime; we parse
- *  it here, raycast the drop point to the ground plane, and route to
- *  `SceneController.addAsset`. */
 function wireDragDrop(app: CornellBoxExample): void {
   const canvas = app.sceneController.renderer.domElement;
   canvas.addEventListener('dragover', (e: DragEvent) => {
@@ -124,27 +120,17 @@ void (async () => {
   const app = new CornellBoxExample();
   setOrchestrator(app);
   registerBakerClassicUI();
+  registerPTRendererUI();
 
-  // Hooks that flow vanilla controller events back into reactive signals.
   app.externalHooks = {
-    onSceneChanged: () => {
-      sceneTree.value = app.getSceneTree();
-    },
-    onStaleChange: () => {
-      isStale.value = true;
-    },
-    onViewportPick: (id) => {
-      selectedId.value = id;
-    },
-    onBakeError: (msg) => {
-      showToast('error', `Bake failed: ${msg}`);
-    },
+    onSceneChanged: () => { sceneTree.value = app.getSceneTree(); },
+    onStaleChange:  () => { isStale.value = true; },
+    onViewportPick: (id) => { selectedId.value = id; },
+    onBakeError: (msg) => { showToast('error', `Bake failed: ${msg}`); },
   };
-  // Initial tree population (constructor already built the scene). Pre-select
-  // the scene light so the gizmo keeps its T-D3 default attachment.
+
   sceneTree.value = app.getSceneTree();
   selectedId.value = LIGHT_DUMMY_ID;
-
   window.addEventListener('resize', () => app.updateSize());
 
   if (!isLegacy()) {

@@ -7,8 +7,10 @@ import {
   SceneController,
   type SceneControllerHooks,
   type ScenePreset,
+  type TransformSnap,
 } from './three/SceneController';
 import { RenderModeRunner } from './three/modes';
+import { PTController } from './three/PTController';
 import type { PerMeshMap, RenderModeOptions, SceneObj } from './three/types';
 
 /**
@@ -37,6 +39,7 @@ export class CornellBoxExample implements BakerOrchestrator {
   sceneController: SceneController;
   bakeController: BakeController;
   renderModeRunner: RenderModeRunner;
+  ptController: PTController | null = null;
 
   options = {
     preset: 'advanced' as 'classic' | 'advanced',
@@ -104,6 +107,10 @@ export class CornellBoxExample implements BakerOrchestrator {
     onSceneChanged?: () => void;
     onViewportPick?: (id: string | null) => void;
     onBakeError?: (msg: string) => void;
+    /** Fired at gizmo drag-end for undo/redo push. */
+    onTransformChange?: (obj: Object3D, before: TransformSnap, after: TransformSnap) => void;
+    /** Fired before any full scene replacement (preset load / GLB import). */
+    onSceneLoad?: () => void;
   } = {};
 
   constructor() {
@@ -115,6 +122,8 @@ export class CornellBoxExample implements BakerOrchestrator {
       },
       onStaleChange: () => this.externalHooks.onStaleChange?.(),
       onViewportPick: (id) => this.externalHooks.onViewportPick?.(id),
+      onTransformChange: (obj, before, after) =>
+        this.externalHooks.onTransformChange?.(obj, before, after),
     };
     this.sceneController = new SceneController(hooks);
     this.bakeController = new BakeController(
@@ -139,6 +148,24 @@ export class CornellBoxExample implements BakerOrchestrator {
 
     this.initGLBInput();
     this.rebuildScene();
+
+    // Init PT viewport (async, resolves before user can switch mode).
+    void this._initPT();
+  }
+
+  private async _initPT(): Promise<void> {
+    const sc = this.sceneController;
+    // matrixWorld is lazy — must force update before PTController reads it.
+    sc.scene.updateMatrixWorld(true);
+    this.ptController = new PTController({
+      renderer: sc.renderer,
+      camera:   sc.camera,
+      controls: sc.controls,
+      getScene: () => sc.scene,
+    });
+    await this.ptController.init();
+    // Prime BVH with initial scene so first activate() is immediate.
+    await this.ptController.setScene(sc.scene, sc.camera);
   }
 
   private onSceneChanged(): void {
@@ -177,6 +204,7 @@ export class CornellBoxExample implements BakerOrchestrator {
   }
 
   private async importGLB(file: File): Promise<void> {
+    this.externalHooks.onSceneLoad?.();
     await this.sceneController.importGLB(file);
     this.options.perMesh = {};
     if (this.options.autoBake) await this.bake();
@@ -410,10 +438,13 @@ export class CornellBoxExample implements BakerOrchestrator {
         );
         this.bakeController.diag.snap('after FIRST post-bake scene render');
       } else {
-        this.sceneController.renderer.render(
-          this.sceneController.scene,
-          this.sceneController.camera,
-        );
+        // PT mode: PTController owns the render loop — skip normal Three.js render.
+        if (!this.ptController?.isActive) {
+          this.sceneController.renderer.render(
+            this.sceneController.scene,
+            this.sceneController.camera,
+          );
+        }
       }
     };
     tick();
@@ -454,6 +485,19 @@ export class CornellBoxExample implements BakerOrchestrator {
   setLayer(id: string): void {
     this.options.layer = id;
     this.renderModeRunner.apply();
+  }
+
+  /** Switch between rasterisation ('combined' etc.) and PT ('pathtraced') mode. */
+  setRenderMode(mode: string): void {
+    if (mode === 'pathtraced') {
+      const sc = this.sceneController;
+      // Rebuild BVH from current live scene then activate.
+      void this.ptController?.setScene(sc.scene, sc.camera).then(() => {
+        this.ptController?.activate();
+      });
+    } else {
+      this.ptController?.deactivate();
+    }
   }
 
   setAutoBake(on: boolean): void {
@@ -544,8 +588,19 @@ export class CornellBoxExample implements BakerOrchestrator {
   }
 
   async loadScenePreset(id: string): Promise<void> {
+    this.externalHooks.onSceneLoad?.();
+    // Deactivate PT during load to avoid rendering a half-built scene.
+    const wasPT = this.ptController?.isActive ?? false;
+    this.ptController?.deactivate();
+
     await this.sceneController.loadPresetById(id);
     this.options.perMesh = {};
+
+    if (this.ptController) {
+      await this.ptController.setScene(this.sceneController.scene, this.sceneController.camera);
+      if (wasPT) this.ptController.activate();
+    }
+
     this.startLoop();
   }
 

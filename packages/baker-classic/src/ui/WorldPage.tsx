@@ -6,16 +6,20 @@ import {
   markStale,
   objectTick,
   optionsTick,
+  ptSettings,
   RangeField,
   Row,
   Section,
+  renderMode,
 } from 'shared';
 import { getBakerOrchestrator } from './orchestrator';
 
 /**
- * World tab. Scene-level settings: viewport background, sky color/intensity (a
- * miss-hit fill added during GI), Env HDRI slot (T-future), light-probe slot
- * (Task 11).
+ * World tab. Scene-level settings: viewport background, sky color/intensity
+ * (shared baker GI fill + PT sky), PT-specific DOF, and future probe slot.
+ *
+ * Sky Intensity and Sky Color drive BOTH the baker's GI miss-hit fill AND
+ * the path tracer's environment sky — one slider controls both.
  */
 export function WorldPage() {
   void objectTick.value;
@@ -24,6 +28,8 @@ export function WorldPage() {
   if (!app) return null;
   const scene = app.getScene();
   const o = app.options;
+  const pt = ptSettings.value;
+  const isPT = renderMode.value === 'pathtraced';
 
   const bgHex =
     scene.background instanceof Color
@@ -45,8 +51,8 @@ export function WorldPage() {
         </Row>
       </Section>
 
-      <Section title="Sky (GI miss-hit fill)">
-        <Row label="Color">
+      <Section title="Sky / Environment  (baker + PT)">
+        <Row label="Color" hint="Ambient sky tint — GI miss-hit fill in bake and sky color in path tracer.">
           <ColorField
             value={o.skyColor}
             onChange={(hex) => {
@@ -58,7 +64,7 @@ export function WorldPage() {
         </Row>
         <Row
           label="Intensity"
-          hint="Fill added when GI rays miss the scene. Bumping it lights up otherwise-dark holes; 0 keeps the room closed."
+          hint="Fill added when GI rays miss the scene. Also controls PT sky brightness."
         >
           <RangeField
             value={o.skyIntensity}
@@ -67,12 +73,46 @@ export function WorldPage() {
             step={0.05}
             onChange={(v) => {
               o.skyIntensity = v;
+              // Sync to PT signal so PTController picks it up next frame.
+              ptSettings.value = { ...ptSettings.value, skyIntensity: v };
               bumpOptions();
               markStale();
             }}
           />
         </Row>
       </Section>
+
+      {isPT && (
+        <Section title="Path Tracer — Depth of Field">
+          <Row label="Aperture" hint="0 = pinhole (sharp everywhere); increase for lens blur.">
+            <RangeField
+              value={pt.aperture}
+              min={0}
+              max={0.05}
+              step={0.001}
+              onChange={(v) => { ptSettings.value = { ...ptSettings.value, aperture: v }; }}
+            />
+          </Row>
+          <Row label="Focus dist" hint="Distance to the focal plane in world units.">
+            <RangeField
+              value={pt.focusDist}
+              min={1}
+              max={500}
+              step={1}
+              onChange={(v) => { ptSettings.value = { ...ptSettings.value, focusDist: v }; }}
+            />
+          </Row>
+          <Row label="Light scale" hint="Global multiplier for scene lights in PT mode (default 0.15).">
+            <RangeField
+              value={pt.lightScale}
+              min={0}
+              max={2}
+              step={0.01}
+              onChange={(v) => { ptSettings.value = { ...ptSettings.value, lightScale: v }; }}
+            />
+          </Row>
+        </Section>
+      )}
 
       <Section title="Environment HDRI">
         <Row label="HDRI">

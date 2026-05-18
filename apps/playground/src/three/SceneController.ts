@@ -3,6 +3,7 @@ import {
   BoxGeometry,
   Color,
   DoubleSide,
+  Euler,
   type Light,
   Mesh,
   MeshBasicMaterial,
@@ -36,6 +37,9 @@ const HALF = ROOM / 2;
 
 export type ScenePreset = 'classic' | 'advanced';
 
+/** Snapshot of an Object3D's local transform for undo/redo. */
+export type TransformSnap = { pos: Vector3; rot: Euler; scale: Vector3 };
+
 /** Callbacks fired by SceneController so the orchestrator and BakeController stay in sync. */
 export type SceneControllerHooks = {
   /** Fired after every scene rebuild / GLB import. Orchestrator rebuilds per-mesh UI here. */
@@ -51,6 +55,8 @@ export type SceneControllerHooks = {
   onStaleChange?: () => void;
   /** Fired when the user clicks on an object in the viewport. Null = empty space. */
   onViewportPick?: (id: string | null) => void;
+  /** Fired at gizmo drag-end with before/after snapshots. Push to undo history. */
+  onTransformChange?: (obj: Object3D, before: TransformSnap, after: TransformSnap) => void;
 };
 
 /** Built-in id for the moveable scene light. Lights become uuid-keyed in T-D7. */
@@ -79,6 +85,8 @@ export class SceneController {
   meshes: SceneObj[] = [];
 
   diag: Diagnostics;
+
+  private _preDragSnap: TransformSnap | null = null;
 
   constructor(private hooks: SceneControllerHooks) {
     this.scene = new Scene();
@@ -149,13 +157,29 @@ export class SceneController {
     this.lightTransformController = new TransformControls(this.camera, this.renderer.domElement);
     this.lightTransformController.addEventListener('dragging-changed', (event) => {
       this.controls.enabled = !event.value;
-      // Mark stale when a drag of a non-light object ends (lightDummy moves are
-      // visual-only; only their position matters for bake, which is queried on
-      // bake start, not from gizmo events).
-      if (!event.value) {
+      if (event.value) {
+        // Capture pre-drag snapshot for undo/redo.
         const target = this.lightTransformController.object;
-        if (target && target !== this.lightDummy) {
-          this.hooks.onStaleChange?.();
+        if (target) {
+          this._preDragSnap = {
+            pos: target.position.clone(),
+            rot: target.rotation.clone(),
+            scale: target.scale.clone(),
+          };
+        }
+      } else {
+        const target = this.lightTransformController.object;
+        if (target && this._preDragSnap) {
+          const before = this._preDragSnap;
+          this._preDragSnap = null;
+          const after: TransformSnap = {
+            pos: target.position.clone(),
+            rot: target.rotation.clone(),
+            scale: target.scale.clone(),
+          };
+          // Only mark stale for non-light-dummy drags (light position is queried at bake time).
+          if (target !== this.lightDummy) this.hooks.onStaleChange?.();
+          this.hooks.onTransformChange?.(target, before, after);
         }
       }
     });

@@ -17,6 +17,9 @@ export default defineConfig({
             'baker-classic': r('packages/baker-classic/src/index.ts'),
             'demo-shell/theme.css': r('packages/demo-shell/src/theme.css'),
             'demo-shell': r('packages/demo-shell/src/index.ts'),
+            'pt-renderer/ui': r('packages/pt-renderer/src/ui/index.ts'),
+            'pt-renderer/shaders': r('packages/pt-renderer/src/shaders'),
+            'pt-renderer': r('packages/pt-renderer/src/index.ts'),
         },
     },
     build: {
