@@ -20,6 +20,8 @@ export default defineConfig({
             'pt-renderer/ui': r('packages/pt-renderer/src/ui/index.ts'),
             'pt-renderer/shaders': r('packages/pt-renderer/src/shaders'),
             'pt-renderer': r('packages/pt-renderer/src/index.ts'),
+            'pt-baker/shaders': r('packages/pt-baker/src/shaders'),
+            'pt-baker': r('packages/pt-baker/src/index.ts'),
         },
     },
     build: {

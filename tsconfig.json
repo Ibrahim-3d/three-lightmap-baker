@@ -10,7 +10,9 @@
 			"baker-classic/ui": ["packages/baker-classic/src/ui/index.ts"],
 			"demo-shell": ["packages/demo-shell/src/index.ts"],
 			"pt-renderer": ["packages/pt-renderer/src/index.ts"],
-			"pt-renderer/*": ["packages/pt-renderer/src/*"]
+			"pt-renderer/*": ["packages/pt-renderer/src/*"],
+			"pt-baker": ["packages/pt-baker/src/index.ts"],
+			"pt-baker/*": ["packages/pt-baker/src/*"]
 		},
 		"lib": [
 			"es2015",
