@@ -1,8 +1,12 @@
-import { Color, type Texture, Vector3 } from 'three';
+import { type Texture, Vector3 } from 'three';
 import { BakeFrameInfo, exportLightmap, ExportFormat } from '../lib';
 import type { AssetSpec } from './assets/primitives';
 import { BakeController } from './three/BakeController';
-import { SceneController, type SceneControllerHooks, type ScenePreset } from './three/SceneController';
+import {
+  SceneController,
+  type SceneControllerHooks,
+  type ScenePreset,
+} from './three/SceneController';
 import { RenderModeRunner } from './three/modes';
 import type { PerMeshMap, RenderModeOptions, SceneObj } from './three/types';
 
@@ -215,11 +219,9 @@ export class CornellBoxExample {
 
   /** Fired by BakeController per library bake frame. Updates options mirrors. */
   private onBakeFrame(info: BakeFrameInfo): void {
-    const totalSamples = info.targetSamples;
     const minSamples = Math.min(info.bounceSamples, info.aoSamples);
-    const spp = minSamples * this.options.casts;
     this.options.samples = minSamples;
-    this.options.spp = spp;
+    this.options.spp = minSamples * this.options.casts;
   }
 
   private applyQualityPreset(name: QualityPresetName): void {
@@ -400,11 +402,17 @@ export class CornellBoxExample {
         this.bakeController.firstPostBakeRender = false;
         this.bakeController.diag.snap('about to do FIRST post-bake scene render');
         this.bakeController.diag.measure('FIRST post-bake renderer.render', () =>
-          this.sceneController.renderer.render(this.sceneController.scene, this.sceneController.camera),
+          this.sceneController.renderer.render(
+            this.sceneController.scene,
+            this.sceneController.camera,
+          ),
         );
         this.bakeController.diag.snap('after FIRST post-bake scene render');
       } else {
-        this.sceneController.renderer.render(this.sceneController.scene, this.sceneController.camera);
+        this.sceneController.renderer.render(
+          this.sceneController.scene,
+          this.sceneController.camera,
+        );
       }
     };
     tick();

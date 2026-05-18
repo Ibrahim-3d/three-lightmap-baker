@@ -206,7 +206,11 @@ export class BakeController {
         new Color(options.secondaryColor).convertSRGBToLinear(),
         options.secondaryIntensity,
       );
-      const dir = new Vector3(options.secondaryDirX, options.secondaryDirY, options.secondaryDirZ).normalize();
+      const dir = new Vector3(
+        options.secondaryDirX,
+        options.secondaryDirY,
+        options.secondaryDirZ,
+      ).normalize();
       tempSecondaryLight.position.copy(dir).multiplyScalar(-10);
       this.scene.add(tempSecondaryLight);
     }
@@ -267,7 +271,9 @@ export class BakeController {
           if (g) g.composite.refresh();
 
           if (info.bounceSamples % 30 === 0 || info.done) {
-            this.diag.snap(`bake RAF samples=${info.bounceSamples}/${info.targetSamples} done=${info.done}`);
+            this.diag.snap(
+              `bake RAF samples=${info.bounceSamples}/${info.targetSamples} done=${info.done}`,
+            );
           }
 
           this.onProgress?.(info);
@@ -363,7 +369,11 @@ export class BakeController {
    * AO-only re-bake — delegates to LightmapBakeResult.rebakeAO and re-binds
    * each demo group's view-time composite to the freshly-built AO texture.
    */
-  async runAOOnly(opts: { samples: number; distance: number; targetSamples: number }): Promise<void> {
+  async runAOOnly(opts: {
+    samples: number;
+    distance: number;
+    targetSamples: number;
+  }): Promise<void> {
     if (!this.bakeGroups.length || !this.bakeResult) return;
     await this.bakeResult.rebakeAO(opts);
     const fresh = this.bakeResult.groups;

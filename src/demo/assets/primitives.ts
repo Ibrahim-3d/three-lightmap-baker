@@ -62,7 +62,12 @@ export const primitiveCatalog: {
   lights: ReadonlyArray<LightDef>;
 } = {
   primitives: [
-    { id: 'cube', label: 'Cube', icon: 'box', create: () => makeMesh('Cube', new BoxGeometry(1, 1, 1)) },
+    {
+      id: 'cube',
+      label: 'Cube',
+      icon: 'box',
+      create: () => makeMesh('Cube', new BoxGeometry(1, 1, 1)),
+    },
     {
       id: 'sphere',
       label: 'Sphere',

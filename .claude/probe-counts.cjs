@@ -11,7 +11,8 @@ const { chromium } = require(process.cwd() + '/node_modules/@playwright/test');
   const info = await page.evaluate(async () => {
     // dynamic import to inspect singleton
     const mod = await import('/three-lightmap-baker/src/demo/scenes/registry.ts');
-    return { listLen: mod.sceneRegistry.list().length, ids: mod.sceneRegistry.list().map(p => p.id) };
+    const presets = mod.sceneRegistry.list();
+    return { listLen: presets.length, ids: presets.map(p => p.id) };
   });
   console.log('reg', info);
   await browser.close();

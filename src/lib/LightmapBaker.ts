@@ -956,9 +956,7 @@ export class LightmapBaker {
       // binds to. Hardware bilinear (source LinearFilter) does the anti-aliasing.
       const finalInternalTex = refinement?.texture ?? composite.texture;
       const downscale =
-        this.opts.superSample > 1
-          ? createDownscale(this.renderer, finalInternalTex, res)
-          : null;
+        this.opts.superSample > 1 ? createDownscale(this.renderer, finalInternalTex, res) : null;
       const finalTex = downscale?.texture ?? finalInternalTex;
 
       groupResults.push({

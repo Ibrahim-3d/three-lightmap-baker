@@ -16,10 +16,10 @@ export type LogEntry = { ts: number; level: LogLevel; msg: string };
 
 export type SceneNodeKind = 'mesh' | 'light';
 export type SceneNode = {
-    id: string;
-    name: string;
-    kind: SceneNodeKind;
-    visible: boolean;
+  id: string;
+  name: string;
+  kind: SceneNodeKind;
+  visible: boolean;
 };
 
 /** Currently selected scene-tree node id, or null when nothing is selected. */
@@ -48,11 +48,11 @@ export const bakeStatus = signal<BakeStatus>('idle');
 
 /** Live progress while baking. Updated each library `onFrame`. */
 export const bakeProgress = signal<{
-    pct: number;
-    samples: number;
-    atlas: number;
-    total: number;
-    elapsedMs: number;
+  pct: number;
+  samples: number;
+  atlas: number;
+  total: number;
+  elapsedMs: number;
 }>({ pct: 0, samples: 0, atlas: 0, total: 0, elapsedMs: 0 });
 
 /** True after any scene mutation that invalidates the current lightmap. */
@@ -66,9 +66,9 @@ export const activeSceneId = signal<string>('cornell.advanced');
 
 /** Layout state — persisted to localStorage in App. */
 export const layout = signal<{ outlinerW: number; inspectorW: number; logOpen: boolean }>({
-    outlinerW: 280,
-    inspectorW: 320,
-    logOpen: false,
+  outlinerW: 280,
+  inspectorW: 320,
+  logOpen: false,
 });
 
 /** Rolling 200-entry log buffer for the bottom-bar log popover. */
@@ -76,7 +76,7 @@ export const logBuffer = signal<LogEntry[]>([]);
 
 /** Inspector tab currently shown. Driven by the selected node's type + user click. */
 export const inspectorTab = signal<'object' | 'light' | 'material' | 'lightmap' | 'bake' | 'world'>(
-    'object',
+  'object',
 );
 
 /** Convenience: are we mid-bake? */
@@ -84,6 +84,6 @@ export const isBaking = computed(() => bakeStatus.value === 'baking');
 
 /** Append a log entry (ring-buffered to 200 entries). */
 export function log(level: LogLevel, msg: string): void {
-    const next = logBuffer.value.concat({ ts: Date.now(), level, msg });
-    logBuffer.value = next.length > 200 ? next.slice(next.length - 200) : next;
+  const next = logBuffer.value.concat({ ts: Date.now(), level, msg });
+  logBuffer.value = next.length > 200 ? next.slice(next.length - 200) : next;
 }

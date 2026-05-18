@@ -6,7 +6,7 @@ const { chromium } = require(process.cwd() + '/node_modules/@playwright/test');
   page.on('pageerror', e => console.log('PAGEERROR', e.message));
   page.on('response', r => { if (r.status() >= 400) console.log('HTTP', r.status(), r.url()); });
   await page.goto('http://localhost:5173/three-lightmap-baker/?test=1', { timeout: 15000 }).catch(e => console.log('GOTO', e.message));
-  await page.waitForTimeout(4000);
+  await page.waitForSelector('body[data-baker-ready="1"]', { timeout: 15000 }).catch(e => console.log('READY-TIMEOUT', e.message));
   console.log('ready=', await page.evaluate(() => document.body.getAttribute('data-baker-ready')));
   await browser.close();
 })();

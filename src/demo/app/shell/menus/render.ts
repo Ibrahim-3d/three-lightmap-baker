@@ -6,18 +6,18 @@ import { getOrchestrator } from '../../../state/orchestrator';
  */
 
 menuRegistry.register('Render', {
-    id: 'render.rebake',
-    label: 'Re-bake',
-    hotkey: 'B',
-    action: () => {
-        void getOrchestrator()?.requestBake();
-    },
+  id: 'render.rebake',
+  label: 'Re-bake',
+  hotkey: 'B',
+  action: () => {
+    void getOrchestrator()?.requestBake();
+  },
 });
 
 menuRegistry.register('Render', {
-    id: 'render.rebake-ao',
-    label: 'Re-bake AO only',
-    action: () => {
-        void getOrchestrator()?.requestAORebake();
-    },
+  id: 'render.rebake-ao',
+  label: 'Re-bake AO only',
+  action: () => {
+    void getOrchestrator()?.requestAORebake();
+  },
 });

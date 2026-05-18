@@ -6,30 +6,30 @@ import { menuRegistry } from '../../../state/menuRegistry';
  */
 
 menuRegistry.register('Edit', {
-    id: 'edit.undo',
-    label: 'Undo',
-    hotkey: 'Ctrl+Z',
-    disabled: true,
-    action: () => {
-        /* disabled */
-    },
+  id: 'edit.undo',
+  label: 'Undo',
+  hotkey: 'Ctrl+Z',
+  disabled: true,
+  action: () => {
+    /* disabled */
+  },
 });
 
 menuRegistry.register('Edit', {
-    id: 'edit.redo',
-    label: 'Redo',
-    hotkey: 'Ctrl+Shift+Z',
-    disabled: true,
-    action: () => {
-        /* disabled */
-    },
+  id: 'edit.redo',
+  label: 'Redo',
+  hotkey: 'Ctrl+Shift+Z',
+  disabled: true,
+  action: () => {
+    /* disabled */
+  },
 });
 
 menuRegistry.register('Edit', {
-    id: 'edit.prefs',
-    label: 'Preferences',
-    separatorBefore: true,
-    action: () => {
-        console.log('[demo] Edit → Preferences (stub)');
-    },
+  id: 'edit.prefs',
+  label: 'Preferences',
+  separatorBefore: true,
+  action: () => {
+    console.log('[demo] Edit → Preferences (stub)');
+  },
 });

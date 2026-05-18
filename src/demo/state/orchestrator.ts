@@ -12,9 +12,9 @@ import type { CornellBoxExample } from '../CornellBoxExample';
 let instance: CornellBoxExample | null = null;
 
 export function setOrchestrator(o: CornellBoxExample): void {
-    instance = o;
+  instance = o;
 }
 
 export function getOrchestrator(): CornellBoxExample | null {
-    return instance;
+  return instance;
 }

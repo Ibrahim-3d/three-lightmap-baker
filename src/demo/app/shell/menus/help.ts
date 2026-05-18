@@ -5,18 +5,18 @@ import { menuRegistry } from '../../../state/menuRegistry';
  */
 
 menuRegistry.register('Help', {
-    id: 'help.github',
-    label: 'GitHub',
-    action: () => {
-        window.open('https://github.com/lucas-jones/three-lightmap-baker', '_blank');
-    },
+  id: 'help.github',
+  label: 'GitHub',
+  action: () => {
+    window.open('https://github.com/lucas-jones/three-lightmap-baker', '_blank');
+  },
 });
 
 menuRegistry.register('Help', {
-    id: 'help.about',
-    label: 'About',
-    separatorBefore: true,
-    action: () => {
-        console.log('[demo] Help → About (stub)');
-    },
+  id: 'help.about',
+  label: 'About',
+  separatorBefore: true,
+  action: () => {
+    console.log('[demo] Help → About (stub)');
+  },
 });
