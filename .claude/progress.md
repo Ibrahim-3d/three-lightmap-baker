@@ -37,9 +37,9 @@ patterns see [`docs/FAILED-APPROACHES.md`](../docs/FAILED-APPROACHES.md).
 | Task 11 — Light probes (SH) | ⬜ |
 | Post-bake TDR mitigations (HalfFloat composite, GPU drain, dummy-LM pin) | ✅ Done (S12) |
 | T-D1 — Demo restructure: SceneController + BakeController + modes.ts | ✅ Done (S13) |
-| **Demo UI shell** (PR #1 `feat/demo-redesign`) | 🟡 Open PR — code review then merge |
-| **Real-time PT preview** (PR #2 `feat/pt-realtime-pathtracer`) | 🟡 Open PR — sits on top of #1 |
-| **Folder restructure → `packages/` + `apps/`** | ⬜ Planned (Roadmap Step 2) |
+| **Demo UI shell** (PR #1 `feat/demo-redesign`) | ✅ Merged (Session 13.5) |
+| **Real-time PT preview** (PR #2 `feat/pt-realtime-pathtracer`) | 🟡 Open PR — rebases onto new layout in Step 3 |
+| **Folder restructure → `packages/` + `apps/`** | ✅ Done (S14) |
 | **PT renderer "definition of done"** list | ⬜ Needs user input (Roadmap Step 4) |
 | **PT-baker on Erich's sampler** | ⬜ Planned (Roadmap Step 5) |
 
@@ -152,7 +152,94 @@ code. Authoritative analysis lives in
 
 ---
 
-## Recent: Session 13 — 2026-05-18 — Scope expansion + planning (no code)
+## Recent: Session 14 — 2026-05-18 — Roadmap Step 2 restructure
+
+PR #1 merged into master. This session executes Roadmap Step 2: relocate the
+codebase into `packages/` + `apps/` and introduce the panel-slot API so renderer
+packages plug into the shell without sibling imports.
+
+**Layout shipped:**
+
+```
+packages/
+  shared/src/
+    registries/   panel-registry.ts (NEW) menu-registry.ts orchestrator.ts scene-registry.ts
+    signals/      ui.ts bake.ts (split from old signals.ts)
+    ui/           Field.tsx helpers.ts
+    assets/       primitives.ts
+    index.ts      barrel
+  baker-classic/src/   ← was src/lib/
+    index.ts LightmapBaker.ts AtlasViewer.ts errors.ts
+    atlas/ denoise/ gpu/ lightmap/ types/ utils/
+    ui/           (NEW) BakePage.tsx LightmapPage.tsx LightPage.tsx
+                  WorldPage.tsx menus.ts orchestrator.ts index.ts
+  demo-shell/src/      ← was src/demo/app/
+    App.tsx theme.css
+    components/   Topbar Outliner Inspector Splitter Toast StaleBanner
+                  StatusBar MenuButton AssetLibrary ScenePicker MobileSplash icons
+    inspector/    ObjectPage MaterialPage  (LightPage + WorldPage moved to baker-classic)
+    menus/        file edit view help (render moved to baker-classic)
+    index.ts
+
+apps/playground/
+  index.html              ← was /index.html
+  src/
+    main.tsx              ← was src/demo/main.tsx
+    index.ts CornellBoxExample.ts vite-env.d.ts
+    three/                SceneController BakeController modes types
+    scenes/presets/       (registry moved to shared)
+```
+
+**Registry / interface design:**
+
+| Item | Home | Purpose |
+|---|---|---|
+| `panelRegistry` (NEW) | `shared` | Inspector tabs registered by renderer packages |
+| `menuRegistry` (moved) | `shared` | Topbar menu items registered by renderer packages |
+| `Orchestrator` interface (rewritten) | `shared` | Generic contract shell components depend on; bake methods optional |
+| `BakerOrchestrator` interface (NEW) | `baker-classic/ui` | Extends `Orchestrator`; carries `options` + `requestBake` etc. |
+| `sceneRegistry` (moved) | `shared` | Generic registry; categories relaxed to `string` |
+| `primitiveCatalog` (moved) | `shared` | Used by shell's `<AssetLibrary/>`; factories belong with the data |
+
+**Path aliases:** TS `paths` + Vite `resolve.alias` carry the bare names `shared`,
+`baker-classic`, `baker-classic/ui`, `demo-shell`. No npm workspaces — those
+land at Tier-4 publishing time.
+
+**Vite root** is now `apps/playground/`; build emits to `<repo>/dist/` so the
+existing GitHub Pages `deploy.yml` keeps working.
+
+**Verification:**
+
+| Check | Result |
+|---|---|
+| `npx tsc --noEmit` | ✅ clean |
+| `npm run lint` | ✅ 0 errors, 93 warnings (pre-existing, mostly explicit-return-type) |
+| `npm run format:check` | ✅ clean |
+| `npm run build` | ✅ green — 838.64 KiB / 228.66 KiB gz (Δ −71 KiB vs S13.5 — Tweakpane CSS was the bulk) |
+| `npx madge --circular packages/ apps/` | ✅ no cycles |
+| Dev server | ✅ boots; aliases resolve; index + main.tsx + `shared` served 200 |
+| Cornell parity (manual) | ⏳ deferred to user environment |
+
+**Decisions made:**
+1. Registries live in `packages/shared/` — cleanest reading of "no sibling imports". Packages don't import from each other; both go through shared.
+2. `LightPage` and `WorldPage` moved to `baker-classic/ui/` since they touch baker-specific options (`lightColor`, `directLightEnabled`, `skyIntensity`). Shell keeps only Object + Material as built-in tabs.
+3. Bake signals (`bakeStatus`, `bakeProgress`, `isStale`) stay in `shared` so `StatusBar` + `StaleBanner` read them without sibling imports. Pure-preview renderers leave them at defaults.
+4. `primitiveCatalog` and `sceneRegistry` moved to `shared` because the shell's `<AssetLibrary/>` and `<ScenePicker/>` consume them. Generic enough to belong there.
+5. Generic `Orchestrator` interface gets a `getScene(): Scene` accessor so generic shell pages can read viewport background without casting to baker types.
+
+**Carry-overs:**
+- Legacy oversized files unchanged (LightmapBaker.ts 1314, CornellBoxExample.ts 572, SceneController.ts 589, BakeController.ts 428, LightmapperMaterial.ts 423). Modularity job stays advisory until they're split (deferred — out of scope for Step 2).
+- Cornell visual check (red/green bleed, soft shadow, ceiling tint) deferred to user environment per convention.
+- `main.tsx` runs 159 LOC — over the 100-LOC app-wiring guidance but carries hotkeys, drag-drop, and status-sync glue. Splitting deferred to a follow-up.
+
+**Next session:** Roadmap Step 3 — rebase PR #2 (`feat/pt-realtime-pathtracer`)
+onto the new layout. `src/pathtracer/` → `packages/pt-renderer/`, new
+`apps/pt-preview/`, PT inspector pages register into the same panel slots
+baker-classic uses.
+
+---
+
+
 
 Planning session, zero code changes. Two open PRs (#1 demo UI shell, #2
 real-time PT preview) prompted a re-think of project scope. Decisions made:

@@ -1,0 +1,165 @@
+import 'demo-shell/theme.css';
+import './scenes/presets';
+import { effect } from '@preact/signals';
+import { render } from 'preact';
+import { loadXAtlasThree } from 'baker-classic';
+import { registerBakerClassicUI } from 'baker-classic/ui';
+import { App, showToast } from 'demo-shell';
+import {
+  bakeProgress,
+  bakeStatus,
+  gizmoMode,
+  isStale,
+  sceneTree,
+  selectedId,
+  setOrchestrator,
+  type AssetSpec,
+} from 'shared';
+import { CornellBoxExample } from './CornellBoxExample';
+import { LIGHT_DUMMY_ID } from './three/SceneController';
+
+/**
+ * Playground entry. Mounts the demo shell, registers baker-classic's UI
+ * panels + menu items, then wires Preact signals to the vanilla orchestrator.
+ *
+ * `?legacy=1` skips Preact entirely — escape hatch.
+ * `?test=1` exposes `window.__baker` for Playwright.
+ */
+function isLegacy(): boolean {
+  return new URLSearchParams(window.location.search).get('legacy') === '1';
+}
+
+function isTestMode(): boolean {
+  return new URLSearchParams(window.location.search).get('test') === '1';
+}
+
+/**
+ * 4Hz poll bridging vanilla bake state into reactive signals. Replaced by
+ * signal-emitting controllers in a later phase if polling shows up in perf.
+ */
+function startStatusSync(app: CornellBoxExample): void {
+  setInterval(() => {
+    const status = app.getBakeStatus();
+    if (bakeStatus.value !== status) bakeStatus.value = status;
+
+    const opts = app.options;
+    const total = opts.targetSamples;
+    const pct = total > 0 ? Math.min(100, (opts.samples / total) * 100) : 0;
+    bakeProgress.value = {
+      pct,
+      samples: opts.samples,
+      atlas: app.getBakeGroupCount(),
+      total,
+      elapsedMs: status === 'baking' ? app.getBakeElapsedMs() : 0,
+    };
+  }, 250);
+}
+
+/** Wire signals → orchestrator side-effects (gizmo attach, gizmo mode). */
+function wireSelectionEffects(app: CornellBoxExample): void {
+  effect(() => {
+    app.setSelection(selectedId.value);
+  });
+  effect(() => {
+    app.setGizmoMode(gizmoMode.value);
+  });
+}
+
+/** W/E/R = translate/rotate/scale. Escape = deselect. Delete = remove selected
+ *  mesh (skipped for the built-in light dummy). B = re-bake when stale. */
+function wireHotkeys(app: CornellBoxExample): void {
+  window.addEventListener('keydown', (e) => {
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+    const k = e.key.toLowerCase();
+    if (k === 'w') gizmoMode.value = 'translate';
+    else if (k === 'e') gizmoMode.value = 'rotate';
+    else if (k === 'r') gizmoMode.value = 'scale';
+    else if (e.key === 'Escape') selectedId.value = null;
+    else if (e.key === 'Delete' || e.key === 'Backspace') {
+      const id = selectedId.value;
+      if (!id || id === LIGHT_DUMMY_ID) return;
+      app.removeNode(id);
+      selectedId.value = null;
+    } else if (k === 'b') {
+      if (isStale.value && bakeStatus.value !== 'baking') {
+        void app.requestBake();
+      }
+    }
+  });
+}
+
+/** Wire drag-drop on the renderer canvas. Tiles in `<AssetLibrary/>` set a
+ *  JSON-encoded `AssetSpec` on the `application/x-baker-asset` mime; we parse
+ *  it here, raycast the drop point to the ground plane, and route to
+ *  `SceneController.addAsset`. */
+function wireDragDrop(app: CornellBoxExample): void {
+  const canvas = app.sceneController.renderer.domElement;
+  canvas.addEventListener('dragover', (e: DragEvent) => {
+    if (!e.dataTransfer) return;
+    if (!Array.from(e.dataTransfer.types).includes('application/x-baker-asset')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  });
+  canvas.addEventListener('drop', (e: DragEvent) => {
+    if (!e.dataTransfer) return;
+    const payload = e.dataTransfer.getData('application/x-baker-asset');
+    if (!payload) return;
+    e.preventDefault();
+    let spec: AssetSpec;
+    try {
+      spec = JSON.parse(payload) as AssetSpec;
+    } catch {
+      console.warn('[baker] bad asset drop payload', payload);
+      return;
+    }
+    const worldPos = app.pickGroundPoint(e.clientX, e.clientY);
+    const uuid = app.addAsset(spec, worldPos);
+    if (uuid) selectedId.value = uuid;
+  });
+}
+
+void (async () => {
+  await loadXAtlasThree();
+
+  const app = new CornellBoxExample();
+  setOrchestrator(app);
+  registerBakerClassicUI();
+
+  // Hooks that flow vanilla controller events back into reactive signals.
+  app.externalHooks = {
+    onSceneChanged: () => {
+      sceneTree.value = app.getSceneTree();
+    },
+    onStaleChange: () => {
+      isStale.value = true;
+    },
+    onViewportPick: (id) => {
+      selectedId.value = id;
+    },
+    onBakeError: (msg) => {
+      showToast('error', `Bake failed: ${msg}`);
+    },
+  };
+  // Initial tree population (constructor already built the scene). Pre-select
+  // the scene light so the gizmo keeps its T-D3 default attachment.
+  sceneTree.value = app.getSceneTree();
+  selectedId.value = LIGHT_DUMMY_ID;
+
+  window.addEventListener('resize', () => app.updateSize());
+
+  if (!isLegacy()) {
+    const mount = document.createElement('div');
+    mount.id = 'app';
+    document.body.appendChild(mount);
+    render(<App />, mount);
+    startStatusSync(app);
+    wireSelectionEffects(app);
+    wireHotkeys(app);
+    wireDragDrop(app);
+  }
+
+  if (isTestMode()) {
+    (window as unknown as { __baker: CornellBoxExample }).__baker = app;
+    document.body.setAttribute('data-baker-ready', '1');
+  }
+})();
