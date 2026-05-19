@@ -12,9 +12,6 @@
 import {
   DataTexture,
   GLSL3,
-  NearestFilter,
-  NoColorSpace,
-  RGBAFormat,
   ShaderMaterial,
   type Texture,
   type WebGLRenderTarget,

@@ -28,7 +28,6 @@ import {
   WebGLRenderer,
   WebGLRenderTarget,
   type Object3D,
-  type Texture,
 } from 'three';
 import { buildBVHScene, disposeBVHSceneData, type BVHSceneData } from 'pt-renderer';
 import { PTBakeMaterial } from './PTBakeMaterial';

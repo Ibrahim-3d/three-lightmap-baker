@@ -209,6 +209,7 @@ export class PTController {
   private _onCameraChange = (): void => { this.pt?.notifyCameraMoving(); };
 
   private _prevSkyIntensity = -1;
+  private _prevHdri: import("three").Texture | null = null;
   private _syncSettings(): void {
     if (!this.pt) return;
     const u = this.pt.uniforms;
@@ -220,6 +221,14 @@ export class PTController {
     }
     if (u['uApertureSize'])  u['uApertureSize'].value  = s.aperture;
     if (u['uFocusDistance']) u['uFocusDistance'].value = s.focusDist;
+    // HDRI environment sync.
+    const hdri = hdriTexture.value;
+    if (hdri !== this._prevHdri) {
+      this._prevHdri = hdri;
+      if (u['tHDRTexture'])    u['tHDRTexture'].value    = hdri;
+      if (u['uHasSkyTexture']) u['uHasSkyTexture'].value = hdri !== null;
+      this.pt.resetAccumulation();
+    }
   }
 
   /**

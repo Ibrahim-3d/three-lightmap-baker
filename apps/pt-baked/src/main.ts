@@ -203,10 +203,13 @@ function tick(): void {
     pt.render(renderer, camera, delta);
   }
 
-  // Right half — standard rasteriser (shows baked lightmap once available).
+  // Right half — standard rasteriser with lightMap applied.
+  // Hide the dynamic point light to avoid double-lighting (baked + live).
+  ptLight.visible = false;
   renderer.setViewport(half, 0, w - half, h);
   renderer.setScissor(half, 0, w - half, h);
   renderer.render(scene, camera);
+  ptLight.visible = true;
 
   renderer.setScissorTest(false);
 }

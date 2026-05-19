@@ -692,26 +692,27 @@ export class CornellBoxExample implements BakerOrchestrator {
       atlasResult.positionTexture.dispose();
       atlasResult.normalTexture.dispose();
 
-      // Apply the refined lightmap to every mesh.
+      // Apply the refined lightmap to every mesh (handles multi-material meshes).
       for (const mesh of meshes) {
-        const mat = mesh.material as MeshStandardMaterial;
-        if (mat && 'lightMap' in mat) {
-          mat.lightMap = refined.texture;
-          mat.lightMapIntensity = 1.0;
-          mat.needsUpdate = true;
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const mat of mats) {
+          if (mat instanceof MeshStandardMaterial) {
+            mat.lightMap = refined.texture;
+            mat.lightMapIntensity = 1.0;
+            mat.needsUpdate = true;
+          }
         }
       }
 
       // Store result so exportFinal() can access it.
       console.info('[PTBaker] done — ' + this.options.targetSamples + ' samples, ' + this.options.lightMapSize + '×' + this.options.lightMapSize);
 
-      disposeBVHSceneData(sceneData);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error('[PTBaker] bake failed:', err);
       this.externalHooks.onBakeError?.(msg);
-      disposeBVHSceneData(sceneData);
     } finally {
+      disposeBVHSceneData(sceneData);
       baker.dispose();
       bakeStatus.value = 'done';
     }

@@ -1,5 +1,5 @@
 import { useRef } from 'preact/hooks';
-import { Color } from 'three';
+import { Color, EquirectangularReflectionMapping } from 'three';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader';
 import {
   bumpObject,
@@ -50,6 +50,8 @@ export function WorldPage() {
       url,
       (tex) => {
         URL.revokeObjectURL(url);
+        // EquirectangularReflectionMapping required for correct panoramic projection.
+        tex.mapping = EquirectangularReflectionMapping;
         // Dispose old HDRI texture if any.
         hdriTexture.value?.dispose();
         hdriTexture.value = tex;
