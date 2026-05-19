@@ -403,6 +403,7 @@ export class CornellBoxExample implements BakerOrchestrator {
       requestAnimationFrame(tick);
 
       this.sceneController.syncGizmo(this.options.showGizmo);
+      this.sceneController.updateLightHelpers();
 
       // Bake step.
       if (this.bakeController.bakeGroups.length && !this.options.pause) {
