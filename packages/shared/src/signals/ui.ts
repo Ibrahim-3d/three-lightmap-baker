@@ -52,6 +52,19 @@ export const logBuffer = signal<LogEntry[]>([]);
 /** Inspector tab currently shown. Driven by the selected node's type + user click. */
 export const inspectorTab = signal<string>('object');
 
+/**
+ * Viewport view-layer descriptor. App populates `viewLayers` at boot from its
+ * own LAYERS table; the shell's `ViewportToggle` reads the signal to render
+ * the Blender-style top-right layer dropdown. Keeps the shell renderer-agnostic.
+ */
+export type ViewLayerDescriptor = {
+  id: string;
+  label: string;
+  group: 'output' | 'debug';
+};
+
+export const viewLayers = signal<ReadonlyArray<ViewLayerDescriptor>>([]);
+
 /** Append a log entry (ring-buffered to 200 entries). */
 export function log(level: LogLevel, msg: string): void {
   const next = logBuffer.value.concat({ ts: Date.now(), level, msg });

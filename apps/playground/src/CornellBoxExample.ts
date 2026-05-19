@@ -488,6 +488,17 @@ export class CornellBoxExample implements BakerOrchestrator {
     this.renderModeRunner.apply();
   }
 
+  /** Push per-layer intensity uniforms into every group's composite (view-time). */
+  refreshComposites(overrides: {
+    directIntensity?: number;
+    giIntensity?: number;
+    aoEnabled?: boolean;
+    aoIntensity?: number;
+    aoExponent?: number;
+  }): void {
+    this.bakeController.refreshAllComposites(overrides);
+  }
+
   /** Switch between rasterisation ('combined' etc.) and PT ('pathtraced') mode. */
   setRenderMode(mode: string): void {
     if (mode === 'pathtraced') {
