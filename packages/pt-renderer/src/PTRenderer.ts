@@ -29,6 +29,7 @@ import { registerChunks }  from './chunks';
 import { resolveIncludes } from './preprocess';
 
 import vertSrc       from './shaders/vertex.glsl?raw';
+import blueNoiseAsset from './BlueNoise_R_128.png';
 import screenCopySrc from './shaders/screen-copy.frag.glsl?raw';
 import screenOutSrc  from './shaders/screen-output.frag.glsl?raw';
 
@@ -100,7 +101,7 @@ export class PTRenderer {
 
   async init(renderer: WebGLRenderer): Promise<void> {
     const blueNoise = await new TextureLoader().loadAsync(
-      this.opts.blueNoiseUrl ?? 'BlueNoise_R_128.png'
+      this.opts.blueNoiseUrl ?? blueNoiseAsset
     );
     blueNoise.minFilter = blueNoise.magFilter = NearestFilter;
     blueNoise.generateMipmaps = false;

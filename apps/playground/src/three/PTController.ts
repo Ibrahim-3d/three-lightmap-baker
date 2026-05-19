@@ -115,7 +115,6 @@ export class PTController {
     this.pt = new PTRenderer({
       fragmentShader: bvhFrag,
       sceneIsDynamic: false,
-      blueNoiseUrl:   import.meta.env.BASE_URL + 'BlueNoise_R_128.png',
       renderScale:    1.0,
       sceneUniforms: {
         tTriangleTexture:   { value: null },
