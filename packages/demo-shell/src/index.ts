@@ -9,3 +9,4 @@ export { App } from './App';
 export { GalleryPage } from './components/GalleryPage';
 export { Toast, showToast } from './components/Toast';
 export { ViewportToggle } from './components/ViewportToggle';
+export { PostFXPage } from './inspector/PostFXPage';
