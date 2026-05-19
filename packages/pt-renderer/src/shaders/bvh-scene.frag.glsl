@@ -1,6 +1,7 @@
 precision highp float;
 precision highp int;
 precision highp sampler2D;
+precision highp sampler2DArray;
 out highp vec4 pc_fragColor;
 
 #include <pathtracing_uniforms_and_defines>
@@ -9,74 +10,18 @@ out highp vec4 pc_fragColor;
 uniform sampler2D tTriangleTexture;
 uniform sampler2D tAABBTexture;
 
-// ── Albedo textures — up to 10 named samplers (6 core samplers + 10 = 16 max) ─
-// Guarded by NUM_ALBEDO_TEXTURES define so untextured scenes use 0 slots.
-#if NUM_ALBEDO_TEXTURES > 0
-uniform sampler2D tAlbedoTex0;
-#endif
-#if NUM_ALBEDO_TEXTURES > 1
-uniform sampler2D tAlbedoTex1;
-#endif
-#if NUM_ALBEDO_TEXTURES > 2
-uniform sampler2D tAlbedoTex2;
-#endif
-#if NUM_ALBEDO_TEXTURES > 3
-uniform sampler2D tAlbedoTex3;
-#endif
-#if NUM_ALBEDO_TEXTURES > 4
-uniform sampler2D tAlbedoTex4;
-#endif
-#if NUM_ALBEDO_TEXTURES > 5
-uniform sampler2D tAlbedoTex5;
-#endif
-#if NUM_ALBEDO_TEXTURES > 6
-uniform sampler2D tAlbedoTex6;
-#endif
-#if NUM_ALBEDO_TEXTURES > 7
-uniform sampler2D tAlbedoTex7;
-#endif
-#if NUM_ALBEDO_TEXTURES > 8
-uniform sampler2D tAlbedoTex8;
-#endif
-#if NUM_ALBEDO_TEXTURES > 9
-uniform sampler2D tAlbedoTex9;
-#endif
+// ── Albedo array — single sampler2DArray binding holding all unique scene
+// albedo maps as layers. Layer 0 is a white fallback (used when a material
+// has no map). Triangle data stores the layer index per face; values < 0
+// signal "skip texture sampling, use vertex color only". This replaces the
+// erichlof-style hard-coded `tAlbedoTex0..N` pattern that caps at the WebGL2
+// texture-unit limit (~10 useful slots after core samplers). The array can
+// scale to thousands of unique maps with a single binding.
+uniform sampler2DArray tAlbedoArray;
 
-vec3 sampleAlbedo(int id, vec2 uv) {
-#if NUM_ALBEDO_TEXTURES < 1
-    return vec3(1.0);
-#else
-    vec3 c = vec3(1.0);
-    if      (id ==  0) c = texture(tAlbedoTex0,  uv).rgb;
-#if NUM_ALBEDO_TEXTURES > 1
-    else if (id ==  1) c = texture(tAlbedoTex1,  uv).rgb;
-#endif
-#if NUM_ALBEDO_TEXTURES > 2
-    else if (id ==  2) c = texture(tAlbedoTex2,  uv).rgb;
-#endif
-#if NUM_ALBEDO_TEXTURES > 3
-    else if (id ==  3) c = texture(tAlbedoTex3,  uv).rgb;
-#endif
-#if NUM_ALBEDO_TEXTURES > 4
-    else if (id ==  4) c = texture(tAlbedoTex4,  uv).rgb;
-#endif
-#if NUM_ALBEDO_TEXTURES > 5
-    else if (id ==  5) c = texture(tAlbedoTex5,  uv).rgb;
-#endif
-#if NUM_ALBEDO_TEXTURES > 6
-    else if (id ==  6) c = texture(tAlbedoTex6,  uv).rgb;
-#endif
-#if NUM_ALBEDO_TEXTURES > 7
-    else if (id ==  7) c = texture(tAlbedoTex7,  uv).rgb;
-#endif
-#if NUM_ALBEDO_TEXTURES > 8
-    else if (id ==  8) c = texture(tAlbedoTex8,  uv).rgb;
-#endif
-#if NUM_ALBEDO_TEXTURES > 9
-    else if (id ==  9) c = texture(tAlbedoTex9,  uv).rgb;
-#endif
-    return c;
-#endif
+vec3 sampleAlbedo(int layer, vec2 uv) {
+    if (layer < 0) return vec3(1.0);
+    return texture(tAlbedoArray, vec3(uv, float(layer))).rgb;
 }
 
 // ── Scene lights — packed into a DataTexture, 4 RGBA texels per light ─────────
@@ -119,7 +64,7 @@ vec3  hitNormal, hitColor;
 vec2  hitUV;
 float hitObjectID = -INFINITY;
 float hitOpacity;
-int   hitType, hitAlbedoTextureID;
+int   hitType, hitAlbedoLayer;
 float hitRoughness, hitMetalness;
 
 // Fresnel Schlick approximation.
@@ -215,7 +160,7 @@ float SceneIntersect() {
         hitOpacity   = vd7.y;
         hitUV        = triW*vec2(vd4.zw) + triU*vec2(vd5.xy) + triV*vec2(vd5.zw);
         hitType      = int(vd6.x);
-        hitAlbedoTextureID = int(vd7.x);
+        hitAlbedoLayer = int(vd7.x);
         hitRoughness = vd7.z;
         hitMetalness = vd7.w;
         hitObjectID  = 0.0;
@@ -391,8 +336,8 @@ vec3 CalculateRadiance(out vec3 objectNormal, out vec3 objectColor,
         x  = rayOrigin + rayDirection * t;
 
         vec3 albedo = hitColor;
-        if (hitAlbedoTextureID >= 0 && hitUV.x > -0.5)
-            albedo *= sampleAlbedo(hitAlbedoTextureID, hitUV);
+        if (hitAlbedoLayer >= 0 && hitUV.x > -0.5)
+            albedo *= sampleAlbedo(hitAlbedoLayer, hitUV);
 
         if (bounce == 0) { objectNormal += n; objectColor += albedo; objectID += hitObjectID; }
 

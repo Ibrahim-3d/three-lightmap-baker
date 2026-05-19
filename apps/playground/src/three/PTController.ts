@@ -16,7 +16,6 @@ import {
   RGBAFormat,
   RectAreaLight,
   SpotLight,
-  UnsignedByteType,
   Vector3,
   type PerspectiveCamera,
   type Scene,
@@ -26,12 +25,7 @@ import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 
 import { PTRenderer } from 'pt-renderer';
 import { ptSettings, hdriTexture } from 'shared';
-import {
-  buildBVHScene,
-  disposeBVHSceneData,
-  MAX_ALBEDO_TEXTURES,
-  type BVHSceneData,
-} from 'pt-renderer';
+import { buildBVHScene, disposeBVHSceneData, type BVHSceneData } from 'pt-renderer';
 import bvhFrag from 'pt-renderer/shaders/bvh-scene.frag.glsl?raw';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -75,21 +69,6 @@ function readDebugVisFromURL(): number {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function makeWhiteTex(): DataTexture {
-  const t = new DataTexture(
-    new Uint8Array([255, 255, 255, 255]),
-    1,
-    1,
-    RGBAFormat,
-    UnsignedByteType,
-  );
-  t.colorSpace = NoColorSpace;
-  t.minFilter = t.magFilter = NearestFilter;
-  t.generateMipmaps = false;
-  t.needsUpdate = true;
-  return t;
-}
-
 /** Create the empty 64×1 RGBA32F light DataTexture. */
 function makeLightTexture(): DataTexture {
   const data = new Float32Array(LIGHT_TEX_WIDTH * 4); // 256 floats
@@ -113,7 +92,6 @@ export interface PTControllerDeps {
 export class PTController {
   private pt: PTRenderer | null = null;
   private sceneData: BVHSceneData | null = null;
-  private whiteTex: DataTexture | null = null;
   private lightTex: DataTexture | null = null;
   private _lightData: Float32Array = new Float32Array(0);
 
@@ -132,7 +110,6 @@ export class PTController {
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   async init(): Promise<void> {
-    this.whiteTex = makeWhiteTex();
     this.lightTex = makeLightTexture();
     this._lightData = this.lightTex.image.data as unknown as Float32Array;
 
@@ -152,12 +129,16 @@ export class PTController {
       sceneUniforms: {
         tTriangleTexture: { value: null },
         tAABBTexture: { value: null },
+        // Albedo array texture (sampler2DArray). Populated on setScene().
+        // null is fine here; setScene swaps in the real DataArrayTexture
+        // BEFORE the first frame renders, so Three.js never tries to sample
+        // a null binding.
+        tAlbedoArray: { value: null },
         uHasSkyTexture: { value: false },
         tHDRTexture: { value: null },
         uSkyLightIntensity: { value: 1.0 },
         tLightTexture: { value: this.lightTex },
         uNumPTLights: { value: 0 },
-        // Start with 0 albedo uniforms; setScene updates define + uniforms
       },
     });
     await this.pt.init(this.deps.renderer);
@@ -194,21 +175,12 @@ export class PTController {
     }
     u['tTriangleTexture'].value = newData.triangleTexture;
     u['tAABBTexture'].value = newData.aabbTexture;
-
-    // Update albedo texture count — triggers shader recompile
-    const texCount = Math.min(newData.albedoTextures.length, MAX_ALBEDO_TEXTURES);
-    this.pt.setDefine('NUM_ALBEDO_TEXTURES', texCount);
-
-    const fallback = this.whiteTex!;
-    for (let i = 0; i < texCount; i++) {
-      const key = `tAlbedoTex${i}`;
-      if (u[key]) {
-        u[key]!.value = newData.albedoTextures[i] ?? fallback;
-      } else {
-        // Uniform didn't exist at init — inject it now
-        u[key] = { value: newData.albedoTextures[i] ?? fallback };
-      }
+    if (u['tAlbedoArray']) {
+      u['tAlbedoArray'].value = newData.albedoArray;
+    } else {
+      u['tAlbedoArray'] = { value: newData.albedoArray };
     }
+
     this.pt.resetAccumulation();
     // Re-dump lights on next sync after scene change
     this._lightsDumped = false;
@@ -246,8 +218,6 @@ export class PTController {
     this.pt = null;
     disposeBVHSceneData(this.sceneData);
     this.sceneData = null;
-    this.whiteTex?.dispose();
-    this.whiteTex = null;
     this.lightTex?.dispose();
     this.lightTex = null;
   }
