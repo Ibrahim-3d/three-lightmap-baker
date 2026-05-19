@@ -10,6 +10,7 @@
 import {
   DataTexture,
   FloatType,
+  GLSL3,
   Matrix4,
   Mesh,
   NearestFilter,
@@ -151,11 +152,14 @@ export class PTRenderer {
     const ptUniforms = { ...shared, ...(this.opts.sceneUniforms ?? {}) };
 
     // ── Pass 1: path tracing ───────────────────────────────────────────────
+    const resolvedFrag = resolveIncludes(this.opts.fragmentShader);
+    console.info('[PTRenderer] resolved fragment shader length:', resolvedFrag.length);
     this.ptMat = new ShaderMaterial({
       uniforms: ptUniforms,
       defines: { NUM_ALBEDO_TEXTURES: 0 },
       vertexShader: vertSrc,
-      fragmentShader: resolveIncludes(this.opts.fragmentShader),
+      fragmentShader: resolvedFrag,
+      glslVersion: GLSL3,
       depthTest: false,
       depthWrite: false,
     });
