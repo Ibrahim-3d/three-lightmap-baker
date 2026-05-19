@@ -598,6 +598,63 @@ export class SceneController {
     }
   }
 
+  // ──────────────────────────────────────────────────────────────────────────
+  //  Camera views (Blender-style numpad shortcuts).
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /** Compute scene bbox center + a safe-distance offset. Falls back to origin
+   *  when the scene has no bake-eligible meshes (e.g. fresh empty scene). */
+  private sceneBoundsOrFallback(): { center: Vector3; size: number } {
+    const box = new Box3();
+    for (const m of this.meshes) box.expandByObject(m);
+    if (box.isEmpty()) return { center: new Vector3(0, 5, 0), size: 10 };
+    const center = box.getCenter(new Vector3());
+    const size = box.getSize(new Vector3());
+    return { center, size: Math.max(size.x, size.y, size.z) || 10 };
+  }
+
+  /** Snap camera to one of the canonical viewpoints — Front (1), Right (3),
+   *  Top (7), Persp (0). Distance keyed to scene size so it works across
+   *  scales (Cornell vs imported levels). */
+  setView(view: 'front' | 'right' | 'top' | 'persp' | 'back' | 'left' | 'bottom'): void {
+    const { center, size } = this.sceneBoundsOrFallback();
+    const d = size * 1.8;
+    const pos = new Vector3();
+    switch (view) {
+      case 'front':
+        pos.set(center.x, center.y, center.z + d);
+        break;
+      case 'back':
+        pos.set(center.x, center.y, center.z - d);
+        break;
+      case 'right':
+        pos.set(center.x + d, center.y, center.z);
+        break;
+      case 'left':
+        pos.set(center.x - d, center.y, center.z);
+        break;
+      case 'top':
+        pos.set(center.x, center.y + d, center.z + 0.001); // tiny z offset avoids gimbal lock
+        break;
+      case 'bottom':
+        pos.set(center.x, center.y - d, center.z + 0.001);
+        break;
+      case 'persp':
+      default:
+        pos.set(center.x + d * 0.7, center.y + d * 0.5, center.z + d * 0.8);
+        break;
+    }
+    this.camera.position.copy(pos);
+    this.controls.target.copy(center);
+    this.controls.update();
+  }
+
+  /** Update the perspective camera FOV (in degrees) and refresh projection. */
+  setCameraFov(deg: number): void {
+    this.camera.fov = Math.max(1, Math.min(170, deg));
+    this.camera.updateProjectionMatrix();
+  }
+
   /** Update gizmo visibility/enabled state (called from RAF). */
   syncGizmo(show: boolean): void {
     this.lightTransformController.visible = show;
