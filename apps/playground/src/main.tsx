@@ -11,6 +11,7 @@ import { registerBakerClassicUI } from 'baker-classic/ui';
 import { App, GalleryPage, showToast } from 'demo-shell';
 import {
   activeSceneId,
+  atlasViewerVisible,
   bakeProgress,
   bakeStatus,
   gizmoMode,
@@ -103,6 +104,8 @@ function wireHotkeys(app: CornellBoxExample): void {
       selectedId.value = null;
     } else if (k === 'b') {
       if (isStale.value && bakeStatus.value !== 'baking') void app.requestBake();
+    } else if (k === 'a') {
+      atlasViewerVisible.value = !atlasViewerVisible.value;
     }
   });
 }

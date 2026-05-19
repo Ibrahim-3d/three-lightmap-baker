@@ -65,6 +65,12 @@ export type ViewLayerDescriptor = {
 
 export const viewLayers = signal<ReadonlyArray<ViewLayerDescriptor>>([]);
 
+/**
+ * Multi-atlas viewer overlay visibility. Driven by View → Toggle Atlas Viewer.
+ * Renderer reads this each RAF to decide whether to call AtlasViewer.render().
+ */
+export const atlasViewerVisible = signal<boolean>(false);
+
 /** Append a log entry (ring-buffered to 200 entries). */
 export function log(level: LogLevel, msg: string): void {
   const next = logBuffer.value.concat({ ts: Date.now(), level, msg });

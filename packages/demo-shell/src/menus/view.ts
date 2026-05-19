@@ -1,4 +1,4 @@
-import { layout, menuRegistry } from 'shared';
+import { atlasViewerVisible, layout, menuRegistry } from 'shared';
 
 /**
  * View menu (T-D9). Toggles remember the last non-zero width in a local
@@ -33,6 +33,16 @@ menuRegistry.register('View', {
     } else {
       layout.value = { ...layout.value, inspectorW: lastInspectorW || 320 };
     }
+  },
+});
+
+menuRegistry.register('View', {
+  id: 'view.toggle-atlas-viewer',
+  label: 'Toggle Atlas Viewer',
+  hotkey: 'A',
+  separatorBefore: true,
+  action: () => {
+    atlasViewerVisible.value = !atlasViewerVisible.value;
   },
 });
 
