@@ -103,16 +103,24 @@ export class PTRenderer {
     this.renderScale = opts.renderScale ?? 1.0;
   }
 
-  // ── Async init (loads blue-noise texture, builds materials) ──────────────
+  // ── Async init (builds noise texture + materials) ────────────────────────
 
   async init(renderer: WebGLRenderer): Promise<void> {
+    // Procedural noise texture used as a per-pixel random seed by the rand()
+    // function in pathtracing_random_functions.glsl. The uniform is named
+    // tBlueNoiseTexture for compatibility with the erichlof reference, but
+    // the contents are currently WHITE noise (Math.random()) — a known
+    // quality regression vs. a real blue-noise PNG. Path tracing still works
+    // correctly; convergence at low SPP is just noisier than ideal. Replace
+    // with a void-and-cluster generator or load a static PNG when investing
+    // in image quality.
     const noiseSize = 128;
     const noiseData = new Uint8Array(noiseSize * noiseSize);
     for (let i = 0; i < noiseData.length; i++) noiseData[i] = Math.floor(Math.random() * 256);
-    const blueNoise = new DataTexture(noiseData, noiseSize, noiseSize, RedFormat, UnsignedByteType);
-    blueNoise.minFilter = blueNoise.magFilter = NearestFilter;
-    blueNoise.generateMipmaps = false;
-    blueNoise.needsUpdate = true;
+    const noiseTex = new DataTexture(noiseData, noiseSize, noiseSize, RedFormat, UnsignedByteType);
+    noiseTex.minFilter = noiseTex.magFilter = NearestFilter;
+    noiseTex.generateMipmaps = false;
+    noiseTex.needsUpdate = true;
 
     const w = Math.floor(renderer.domElement.width * this.renderScale);
     const h = Math.floor(renderer.domElement.height * this.renderScale);
@@ -134,7 +142,7 @@ export class PTRenderer {
     // ── Shared PT uniforms ─────────────────────────────────────────────────
     const shared = {
       tPreviousTexture: { value: this.copyRT.texture },
-      tBlueNoiseTexture: { value: blueNoise },
+      tBlueNoiseTexture: { value: noiseTex },
       uCameraMatrix: { value: new Matrix4() },
       uResolution: { value: new Vector2(w, h) },
       uRandomVec2: { value: new Vector2() },

@@ -20,20 +20,21 @@ import {
   Vector3,
   type PerspectiveCamera,
   type Scene,
-  type Texture,
   type WebGLRenderer,
 } from 'three';
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 
 import { PTRenderer } from 'pt-renderer';
 import { ptSettings, hdriTexture } from 'shared';
-import { buildBVHScene, disposeBVHSceneData, type BVHSceneData } from 'pt-renderer';
+import {
+  buildBVHScene,
+  disposeBVHSceneData,
+  MAX_ALBEDO_TEXTURES,
+  type BVHSceneData,
+} from 'pt-renderer';
 import bvhFrag from 'pt-renderer/shaders/bvh-scene.frag.glsl?raw';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-/** Max albedo textures — capped at 10 (6 core samplers + 10 = 16 WebGL2 limit). */
-const MAX_ALBEDO_TEXTURES = 10;
 
 /**
  * Max lights supported by the DataTexture layout.
@@ -98,17 +99,6 @@ function makeLightTexture(): DataTexture {
   t.generateMipmaps = false;
   t.needsUpdate = true;
   return t;
-}
-
-function albedoUniforms(
-  textures: Texture[],
-  fallback: DataTexture,
-  count: number,
-): Record<string, { value: Texture }> {
-  const out: Record<string, { value: Texture }> = {};
-  for (let i = 0; i < count; i++)
-    out[`tAlbedoTex${i}`] = { value: textures[i] ?? fallback };
-  return out;
 }
 
 // ── PTController ──────────────────────────────────────────────────────────────

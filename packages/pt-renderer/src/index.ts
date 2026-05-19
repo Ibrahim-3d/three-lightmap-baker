@@ -14,7 +14,7 @@ export type { PTRendererOptions, PTSceneUniforms } from './PTRenderer';
 
 export { buildBVH } from './BVHBuilder';
 
-export { buildBVHScene, disposeBVHSceneData } from './BVHSceneBuilder';
+export { buildBVHScene, disposeBVHSceneData, MAX_ALBEDO_TEXTURES } from './BVHSceneBuilder';
 export type { BVHSceneData } from './BVHSceneBuilder';
 
 export { registerChunks } from './chunks';

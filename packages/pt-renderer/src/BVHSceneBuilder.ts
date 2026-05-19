@@ -44,12 +44,27 @@ const MAT_PBR = 10; // unified PBR (all metals + dielectrics)
 const TEX_SIZE = 2048;
 const MAX_TRIANGLES = (TEX_SIZE * TEX_SIZE) / 8; // 524,288 — 8 texels per tri
 
+/**
+ * Max unique albedo textures the renderer can bind simultaneously.
+ * WebGL2 caps texture units at 16; the PT shader reserves 6 for core samplers
+ * (tTriangleTexture, tAABBTexture, tLightTexture, tHDRTexture, tBlueNoiseTexture,
+ * tPreviousTexture), leaving 10 for albedo maps. Builder + consumer must agree.
+ */
+export const MAX_ALBEDO_TEXTURES = 10;
+
+/**
+ * Enable verbose per-mesh / per-material console diagnostics during scene build.
+ * Off by default — set to true (or wire to a build flag / URL param) when
+ * investigating geometry / material packing bugs.
+ */
+const DEBUG_BUILD_LOG = false;
+
 // ── Result type ──────────────────────────────────────────────────────────────
 
 export interface BVHSceneData {
   triangleTexture: DataTexture;
   aabbTexture: DataTexture;
-  albedoTextures: Texture[]; // up to 16 unique diffuse maps from scene materials
+  albedoTextures: Texture[]; // unique diffuse maps from scene materials, capped at MAX_ALBEDO_TEXTURES
   triangleCount: number;
 }
 
@@ -81,14 +96,14 @@ export function buildBVHScene(scene: Scene): BVHSceneData {
 
   if (meshes.length === 0) return _emptyScene();
 
-  // ── 2. Collect unique albedo textures (max 16) ────────────────────────────
+  // ── 2. Collect unique albedo textures (capped at MAX_ALBEDO_TEXTURES) ────
 
   const albedoTextures: Texture[] = [];
   for (const mesh of meshes) {
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     for (const mat of mats) {
       if (mat instanceof MeshStandardMaterial && mat.map) {
-        if (!albedoTextures.includes(mat.map) && albedoTextures.length < 16)
+        if (!albedoTextures.includes(mat.map) && albedoTextures.length < MAX_ALBEDO_TEXTURES)
           albedoTextures.push(mat.map);
       }
     }
@@ -130,12 +145,12 @@ export function buildBVHScene(scene: Scene): BVHSceneData {
     //     material always wins). Falling back to mats[materialIndex] for a single material
     //     mesh yielded undefined for indices ≥ 1 → 5 of 6 faces silently became default-white.
     const isArrayMat = Array.isArray(mesh.material);
-    const mats: (Material | Material[] | undefined)[] = isArrayMat
+    const mats: Material[] = isArrayMat
       ? (mesh.material as Material[])
       : [mesh.material as Material];
     const pickMat = (groupMatIdx: number | undefined): Material | undefined => {
-      if (!isArrayMat) return mats[0] as Material | undefined;
-      return (mats[groupMatIdx ?? 0] as Material | undefined) ?? (mats[0] as Material | undefined);
+      if (!isArrayMat) return mats[0];
+      return mats[groupMatIdx ?? 0] ?? mats[0];
     };
 
     if (nonIndexed.groups.length > 0) {
@@ -157,21 +172,20 @@ export function buildBVHScene(scene: Scene): BVHSceneData {
       triangleMaterialMarkers.push(runningTriCount);
     }
 
-    // ── DEBUG: per-mesh diagnostics ──────────────────────────────────────
-    const nrm = nonIndexed.attributes['normal']!;
-    const pos = nonIndexed.attributes['position']!;
-    const p0 = [pos.getX(0), pos.getY(0), pos.getZ(0)].map((v) => v.toFixed(2));
-    const n0 = [nrm.getX(0), nrm.getY(0), nrm.getZ(0)].map((v) => v.toFixed(3));
-    // Sample a mid-triangle normal for spherical meshes
-    const midVtx = Math.min(Math.floor(pos.count / 2), pos.count - 1);
-    const nM = [nrm.getX(midVtx), nrm.getY(midVtx), nrm.getZ(midVtx)].map((v) =>
-      v.toFixed(3),
-    );
-    console.log(
-      `[PTSceneBuilder] mesh="${mesh.name}" tris=${triCount} ` +
-        `pos0=(${p0.join(',')}) nrm0=(${n0.join(',')}) nrmMid=(${nM.join(',')}) ` +
-        `groups=${nonIndexed.groups.length} runTri=${runningTriCount}`,
-    );
+    // ── DEBUG: per-mesh diagnostics (guarded by DEBUG_BUILD_LOG) ─────────
+    if (DEBUG_BUILD_LOG) {
+      const nrm = nonIndexed.attributes['normal']!;
+      const pos = nonIndexed.attributes['position']!;
+      const p0 = [pos.getX(0), pos.getY(0), pos.getZ(0)].map((v) => v.toFixed(2));
+      const n0 = [nrm.getX(0), nrm.getY(0), nrm.getZ(0)].map((v) => v.toFixed(3));
+      const midVtx = Math.min(Math.floor(pos.count / 2), pos.count - 1);
+      const nM = [nrm.getX(midVtx), nrm.getY(midVtx), nrm.getZ(midVtx)].map((v) => v.toFixed(3));
+      console.debug(
+        `[PTSceneBuilder] mesh="${mesh.name}" tris=${triCount} ` +
+          `pos0=(${p0.join(',')}) nrm0=(${n0.join(',')}) nrmMid=(${nM.join(',')}) ` +
+          `groups=${nonIndexed.groups.length} runTri=${runningTriCount}`,
+      );
+    }
 
     geoList.push(nonIndexed);
     // Only dispose the clone when toNonIndexed created a separate geometry
@@ -349,16 +363,18 @@ export function buildBVHScene(scene: Scene): BVHSceneData {
     aabb_array[ab + 8] = (vp0z + vp1z + vp2z) * 0.333333333;
   }
 
-  // ── DEBUG: dump material descriptors ────────────────────────────────────
-  for (let m = 0; m < materialDescs.length; m++) {
-    const md = materialDescs[m]!;
-    const marker = triangleMaterialMarkers[m] ?? '?';
-    console.log(
-      `[PTSceneBuilder] mat[${m}] type=${md.type} ` +
-        `rgb=(${md.r.toFixed(3)},${md.g.toFixed(3)},${md.b.toFixed(3)}) ` +
-        `rough=${md.roughness.toFixed(2)} metal=${md.metalness.toFixed(2)} ` +
-        `tex=${md.texID} cumTri=${marker}`,
-    );
+  // ── DEBUG: dump material descriptors (guarded by DEBUG_BUILD_LOG) ───────
+  if (DEBUG_BUILD_LOG) {
+    for (let m = 0; m < materialDescs.length; m++) {
+      const md = materialDescs[m]!;
+      const marker = triangleMaterialMarkers[m] ?? '?';
+      console.debug(
+        `[PTSceneBuilder] mat[${m}] type=${md.type} ` +
+          `rgb=(${md.r.toFixed(3)},${md.g.toFixed(3)},${md.b.toFixed(3)}) ` +
+          `rough=${md.roughness.toFixed(2)} metal=${md.metalness.toFixed(2)} ` +
+          `tex=${md.texID} cumTri=${marker}`,
+      );
+    }
   }
 
   merged.dispose();
@@ -370,16 +386,6 @@ export function buildBVHScene(scene: Scene): BVHSceneData {
   console.timeEnd('[PTSceneBuilder] BVH build');
 
   // ── 7. Create DataTextures ────────────────────────────────────────────────
-
-  const texOpts = {
-    mapping: undefined, // THREE.Texture.DEFAULT_MAPPING
-    wrapS: ClampToEdgeWrapping,
-    wrapT: ClampToEdgeWrapping,
-    magFilter: NearestFilter,
-    minFilter: NearestFilter,
-    format: RGBAFormat,
-    type: FloatType,
-  } as const;
 
   const triangleTexture = new DataTexture(
     triangle_array,
@@ -394,7 +400,6 @@ export function buildBVHScene(scene: Scene): BVHSceneData {
   triangleTexture.flipY = false;
   triangleTexture.generateMipmaps = false;
   triangleTexture.needsUpdate = true;
-  void texOpts; // suppress unused warning
 
   const aabbTexture = new DataTexture(aabb_array, TEX_SIZE, TEX_SIZE, RGBAFormat, FloatType);
   aabbTexture.wrapS = aabbTexture.wrapT = ClampToEdgeWrapping;
