@@ -58,17 +58,25 @@ const MAX_TRIANGLES = (TEX_SIZE * TEX_SIZE) / 8; // 524,288 — 8 texels per tri
 /**
  * Per-layer resolution for the albedo sampler2DArray. All source textures are
  * resized to this size on import. 1024 = good tradeoff between memory and
- * detail (256 MiB for 64 layers). Bump to 2048 for hero scenes; drop to 512
- * for mobile.
+ * detail (≈ 4 MiB per layer). Bump to 2048 for hero scenes (16 MiB/layer);
+ * drop to 512 for mobile (1 MiB/layer).
  */
 export const ALBEDO_LAYER_SIZE = 1024;
 
 /**
- * Hard ceiling on layer count per scene. Real GPUs typically support 2048
- * layers (MAX_ARRAY_TEXTURE_LAYERS). We cap lower to bound CPU upload time
- * and memory; bump as needed.
+ * Default ceiling on layer count per scene. Memory cost grows linearly:
+ * at ALBEDO_LAYER_SIZE=1024, RGBA8 = 4 MiB per layer, so:
+ *   64 layers  →  256 MiB
+ *   128 layers →  512 MiB
+ *   256 layers →    1 GiB
+ *
+ * 64 is a safe default that fits comfortably under typical browser
+ * `Uint8Array` allocation budgets across desktop + mid-tier mobile. Real
+ * GPUs support up to 2048 layers (`MAX_ARRAY_TEXTURE_LAYERS`); raise this
+ * ceiling deliberately once a per-scene asset pipeline can bucket textures
+ * by size and pre-validate available memory.
  */
-export const MAX_ALBEDO_LAYERS = 256;
+export const MAX_ALBEDO_LAYERS = 64;
 
 /**
  * Enable verbose per-mesh / per-material console diagnostics during scene build.
@@ -460,10 +468,48 @@ export function disposeBVHSceneData(d: BVHSceneData | null): void {
 // ── Albedo array builder ─────────────────────────────────────────────────────
 
 /**
+ * Try to allocate a `Uint8Array` of the requested layer count. If the
+ * allocation throws (browser memory pressure, V8 fragmentation), retry with
+ * progressively fewer layers until something succeeds — minimum 1 layer
+ * (the white fallback). Returns the buffer + the actual layer count used.
+ *
+ * This shields us from a hard crash when MAX_ALBEDO_LAYERS is bumped high
+ * (1024² × 256 × 4 = 1 GiB; can fail on 32-bit Chrome or low-memory mobile).
+ */
+function _allocLayerBuffer(
+  perLayerBytes: number,
+  requestedLayers: number,
+): { data: Uint8Array; actualLayers: number } {
+  let layers = requestedLayers;
+  while (layers >= 1) {
+    try {
+      const bytes = perLayerBytes * layers;
+      const data = new Uint8Array(bytes);
+      return { data, actualLayers: layers };
+    } catch (err) {
+      console.warn(
+        `[PTSceneBuilder] albedo array alloc failed at ${layers} layers ` +
+          `(${((perLayerBytes * layers) / (1024 * 1024)).toFixed(1)} MiB) — retrying with half`,
+        err,
+      );
+      layers = Math.floor(layers / 2);
+    }
+  }
+  // Final fallback — always succeeds (1 layer at 1×1 is < 4 bytes).
+  return { data: new Uint8Array(perLayerBytes), actualLayers: 1 };
+}
+
+/**
  * Pack source albedo textures into a single sampler2DArray-compatible
  * `DataArrayTexture`. Layer 0 is reserved as a white fallback. Layers 1..N
  * correspond to `sources[0..N-1]` resized to `ALBEDO_LAYER_SIZE²` via a
  * shared `<canvas>` with `drawImage`.
+ *
+ * Memory cost: 4 MiB per layer at the default 1024² (RGBA8). For 64 layers
+ * that's 256 MiB — allocated once per scene build, reused until the next
+ * `setScene`. Allocation is wrapped in `_allocLayerBuffer` which halves
+ * the layer count on RangeError and logs a warning, so a too-ambitious
+ * `MAX_ALBEDO_LAYERS` degrades gracefully instead of crashing.
  *
  * sRGB conversion is delegated to the GPU sampler (texture.colorSpace =
  * SRGBColorSpace). Source images that aren't canvas-drawable (raw DataTextures,
@@ -476,13 +522,25 @@ function _buildAlbedoArray(sources: Texture[]): {
 } {
   const W = ALBEDO_LAYER_SIZE;
   const H = ALBEDO_LAYER_SIZE;
-  const layerCount = Math.min(sources.length + 1, MAX_ALBEDO_LAYERS);
-  const data = new Uint8Array(W * H * layerCount * 4);
+  const perLayerBytes = W * H * 4;
+  const requestedLayers = Math.min(sources.length + 1, MAX_ALBEDO_LAYERS);
+  const estMiB = ((perLayerBytes * requestedLayers) / (1024 * 1024)).toFixed(1);
+  console.debug(
+    `[PTSceneBuilder] allocating albedo array: ${requestedLayers} layers × ${W}² × RGBA8 ≈ ${estMiB} MiB`,
+  );
+
+  const { data, actualLayers } = _allocLayerBuffer(perLayerBytes, requestedLayers);
+  if (actualLayers < requestedLayers) {
+    console.warn(
+      `[PTSceneBuilder] reduced albedo array from ${requestedLayers} → ${actualLayers} layers due to memory pressure; ` +
+        `some textures will be dropped (use white fallback).`,
+    );
+  }
 
   // Layer 0 — white fallback
-  for (let i = 0; i < W * H * 4; i++) data[i] = 255;
+  for (let i = 0; i < perLayerBytes; i++) data[i] = 255;
 
-  // Layers 1..N — rasterize sources via shared canvas
+  // Layers 1..actualLayers-1 — rasterize sources via shared canvas
   const canvas = typeof document !== 'undefined' ? document.createElement('canvas') : null;
   if (canvas) {
     canvas.width = W;
@@ -490,12 +548,12 @@ function _buildAlbedoArray(sources: Texture[]): {
   }
   const ctx = canvas?.getContext('2d', { willReadFrequently: true }) ?? null;
 
-  for (let i = 0; i < layerCount - 1; i++) {
+  for (let i = 0; i < actualLayers - 1; i++) {
     const src = sources[i];
-    const layerOffset = (i + 1) * W * H * 4;
+    const layerOffset = (i + 1) * perLayerBytes;
     if (!src || !src.image || !ctx) {
-      // Fall back to white for this layer (already initialised above? no — only layer 0)
-      for (let p = 0; p < W * H * 4; p++) data[layerOffset + p] = 255;
+      // Fall back to white for this layer
+      for (let p = 0; p < perLayerBytes; p++) data[layerOffset + p] = 255;
       if (!ctx) {
         console.warn('[PTSceneBuilder] no 2d canvas context — albedo array filled with white');
       }
@@ -515,11 +573,11 @@ function _buildAlbedoArray(sources: Texture[]): {
         `[PTSceneBuilder] failed to rasterize albedo texture into layer ${i + 1} — using white fallback`,
         err,
       );
-      for (let p = 0; p < W * H * 4; p++) data[layerOffset + p] = 255;
+      for (let p = 0; p < perLayerBytes; p++) data[layerOffset + p] = 255;
     }
   }
 
-  const tex = new DataArrayTexture(data, W, H, layerCount);
+  const tex = new DataArrayTexture(data, W, H, actualLayers);
   tex.format = RGBAFormat;
   tex.type = UnsignedByteType;
   // GPU-side sRGB → linear conversion at sample time (matches source maps).
@@ -533,7 +591,7 @@ function _buildAlbedoArray(sources: Texture[]): {
   tex.flipY = false;
   tex.needsUpdate = true;
 
-  return { albedoArray: tex, albedoLayerCount: layerCount };
+  return { albedoArray: tex, albedoLayerCount: actualLayers };
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
