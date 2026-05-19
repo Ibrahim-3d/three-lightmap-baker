@@ -16,11 +16,9 @@ import {
   RGBAFormat,
   RectAreaLight,
   SpotLight,
-  UnsignedByteType,
   Vector3,
   type PerspectiveCamera,
   type Scene,
-  type Texture,
   type WebGLRenderer,
 } from 'three';
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
@@ -31,9 +29,6 @@ import { buildBVHScene, disposeBVHSceneData, type BVHSceneData } from 'pt-render
 import bvhFrag from 'pt-renderer/shaders/bvh-scene.frag.glsl?raw';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-/** Max albedo textures — extended to 16 to match the updated shader. */
-const MAX_ALBEDO_TEXTURES = 16;
 
 /**
  * Max lights supported by the DataTexture layout.
@@ -49,22 +44,30 @@ const MAX_PT_LIGHTS = 16;
 const TEXELS_PER_LIGHT = 4;
 const LIGHT_TEX_WIDTH = MAX_PT_LIGHTS * TEXELS_PER_LIGHT; // 64
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+const LIGHT_TYPE_NAMES = ['directional', 'point', 'spot', 'rectarea'] as const;
 
-function makeWhiteTex(): DataTexture {
-  const t = new DataTexture(
-    new Uint8Array([255, 255, 255, 255]),
-    1,
-    1,
-    RGBAFormat,
-    UnsignedByteType,
-  );
-  t.colorSpace = NoColorSpace;
-  t.minFilter = t.magFilter = NearestFilter;
-  t.generateMipmaps = false;
-  t.needsUpdate = true;
-  return t;
+/** Safe read from Float32Array — returns 0 for out-of-bounds. */
+const f = (arr: Float32Array, i: number): number => arr[i] ?? 0;
+
+/**
+ * Read PT debug visualization mode from URL query string.
+ *   ?ptdebug=1 → normals    (RGB = world normal XYZ)
+ *   ?ptdebug=2 → shading normal nl (after camera-facing flip)
+ *   ?ptdebug=3 → albedo (material color)
+ *   ?ptdebug=4 → material type (white=light, cyan=glass, green=PBR)
+ *   ?ptdebug=5 → direct N·L (one bounce, no shadows)
+ * Returns 0 (off) when query param missing or invalid.
+ */
+function readDebugVisFromURL(): number {
+  if (typeof window === 'undefined') return 0;
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get('ptdebug');
+  if (!raw) return 0;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n >= 0 && n <= 5 ? n : 0;
 }
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 /** Create the empty 64×1 RGBA32F light DataTexture. */
 function makeLightTexture(): DataTexture {
@@ -75,16 +78,6 @@ function makeLightTexture(): DataTexture {
   t.generateMipmaps = false;
   t.needsUpdate = true;
   return t;
-}
-
-function albedoUniforms(
-  textures: Texture[],
-  fallback: DataTexture,
-): Record<string, { value: Texture }> {
-  const out: Record<string, { value: Texture }> = {};
-  for (let i = 0; i < MAX_ALBEDO_TEXTURES; i++)
-    out[`tAlbedoTex${i}`] = { value: textures[i] ?? fallback };
-  return out;
 }
 
 // ── PTController ──────────────────────────────────────────────────────────────
@@ -99,13 +92,13 @@ export interface PTControllerDeps {
 export class PTController {
   private pt: PTRenderer | null = null;
   private sceneData: BVHSceneData | null = null;
-  private whiteTex: DataTexture | null = null;
   private lightTex: DataTexture | null = null;
   private _lightData: Float32Array = new Float32Array(0);
 
   private active = false;
   private rafId = 0;
   private lastMs = 0;
+  private _lightsDumped = false;
 
   // Reusable scratch vectors — avoids GC pressure in render loop.
   private readonly _lightPos = new Vector3();
@@ -117,27 +110,51 @@ export class PTController {
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   async init(): Promise<void> {
-    this.whiteTex = makeWhiteTex();
     this.lightTex = makeLightTexture();
     this._lightData = this.lightTex.image.data as unknown as Float32Array;
+
+    const debugVis = readDebugVisFromURL();
+    if (debugVis > 0) {
+      console.warn(
+        `[baker] PT DEBUG_VIS=${debugVis} active via ?ptdebug=${debugVis}. ` +
+          `1=normals, 2=nl, 3=albedo, 4=matType, 5=NdotL. Remove URL param for normal rendering.`,
+      );
+    }
 
     this.pt = new PTRenderer({
       fragmentShader: bvhFrag,
       sceneIsDynamic: false,
       renderScale: 1.0,
+      debugVis,
       sceneUniforms: {
         tTriangleTexture: { value: null },
         tAABBTexture: { value: null },
+        // Albedo array texture (sampler2DArray). Populated on setScene().
+        // null is fine here; setScene swaps in the real DataArrayTexture
+        // BEFORE the first frame renders, so Three.js never tries to sample
+        // a null binding.
+        tAlbedoArray: { value: null },
         uHasSkyTexture: { value: false },
         tHDRTexture: { value: null },
         uSkyLightIntensity: { value: 1.0 },
         tLightTexture: { value: this.lightTex },
         uNumPTLights: { value: 0 },
-        ...albedoUniforms([], this.whiteTex),
       },
     });
     await this.pt.init(this.deps.renderer);
     this.deps.controls.addEventListener('change', this._onCameraChange);
+
+    // Expose for dev-console runtime toggling:
+    //   __pt.setDebug(1)  // 0=off, 1=normals, ..., 5=NdotL
+    if (typeof window !== 'undefined') {
+      (window as unknown as { __pt: { setDebug: (n: number) => void } }).__pt = {
+        setDebug: (n: number) => {
+          this.pt?.setDefine('DEBUG_VIS', n);
+          this.pt?.resetAccumulation();
+          console.log(`[baker] DEBUG_VIS set to ${n}`);
+        },
+      };
+    }
   }
 
   async setScene(scene: Scene, _camera: PerspectiveCamera): Promise<void> {
@@ -158,19 +175,22 @@ export class PTController {
     }
     u['tTriangleTexture'].value = newData.triangleTexture;
     u['tAABBTexture'].value = newData.aabbTexture;
-
-    const fallback = this.whiteTex!;
-    for (let i = 0; i < MAX_ALBEDO_TEXTURES; i++) {
-      const slot = u[`tAlbedoTex${i}`];
-      if (slot) slot.value = newData.albedoTextures[i] ?? fallback;
+    if (u['tAlbedoArray']) {
+      u['tAlbedoArray'].value = newData.albedoArray;
+    } else {
+      u['tAlbedoArray'] = { value: newData.albedoArray };
     }
+
     this.pt.resetAccumulation();
+    // Re-dump lights on next sync after scene change
+    this._lightsDumped = false;
   }
 
   activate(): void {
     if (this.active || !this.pt) return;
     this.active = true;
     this.lastMs = performance.now();
+    this._lightsDumped = false;
     this._loop();
   }
 
@@ -198,8 +218,6 @@ export class PTController {
     this.pt = null;
     disposeBVHSceneData(this.sceneData);
     this.sceneData = null;
-    this.whiteTex?.dispose();
-    this.whiteTex = null;
     this.lightTex?.dispose();
     this.lightTex = null;
   }
@@ -248,6 +266,11 @@ export class PTController {
    * Pack scene lights into the 64×1 RGBA32F DataTexture.
    * 4 texels per light (see TEXELS_PER_LIGHT comment above).
    * Marks texture.needsUpdate = true when count > 0.
+   *
+   * NOTE: lightmapIgnore is NOT checked here. That flag tells the classic baker
+   * "don't bake a lightmap onto this object" — it says nothing about whether
+   * the PT renderer should use the light. The PT renderer needs ALL scene
+   * lights for correct illumination.
    */
   private _syncLights(): void {
     if (!this.pt || !this.lightTex) return;
@@ -265,28 +288,23 @@ export class PTController {
       const base = count * TEXELS_PER_LIGHT * 4; // float offset
 
       if (obj instanceof DirectionalLight) {
-        if (obj.userData.lightmapIgnore) return;
         obj.getWorldPosition(this._lightPos);
         obj.target.getWorldPosition(this._lightTgt);
         this._lightDir.subVectors(this._lightTgt, this._lightPos).normalize();
-        // texel 0: pos.xyz, type=0
         texData[base + 0] = this._lightPos.x;
         texData[base + 1] = this._lightPos.y;
         texData[base + 2] = this._lightPos.z;
         texData[base + 3] = 0;
-        // texel 1: color.rgb × scale, dist=0
         texData[base + 4] = obj.color.r * obj.intensity * lScale;
         texData[base + 5] = obj.color.g * obj.intensity * lScale;
         texData[base + 6] = obj.color.b * obj.intensity * lScale;
         texData[base + 7] = 0;
-        // texel 2: dir.xyz, spotCos=0
         texData[base + 8] = this._lightDir.x;
         texData[base + 9] = this._lightDir.y;
         texData[base + 10] = this._lightDir.z;
         texData[base + 11] = 0;
         count++;
       } else if (obj instanceof SpotLight) {
-        if (obj.userData.lightmapIgnore) return;
         obj.getWorldPosition(this._lightPos);
         obj.target.getWorldPosition(this._lightTgt);
         this._lightDir.subVectors(this._lightTgt, this._lightPos).normalize();
@@ -304,7 +322,6 @@ export class PTController {
         texData[base + 11] = Math.cos(obj.angle);
         count++;
       } else if (obj instanceof PointLight) {
-        if (obj.userData.lightmapIgnore) return;
         obj.getWorldPosition(this._lightPos);
         texData[base + 0] = this._lightPos.x;
         texData[base + 1] = this._lightPos.y;
@@ -320,9 +337,7 @@ export class PTController {
         texData[base + 11] = 0;
         count++;
       } else if (obj instanceof RectAreaLight) {
-        // Type 3 — true area light. Shader picks random point on face.
         obj.getWorldPosition(this._lightPos);
-        // Face normal direction: RectAreaLight faces -Z in local space.
         this._lightDir.set(0, 0, -1).applyQuaternion(obj.quaternion).normalize();
         texData[base + 0] = this._lightPos.x;
         texData[base + 1] = this._lightPos.y;
@@ -331,17 +346,34 @@ export class PTController {
         texData[base + 4] = obj.color.r * obj.intensity * lScale;
         texData[base + 5] = obj.color.g * obj.intensity * lScale;
         texData[base + 6] = obj.color.b * obj.intensity * lScale;
-        texData[base + 7] = 0; // dist (unused for area)
+        texData[base + 7] = 0;
         texData[base + 8] = this._lightDir.x;
         texData[base + 9] = this._lightDir.y;
         texData[base + 10] = this._lightDir.z;
-        texData[base + 11] = 0; // spotCos (unused)
-        // texel 3: width, height
+        texData[base + 11] = 0;
         texData[base + 12] = obj.width;
         texData[base + 13] = obj.height;
         count++;
       }
     });
+
+    // One-time diagnostic dump on first sync after activation / scene change
+    if (!this._lightsDumped && count > 0) {
+      this._lightsDumped = true;
+      console.groupCollapsed(`[baker] PT lights: ${count} found, lightScale=${lScale}`);
+      for (let i = 0; i < count; i++) {
+        const b = i * TEXELS_PER_LIGHT * 4;
+        const typeIdx = Math.round(f(texData, b + 3));
+        const typeName = LIGHT_TYPE_NAMES[typeIdx] ?? `unknown(${typeIdx})`;
+        console.log(
+          `  #${i} ${typeName}` +
+            ` pos=(${f(texData, b).toFixed(2)}, ${f(texData, b + 1).toFixed(2)}, ${f(texData, b + 2).toFixed(2)})` +
+            ` color=(${f(texData, b + 4).toFixed(3)}, ${f(texData, b + 5).toFixed(3)}, ${f(texData, b + 6).toFixed(3)})` +
+            ` dist=${f(texData, b + 7).toFixed(2)}`,
+        );
+      }
+      console.groupEnd();
+    }
 
     if (u['uNumPTLights']) u['uNumPTLights'].value = count;
     if (count > 0 || this._prevLightCount !== count) {

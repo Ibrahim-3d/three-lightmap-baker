@@ -16,6 +16,7 @@
 precision highp float;
 precision highp int;
 precision highp sampler2D;
+precision highp sampler2DArray;
 
 #include <pathtracing_uniforms_and_defines>
 
@@ -23,31 +24,12 @@ precision highp sampler2D;
 uniform sampler2D tTriangleTexture;
 uniform sampler2D tAABBTexture;
 
-// ── Albedo textures (16, ANGLE/SM5 safe) ──────────────────────────────────
-uniform sampler2D tAlbedoTex0,  tAlbedoTex1,  tAlbedoTex2,  tAlbedoTex3;
-uniform sampler2D tAlbedoTex4,  tAlbedoTex5,  tAlbedoTex6,  tAlbedoTex7;
-uniform sampler2D tAlbedoTex8,  tAlbedoTex9,  tAlbedoTex10, tAlbedoTex11;
-uniform sampler2D tAlbedoTex12, tAlbedoTex13, tAlbedoTex14, tAlbedoTex15;
+// ── Albedo array — single sampler2DArray binding (see bvh-scene.frag.glsl).
+uniform sampler2DArray tAlbedoArray;
 
-vec3 sampleAlbedo(int id, vec2 uv) {
-    vec3 c = vec3(1.0);
-    if      (id ==  0) c = texture(tAlbedoTex0,  uv).rgb;
-    else if (id ==  1) c = texture(tAlbedoTex1,  uv).rgb;
-    else if (id ==  2) c = texture(tAlbedoTex2,  uv).rgb;
-    else if (id ==  3) c = texture(tAlbedoTex3,  uv).rgb;
-    else if (id ==  4) c = texture(tAlbedoTex4,  uv).rgb;
-    else if (id ==  5) c = texture(tAlbedoTex5,  uv).rgb;
-    else if (id ==  6) c = texture(tAlbedoTex6,  uv).rgb;
-    else if (id ==  7) c = texture(tAlbedoTex7,  uv).rgb;
-    else if (id ==  8) c = texture(tAlbedoTex8,  uv).rgb;
-    else if (id ==  9) c = texture(tAlbedoTex9,  uv).rgb;
-    else if (id == 10) c = texture(tAlbedoTex10, uv).rgb;
-    else if (id == 11) c = texture(tAlbedoTex11, uv).rgb;
-    else if (id == 12) c = texture(tAlbedoTex12, uv).rgb;
-    else if (id == 13) c = texture(tAlbedoTex13, uv).rgb;
-    else if (id == 14) c = texture(tAlbedoTex14, uv).rgb;
-    else if (id == 15) c = texture(tAlbedoTex15, uv).rgb;
-    return c;
+vec3 sampleAlbedo(int layer, vec2 uv) {
+    if (layer < 0) return vec3(1.0);
+    return texture(tAlbedoArray, vec3(uv, float(layer))).rgb;
 }
 
 // ── Scene lights (DataTexture, 4 texels/light, max 16) ────────────────────
@@ -82,7 +64,7 @@ vec3  hitNormal, hitColor;
 vec2  hitUV;
 float hitObjectID = -INFINITY;
 float hitOpacity;
-int   hitType, hitAlbedoTextureID;
+int   hitType, hitAlbedoLayer;
 float hitRoughness, hitMetalness;
 
 vec3 F_Schlick(float cosTheta, vec3 F0) {
@@ -93,6 +75,20 @@ vec3 F_Schlick(float cosTheta, vec3 F0) {
 varying vec3  vWorldPos;
 varying vec3  vWorldNormal;
 varying float vValid;
+
+#include <pathtracing_random_functions>
+#include <pathtracing_calc_fresnel_reflectance>
+#include <pathtracing_boundingbox_intersect>
+#include <pathtracing_bvhTriangle_intersect>
+
+// ── BVH node lookup ───────────────────────────────────────────────────────
+void GetBoxNodeData(const in float i, inout vec4 boxNodeData0, inout vec4 boxNodeData1) {
+    float ix2 = i * 2.0;
+    ivec2 uv0 = ivec2(mod(ix2,       2048.0), ix2       * INV_TEXTURE_WIDTH);
+    ivec2 uv1 = ivec2(mod(ix2 + 1.0, 2048.0), (ix2 + 1.0) * INV_TEXTURE_WIDTH);
+    boxNodeData0 = texelFetch(tAABBTexture, uv0, 0);
+    boxNodeData1 = texelFetch(tAABBTexture, uv1, 0);
+}
 
 // ── BVH traversal (identical to bvh-scene.frag.glsl) ─────────────────────
 float SceneIntersect() {
@@ -166,7 +162,7 @@ float SceneIntersect() {
         hitOpacity   = vd7.y;
         hitUV        = triW*vec2(vd4.zw) + triU*vec2(vd5.xy) + triV*vec2(vd5.zw);
         hitType      = int(vd6.x);
-        hitAlbedoTextureID = int(vd7.x);
+        hitAlbedoLayer = int(vd7.x);
         hitRoughness = vd7.z;
         hitMetalness = vd7.w;
         hitObjectID  = 0.0;
@@ -181,8 +177,9 @@ vec3 GetSkyColor(vec3 dir) {
                        asin(clamp(dir.y,-1.0,1.0))*ONE_OVER_PI + 0.5);
         return texture(tHDRTexture, uv).rgb * uSkyLightIntensity;
     }
+    // t=1 when dir.y=+1 (up) → bright sky; t=0 when dir.y=-1 (down) → dark ground.
     float t = clamp(dir.y * 0.5 + 0.5, 0.0, 1.0);
-    return mix(vec3(0.55, 0.65, 0.9), vec3(0.05, 0.1, 0.3), t) * uSkyLightIntensity;
+    return mix(vec3(0.05, 0.1, 0.3), vec3(0.55, 0.65, 0.9), t) * uSkyLightIntensity;
 }
 
 // ── NEE (identical to bvh-scene.frag.glsl) ────────────────────────────────
@@ -226,11 +223,6 @@ vec3 SetupNEE(vec3 x, vec3 nl, out float toLightDist, out float cosNL) {
 }
 
 // ── Path integrator ───────────────────────────────────────────────────────
-#include <pathtracing_random_functions>
-#include <pathtracing_calc_fresnel_reflectance>
-#include <pathtracing_boundingbox_intersect>
-#include <pathtracing_bvhTriangle_intersect>
-
 vec3 CalculateRadiance() {
     vec3  accumCol = vec3(0.0);
     vec3  mask     = vec3(1.0);
@@ -265,8 +257,8 @@ vec3 CalculateRadiance() {
         x  = rayOrigin + rayDirection * t;
 
         vec3 albedo = hitColor;
-        if (hitAlbedoTextureID >= 0 && hitUV.x > -0.5)
-            albedo *= sampleAlbedo(hitAlbedoTextureID, hitUV);
+        if (hitAlbedoLayer >= 0 && hitUV.x > -0.5)
+            albedo *= sampleAlbedo(hitAlbedoLayer, hitUV);
 
         if (hitType == REFR) {
             float nc = 1.0, nt = 1.5;
@@ -308,6 +300,7 @@ vec3 CalculateRadiance() {
                 diffuseCount++;
                 lastWasDiffuse = true;
 
+                // Unbiased 50/50 split (see bvh-scene.frag.glsl comments).
                 if (uNumPTLights > 0 && rand() < 0.5) {
                     float nee_cosNL, nee_dist;
                     vec3 lightRad = SetupNEE(x, nl, nee_dist, nee_cosNL);
@@ -316,6 +309,8 @@ vec3 CalculateRadiance() {
                         nee_lightDist = nee_dist; nee_lightColor = lightRad * nee_cosNL * 2.0;
                         continue;
                     }
+                    // NEE invalid → zero contribution; do NOT fall through to hemisphere bounce.
+                    break;
                 }
                 mask        *= 2.0;
                 rayDirection = randomCosWeightedDirectionInHemisphere(nl);

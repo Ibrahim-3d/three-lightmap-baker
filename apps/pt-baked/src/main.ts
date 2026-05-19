@@ -130,17 +130,15 @@ async function initPT(): Promise<void> {
     sceneUniforms: {
       tTriangleTexture: { value: ptData.triangleTexture },
       tAABBTexture: { value: ptData.aabbTexture },
+      // Single sampler2DArray binding replaces the earlier 16 hardcoded
+      // sampler uniforms; layer 0 = white fallback, per-material layers from
+      // triangle data slot 7.
+      tAlbedoArray: { value: ptData.albedoArray },
       uHasSkyTexture: { value: false },
       tHDRTexture: { value: null },
       uSkyLightIntensity: { value: 1.0 },
       tLightTexture: { value: null },
       uNumPTLights: { value: 0 },
-      ...Object.fromEntries(
-        Array.from({ length: 16 }, (_, i) => [
-          `tAlbedoTex${i}`,
-          { value: ptData!.albedoTextures[i] ?? null },
-        ]),
-      ),
     },
   });
 

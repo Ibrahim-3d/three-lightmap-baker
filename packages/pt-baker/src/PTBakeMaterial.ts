@@ -28,13 +28,17 @@ export interface PTBakeSceneUniforms extends PTSceneUniforms {
 }
 
 export class PTBakeMaterial extends ShaderMaterial {
-  constructor(sceneData: BVHSceneData, lightTex: DataTexture, albedoFallback: DataTexture) {
+  constructor(sceneData: BVHSceneData, lightTex: DataTexture) {
     registerChunks();
 
     const uniforms: Record<string, { value: unknown }> = {
       // BVH scene
       tTriangleTexture: { value: sceneData.triangleTexture },
       tAABBTexture: { value: sceneData.aabbTexture },
+      // Albedo sampler2DArray (layer 0 = white fallback; per-material layer
+      // index lives in triangle data slot 7). Single binding replaces the
+      // earlier 16 hardcoded sampler uniforms.
+      tAlbedoArray: { value: sceneData.albedoArray },
       // Previous accumulation buffer (ping-pong)
       tPreviousTexture: { value: null },
       // Blue-noise texture for low-discrepancy sampling
@@ -64,11 +68,6 @@ export class PTBakeMaterial extends ShaderMaterial {
       uTime: { value: 0.0 },
       uPreviousSampleCount: { value: 1.0 },
     };
-
-    // 16 albedo texture slots
-    for (let i = 0; i < 16; i++) {
-      uniforms[`tAlbedoTex${i}`] = { value: sceneData.albedoTextures[i] ?? albedoFallback };
-    }
 
     super({
       vertexShader: vertSrc,

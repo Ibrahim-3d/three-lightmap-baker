@@ -8,7 +8,9 @@
  */
 
 import {
+  DataTexture,
   FloatType,
+  GLSL3,
   Matrix4,
   Mesh,
   NearestFilter,
@@ -17,9 +19,10 @@ import {
   PlaneGeometry,
   type PerspectiveCamera,
   RGBAFormat,
+  RedFormat,
   Scene,
   ShaderMaterial,
-  TextureLoader,
+  UnsignedByteType,
   Vector2,
   WebGLRenderer,
   WebGLRenderTarget,
@@ -29,7 +32,6 @@ import { registerChunks } from './chunks';
 import { resolveIncludes } from './preprocess';
 
 import vertSrc from './shaders/vertex.glsl?raw';
-import blueNoiseAsset from './BlueNoise_R_128.png';
 import screenCopySrc from './shaders/screen-copy.frag.glsl?raw';
 import screenOutSrc from './shaders/screen-output.frag.glsl?raw';
 
@@ -50,8 +52,12 @@ export interface PTRendererOptions {
   sceneIsDynamic?: boolean;
   /** Resolution scale factor. Default 1.0. Use 0.5 on mobile. */
   renderScale?: number;
-  /** URL for the 128×128 blue-noise R8 texture. Default: /BlueNoise_R_128.png */
-  blueNoiseUrl?: string;
+  /**
+   * Initial DEBUG_VIS define value (0=off, 1=normals, 2=shading normals,
+   * 3=albedo, 4=material type, 5=direct NdotL). Can be changed at runtime
+   * via setDefine('DEBUG_VIS', n).
+   */
+  debugVis?: number;
 }
 
 // Shared fullscreen plane for all three passes
@@ -97,12 +103,24 @@ export class PTRenderer {
     this.renderScale = opts.renderScale ?? 1.0;
   }
 
-  // ── Async init (loads blue-noise texture, builds materials) ──────────────
+  // ── Async init (builds noise texture + materials) ────────────────────────
 
   async init(renderer: WebGLRenderer): Promise<void> {
-    const blueNoise = await new TextureLoader().loadAsync(this.opts.blueNoiseUrl ?? blueNoiseAsset);
-    blueNoise.minFilter = blueNoise.magFilter = NearestFilter;
-    blueNoise.generateMipmaps = false;
+    // Procedural noise texture used as a per-pixel random seed by the rand()
+    // function in pathtracing_random_functions.glsl. The uniform is named
+    // tBlueNoiseTexture for compatibility with the erichlof reference, but
+    // the contents are currently WHITE noise (Math.random()) — a known
+    // quality regression vs. a real blue-noise PNG. Path tracing still works
+    // correctly; convergence at low SPP is just noisier than ideal. Replace
+    // with a void-and-cluster generator or load a static PNG when investing
+    // in image quality.
+    const noiseSize = 128;
+    const noiseData = new Uint8Array(noiseSize * noiseSize);
+    for (let i = 0; i < noiseData.length; i++) noiseData[i] = Math.floor(Math.random() * 256);
+    const noiseTex = new DataTexture(noiseData, noiseSize, noiseSize, RedFormat, UnsignedByteType);
+    noiseTex.minFilter = noiseTex.magFilter = NearestFilter;
+    noiseTex.generateMipmaps = false;
+    noiseTex.needsUpdate = true;
 
     const w = Math.floor(renderer.domElement.width * this.renderScale);
     const h = Math.floor(renderer.domElement.height * this.renderScale);
@@ -124,7 +142,7 @@ export class PTRenderer {
     // ── Shared PT uniforms ─────────────────────────────────────────────────
     const shared = {
       tPreviousTexture: { value: this.copyRT.texture },
-      tBlueNoiseTexture: { value: blueNoise },
+      tBlueNoiseTexture: { value: noiseTex },
       uCameraMatrix: { value: new Matrix4() },
       uResolution: { value: new Vector2(w, h) },
       uRandomVec2: { value: new Vector2() },
@@ -144,14 +162,25 @@ export class PTRenderer {
 
     const ptUniforms = { ...shared, ...(this.opts.sceneUniforms ?? {}) };
 
+    // All materials use glslVersion: GLSL3 so Three.js does NOT inject
+    // sRGB output encoding. The PT output shader handles its own
+    // tone mapping + gamma. Each fragment shader declares pc_fragColor.
+    const glslOpts = { glslVersion: GLSL3, depthTest: false, depthWrite: false };
+
     // ── Pass 1: path tracing ───────────────────────────────────────────────
+    const resolvedFrag = resolveIncludes(this.opts.fragmentShader);
+    console.info('[PTRenderer] resolved fragment shader length:', resolvedFrag.length);
     this.ptMat = new ShaderMaterial({
       uniforms: ptUniforms,
-      defines: { NUM_ALBEDO_TEXTURES: 0 },
+      defines: {
+        NUM_ALBEDO_TEXTURES: 0,
+        // Debug visualization: 0=off, 1=normals, 2=shading normals,
+        // 3=albedo, 4=material type, 5=direct NdotL
+        DEBUG_VIS: this.opts.debugVis ?? 0,
+      },
       vertexShader: vertSrc,
-      fragmentShader: resolveIncludes(this.opts.fragmentShader),
-      depthTest: false,
-      depthWrite: false,
+      fragmentShader: resolvedFrag,
+      ...glslOpts,
     });
     this.ptScene.add(_makeMesh(this.ptMat));
 
@@ -160,8 +189,7 @@ export class PTRenderer {
       uniforms: { tPathTracedImageTexture: { value: this.ptRT.texture } },
       vertexShader: vertSrc,
       fragmentShader: screenCopySrc,
-      depthTest: false,
-      depthWrite: false,
+      ...glslOpts,
     });
     this.copyScene.add(_makeMesh(this.copyMat));
 
@@ -179,8 +207,7 @@ export class PTRenderer {
       },
       vertexShader: vertSrc,
       fragmentShader: screenOutSrc,
-      depthTest: false,
-      depthWrite: false,
+      ...glslOpts,
     });
     this.outputScene.add(_makeMesh(this.outputMat));
 
@@ -199,20 +226,12 @@ export class PTRenderer {
     this._cameraRecentlyMoving = true;
   }
 
-  /**
-   * Set a GLSL preprocessor #define on the PT pass material.
-   * Triggers shader recompile (acceptable on scene load, not per-frame).
-   */
   setDefine(key: string, value: number | boolean | string): void {
     if (!this.ptMat) return;
     this.ptMat.defines[key] = value;
     this.ptMat.needsUpdate = true;
   }
 
-  /**
-   * Render one PT frame (3 passes). Call inside rAF instead of renderer.render().
-   * @param deltaMs  milliseconds since last frame
-   */
   render(renderer: WebGLRenderer, camera: PerspectiveCamera, deltaMs: number): void {
     if (!this._ready || this._disposed) return;
     this.elapsedTime += deltaMs * 0.001;
@@ -221,21 +240,24 @@ export class PTRenderer {
     this._updateSampleCounter();
     this._updateUniforms(camera);
 
+    const prevAutoClear = renderer.autoClear;
     renderer.autoClear = false;
-    renderer.setRenderTarget(this.ptRT);
-    renderer.render(this.ptScene, camera);
 
-    renderer.setRenderTarget(this.copyRT);
-    renderer.render(this.copyScene, this.orthoCamera);
+    try {
+      renderer.setRenderTarget(this.ptRT);
+      renderer.render(this.ptScene, camera);
 
-    renderer.setRenderTarget(null);
-    renderer.render(this.outputScene, this.orthoCamera);
+      renderer.setRenderTarget(this.copyRT);
+      renderer.render(this.copyScene, this.orthoCamera);
 
-    renderer.autoClear = true;
+      renderer.setRenderTarget(null);
+      renderer.render(this.outputScene, this.orthoCamera);
+    } finally {
+      renderer.autoClear = prevAutoClear;
+    }
     this._cameraIsMoving = false;
   }
 
-  /** Direct access to the PT pass uniforms. */
   get uniforms(): ShaderMaterial['uniforms'] {
     return this.ptMat?.uniforms ?? {};
   }

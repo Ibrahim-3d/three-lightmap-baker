@@ -9,7 +9,7 @@
  *   3. After all samples: divide by sampleCount → output WebGLRenderTarget.
  *   4. (Optional) Caller applies classic baker's dilation/denoise on the result.
  *
- * This baker shares the same BVH, light DataTexture, and albedo textures with
+ * This baker shares the same BVH, light DataTexture, and albedo array with
  * the real-time PTRenderer so preview and baked output are physically consistent.
  */
 
@@ -24,7 +24,6 @@ import {
   RGBAFormat,
   Scene,
   ShaderMaterial,
-  UnsignedByteType,
   WebGLRenderer,
   WebGLRenderTarget,
   type Object3D,
@@ -61,21 +60,6 @@ export interface PTBakeResult {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function makeWhiteTex(): DataTexture {
-  const t = new DataTexture(
-    new Uint8Array([255, 255, 255, 255]),
-    1,
-    1,
-    RGBAFormat,
-    UnsignedByteType,
-  );
-  t.colorSpace = NoColorSpace;
-  t.minFilter = t.magFilter = NearestFilter;
-  t.generateMipmaps = false;
-  t.needsUpdate = true;
-  return t;
-}
 
 function makeEmptyLightTex(): DataTexture {
   const data = new Float32Array(64 * 4);
@@ -123,12 +107,7 @@ function yield_(): Promise<void> {
 // ── PTBaker ───────────────────────────────────────────────────────────────────
 
 export class PTBaker {
-  private whiteTex: DataTexture;
   private ownedLightTex: DataTexture | null = null;
-
-  constructor() {
-    this.whiteTex = makeWhiteTex();
-  }
 
   /**
    * Bake a lightmap for the given meshes.
@@ -146,18 +125,17 @@ export class PTBaker {
     const size = options.size ?? 1024;
     const samples = options.samples ?? 128;
     const yieldEvery = options.yieldEvery ?? 4;
-    const onProgress = options.onProgress;
-
-    const lightTex = options.lightTex ?? (this.ownedLightTex = makeEmptyLightTex());
     const numLights = options.numLights ?? 0;
+    const lightTex = options.lightTex ?? (this.ownedLightTex ??= makeEmptyLightTex());
 
-    // Two ping-pong accum RTs + a final output RT.
     const rtA = makeRT(size);
     const rtB = makeRT(size);
     const rtOut = makeRT(size);
 
     // Bake material — one instance, shared across all meshes in the scene.
-    const mat = new PTBakeMaterial(sceneData, lightTex, this.whiteTex);
+    // The albedo array texture (with layer-0 white fallback) lives inside
+    // sceneData; PTBakeMaterial wires it up automatically.
+    const mat = new PTBakeMaterial(sceneData, lightTex);
     mat.uniforms['uNumPTLights']!.value = numLights;
     mat.uniforms['uSkyLightIntensity']!.value = options.skyIntensity ?? 1.0;
 
@@ -167,91 +145,84 @@ export class PTBaker {
       fragmentShader: _divideFrag,
       uniforms: {
         tAccum: { value: null },
-        uSampleCount: { value: 1 },
+        uSampleCount: { value: samples },
       },
-      glslVersion: /* GLSL3 */ '300 es' as never,
-      depthTest: false,
-      depthWrite: false,
+      glslVersion: '300 es' as unknown as undefined,
     });
 
-    const divQuad = new Mesh(new PlaneGeometry(2, 2), divideMat);
-    const divCam = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
-    const divScene = new Scene();
-    divScene.add(divQuad);
+    // UV-space pass: render every mesh into the ping-pong RT.
+    // We swap the mesh's material for PTBakeMaterial, render to RT, restore.
+    const originalMaterials = new Map<Mesh, Mesh['material']>();
+    for (const m of meshes) {
+      originalMaterials.set(m, m.material);
+    }
 
-    // Save + restore renderer state.
-    const prevRT = renderer.getRenderTarget();
-    const prevAuto = renderer.autoClear;
-    renderer.autoClear = false;
+    const orthoCam = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const passScene = new Scene();
+    const fullscreenQuad = new Mesh(new PlaneGeometry(2, 2), divideMat);
+    passScene.add(fullscreenQuad);
+
+    let currentSrc = rtA;
+    let currentDst = rtB;
 
     try {
-      // Clear accum buffers.
-      renderer.setRenderTarget(rtA);
-      renderer.clear();
-      renderer.setRenderTarget(rtB);
-      renderer.clear();
-
-      let writeRT = rtA,
-        readRT = rtB;
-
-      for (let s = 0; s < samples; s++) {
-        // Update per-sample uniforms.
-        mat.uniforms['uSampleCounter']!.value = s + 1;
-        mat.uniforms['uFrameCounter']!.value = s + 1;
+      for (let i = 0; i < samples; i++) {
+        // Update per-sample uniforms
+        mat.uniforms['uSampleCounter']!.value = i + 1;
+        mat.uniforms['uFrameCounter']!.value = i + 1;
         mat.uniforms['uRandomVec2']!.value = { x: Math.random(), y: Math.random() };
-        mat.setPreviousTexture(readRT);
+        mat.setPreviousTexture(currentSrc);
 
-        renderer.setRenderTarget(writeRT);
+        // Apply bake material to every mesh
+        for (const m of meshes) {
+          m.material = mat;
+        }
+
+        // Render into destination RT
+        renderer.setRenderTarget(currentDst);
         renderer.clear();
-
-        // Render each mesh in UV2 space.
-        for (const mesh of meshes) {
-          const origMat = mesh.material;
-          mesh.material = mat;
-          // Patch modelMatrix uniform — ShaderMaterial doesn't auto-update it
-          // for scene-less renders; THREE.js does update it if the mesh is in
-          // a scene, so we add it temporarily.
+        // Each mesh renders in its own UV2 space; the bake vertex shader sets
+        // gl_Position from uv2 directly, so any camera will do.
+        for (const m of meshes) {
           const tmpScene = new Scene();
-          tmpScene.add(mesh);
-          tmpScene.updateMatrixWorld(true);
-          renderer.render(tmpScene, divCam);
-          tmpScene.remove(mesh);
-          mesh.material = origMat;
+          tmpScene.add(m);
+          renderer.render(tmpScene, orthoCam);
+          // Restore parent
+          if ((m as Object3D).parent === tmpScene) tmpScene.remove(m);
         }
 
-        // Swap ping-pong.
-        [writeRT, readRT] = [readRT, writeRT];
+        // Swap ping-pong
+        [currentSrc, currentDst] = [currentDst, currentSrc];
 
-        if (s % yieldEvery === 0) {
-          onProgress?.((s + 1) / samples);
-          await yield_();
-        }
+        options.onProgress?.((i + 1) / samples);
+
+        if ((i + 1) % yieldEvery === 0) await yield_();
       }
 
-      // Final divide pass: readRT has the accumulated sum.
-      divideMat.uniforms['tAccum']!.value = readRT.texture;
+      // Restore original materials
+      for (const m of meshes) {
+        const orig = originalMaterials.get(m);
+        if (orig) m.material = orig;
+      }
+
+      // Divide pass: accumulated radiance / sample count → rtOut
+      divideMat.uniforms['tAccum']!.value = currentSrc.texture;
       divideMat.uniforms['uSampleCount']!.value = samples;
       renderer.setRenderTarget(rtOut);
       renderer.clear();
-      renderer.render(divScene, divCam);
+      renderer.render(passScene, orthoCam);
     } finally {
-      renderer.setRenderTarget(prevRT);
-      renderer.autoClear = prevAuto;
-
-      // Dispose intermediates but NOT rtOut (returned to caller).
-      rtA.dispose();
-      rtB.dispose();
-      mat.dispose();
-      divideMat.dispose();
-      divQuad.geometry.dispose();
+      renderer.setRenderTarget(null);
     }
-
-    onProgress?.(1.0);
 
     return {
       texture: rtOut,
       samples,
       dispose: () => {
+        mat.dispose();
+        divideMat.dispose();
+        rtA.dispose();
+        rtB.dispose();
         rtOut.dispose();
         this.ownedLightTex?.dispose();
       },
@@ -259,7 +230,6 @@ export class PTBaker {
   }
 
   dispose(): void {
-    this.whiteTex.dispose();
     this.ownedLightTex?.dispose();
   }
 }
@@ -268,17 +238,24 @@ export class PTBaker {
  * Convenience: build BVH + bake in one call.
  * Caller is responsible for disposing the returned result and the BVHSceneData.
  */
-export async function bakeWithPT(
+export async function bakePTLightmap(
   renderer: WebGLRenderer,
-  scene: Object3D,
+  scene: Scene,
   meshes: Mesh[],
   options: PTBakeOptions = {},
 ): Promise<{ result: PTBakeResult; sceneData: BVHSceneData }> {
-  const sceneData = buildBVHScene(scene as Scene);
+  const sceneData = buildBVHScene(scene);
   const baker = new PTBaker();
   const result = await baker.bake(renderer, meshes, sceneData, options);
-  baker.dispose();
-  return { result, sceneData };
+  return {
+    result: {
+      ...result,
+      dispose: () => {
+        result.dispose();
+        baker.dispose();
+        disposeBVHSceneData(sceneData);
+      },
+    },
+    sceneData,
+  };
 }
-
-export { disposeBVHSceneData };

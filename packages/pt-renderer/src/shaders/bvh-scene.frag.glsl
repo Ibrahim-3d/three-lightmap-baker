@@ -1,6 +1,8 @@
 precision highp float;
 precision highp int;
 precision highp sampler2D;
+precision highp sampler2DArray;
+out highp vec4 pc_fragColor;
 
 #include <pathtracing_uniforms_and_defines>
 
@@ -8,36 +10,23 @@ precision highp sampler2D;
 uniform sampler2D tTriangleTexture;
 uniform sampler2D tAABBTexture;
 
-// ── Albedo textures — 16 individual named samplers (ANGLE/SM5 safe) ──────────
-uniform sampler2D tAlbedoTex0,  tAlbedoTex1,  tAlbedoTex2,  tAlbedoTex3;
-uniform sampler2D tAlbedoTex4,  tAlbedoTex5,  tAlbedoTex6,  tAlbedoTex7;
-uniform sampler2D tAlbedoTex8,  tAlbedoTex9,  tAlbedoTex10, tAlbedoTex11;
-uniform sampler2D tAlbedoTex12, tAlbedoTex13, tAlbedoTex14, tAlbedoTex15;
+// ── Albedo array — single sampler2DArray binding holding all unique scene
+// albedo maps as layers. Layer 0 is a white fallback (used when a material
+// has no map). Triangle data stores the layer index per face; values < 0
+// signal "skip texture sampling, use vertex color only". This replaces the
+// erichlof-style hard-coded `tAlbedoTex0..N` pattern that caps at the WebGL2
+// texture-unit limit (~10 useful slots after core samplers). The array can
+// scale to thousands of unique maps with a single binding.
+uniform sampler2DArray tAlbedoArray;
 
-vec3 sampleAlbedo(int id, vec2 uv) {
-    vec3 c = vec3(1.0);
-    if      (id ==  0) c = texture(tAlbedoTex0,  uv).rgb;
-    else if (id ==  1) c = texture(tAlbedoTex1,  uv).rgb;
-    else if (id ==  2) c = texture(tAlbedoTex2,  uv).rgb;
-    else if (id ==  3) c = texture(tAlbedoTex3,  uv).rgb;
-    else if (id ==  4) c = texture(tAlbedoTex4,  uv).rgb;
-    else if (id ==  5) c = texture(tAlbedoTex5,  uv).rgb;
-    else if (id ==  6) c = texture(tAlbedoTex6,  uv).rgb;
-    else if (id ==  7) c = texture(tAlbedoTex7,  uv).rgb;
-    else if (id ==  8) c = texture(tAlbedoTex8,  uv).rgb;
-    else if (id ==  9) c = texture(tAlbedoTex9,  uv).rgb;
-    else if (id == 10) c = texture(tAlbedoTex10, uv).rgb;
-    else if (id == 11) c = texture(tAlbedoTex11, uv).rgb;
-    else if (id == 12) c = texture(tAlbedoTex12, uv).rgb;
-    else if (id == 13) c = texture(tAlbedoTex13, uv).rgb;
-    else if (id == 14) c = texture(tAlbedoTex14, uv).rgb;
-    else if (id == 15) c = texture(tAlbedoTex15, uv).rgb;
-    return c;
+vec3 sampleAlbedo(int layer, vec2 uv) {
+    if (layer < 0) return vec3(1.0);
+    return texture(tAlbedoArray, vec3(uv, float(layer))).rgb;
 }
 
 // ── Scene lights — packed into a DataTexture, 4 RGBA texels per light ─────────
 //
-// Layout (each light at offset i*4 in a 64×1 RGBA32F texture):
+// Layout (each light at offset i*4 in a 64x1 RGBA32F texture):
 //   texel i*4+0 : pos.xyz,   type     (0=directional, 1=point, 2=spot, 3=rectarea)
 //   texel i*4+1 : color.rgb, dist
 //   texel i*4+2 : dir.xyz,   spotCos
@@ -75,7 +64,7 @@ vec3  hitNormal, hitColor;
 vec2  hitUV;
 float hitObjectID = -INFINITY;
 float hitOpacity;
-int   hitType, hitAlbedoTextureID;
+int   hitType, hitAlbedoLayer;
 float hitRoughness, hitMetalness;
 
 // Fresnel Schlick approximation.
@@ -83,6 +72,22 @@ vec3 F_Schlick(float cosTheta, vec3 F0) {
     return F0 + (1.0 - F0) * pow(max(1.0 - cosTheta, 0.0), 5.0);
 }
 
+
+#include <pathtracing_random_functions>
+#include <pathtracing_calc_fresnel_reflectance>
+#include <pathtracing_boundingbox_intersect>
+#include <pathtracing_bvhTriangle_intersect>
+
+// ── BVH node lookup — reads 2 RGBA texels per node from tAABBTexture ─────────
+// texel[i*2+0]: aabbMin.xyz, aabbMax.x
+// texel[i*2+1]: aabbMax.yz,  primitiveCount, leafOrChild_ID
+void GetBoxNodeData(const in float i, inout vec4 boxNodeData0, inout vec4 boxNodeData1) {
+    float ix2 = i * 2.0;
+    ivec2 uv0 = ivec2(mod(ix2,       2048.0), ix2       * INV_TEXTURE_WIDTH);
+    ivec2 uv1 = ivec2(mod(ix2 + 1.0, 2048.0), (ix2 + 1.0) * INV_TEXTURE_WIDTH);
+    boxNodeData0 = texelFetch(tAABBTexture, uv0, 0);
+    boxNodeData1 = texelFetch(tAABBTexture, uv1, 0);
+}
 
 float SceneIntersect() {
     vec4 cur0, cur1, nA0, nA1, nB0, nB1, tmp0, tmp1;
@@ -155,7 +160,7 @@ float SceneIntersect() {
         hitOpacity   = vd7.y;
         hitUV        = triW*vec2(vd4.zw) + triU*vec2(vd5.xy) + triV*vec2(vd5.zw);
         hitType      = int(vd6.x);
-        hitAlbedoTextureID = int(vd7.x);
+        hitAlbedoLayer = int(vd7.x);
         hitRoughness = vd7.z;
         hitMetalness = vd7.w;
         hitObjectID  = 0.0;
@@ -172,20 +177,15 @@ vec3 GetSkyColor(vec3 dir) {
                        asin(clamp(dir.y,-1.0,1.0))*ONE_OVER_PI + 0.5);
         sky = texture(tHDRTexture, uv).rgb;
     } else {
+        // t=1 when dir.y=+1 (up) → bright sky; t=0 when dir.y=-1 (down) → dark ground
         float t = clamp(dir.y * 0.5 + 0.5, 0.0, 1.0);
-        sky = mix(vec3(0.55, 0.65, 0.9), vec3(0.05, 0.1, 0.3), t);
+        sky = mix(vec3(0.05, 0.1, 0.3), vec3(0.55, 0.65, 0.9), t);
     }
     return sky * uSkyLightIntensity;
 }
 
 
 // ── NEE — Next Event Estimation ───────────────────────────────────────────────
-// Picks one light uniformly. Returns lColor * numLights (PDF cancels).
-// toLightDist: INFINITY = directional; >0 = finite distance.
-// cosNL: cosine of angle to light at surface normal nl.
-//
-// RectAreaLight (type 3): samples a random point on the rectangle surface.
-// The rect face normal is -dir; right = arbitrary perpendicular; up = cross.
 vec3 SetupNEE(vec3 x, vec3 nl, out float toLightDist, out float cosNL) {
     toLightDist = INFINITY; cosNL = 0.0;
     if (uNumPTLights < 1) return vec3(0.0);
@@ -195,13 +195,11 @@ vec3 SetupNEE(vec3 x, vec3 nl, out float toLightDist, out float cosNL) {
     vec3 toLight = vec3(0.0);
 
     if (L.type < 0.5) {
-        // Directional
         toLight     = -L.dir;
         toLightDist = INFINITY;
         cosNL       = max(0.0, dot(toLight, nl));
 
     } else if (L.type < 1.5) {
-        // Point
         vec3 delta = L.pos - x;
         float d    = max(length(delta), 0.001);
         toLight    = delta / d;
@@ -213,7 +211,6 @@ vec3 SetupNEE(vec3 x, vec3 nl, out float toLightDist, out float cosNL) {
             : 1.0 / (d*d + 1.0);
 
     } else if (L.type < 2.5) {
-        // Spot
         vec3 delta = L.pos - x;
         float d    = max(length(delta), 0.001);
         toLight    = delta / d;
@@ -227,14 +224,10 @@ vec3 SetupNEE(vec3 x, vec3 nl, out float toLightDist, out float cosNL) {
                       ((range > 0.0) ? pow(max(0.0, 1.0-d/range), 2.0)/(d*d+1.0) : 1.0/(d*d+1.0));
 
     } else {
-        // RectAreaLight — sample random point on face.
-        // Face normal = -L.dir (light faces -dir direction).
-        // Build local orthonormal frame around the face normal.
         vec3 faceNorm = normalize(-L.dir);
         vec3 right    = normalize(cross(abs(faceNorm.y) < 0.9 ? vec3(0,1,0) : vec3(1,0,0), faceNorm));
         vec3 up       = cross(faceNorm, right);
 
-        // Random point on the rect in [-w/2..w/2] × [-h/2..h/2]
         vec2 r = vec2(rand() - 0.5, rand() - 0.5);
         vec3 samplePos = L.pos + right * (r.x * L.width) + up * (r.y * L.height);
 
@@ -244,7 +237,6 @@ vec3 SetupNEE(vec3 x, vec3 nl, out float toLightDist, out float cosNL) {
         toLightDist = d;
         cosNL       = max(0.0, dot(toLight, nl));
 
-        // Geometric factor: cos(angle to surface) / d² * area
         float cosFace = max(0.0, dot(-toLight, faceNorm));
         float area    = L.width * L.height;
         L.color      *= cosFace * area / (d * d + 1.0);
@@ -254,7 +246,7 @@ vec3 SetupNEE(vec3 x, vec3 nl, out float toLightDist, out float cosNL) {
 
     rayDirection = normalize(toLight + vec3(rand()-0.5, rand()-0.5, rand()-0.5) * 0.02);
     rayOrigin    = x + nl * uEPS_intersect;
-    return L.color * float(uNumPTLights); // compensate for 1/N selection
+    return L.color * float(uNumPTLights);
 }
 
 
@@ -262,6 +254,45 @@ vec3 SetupNEE(vec3 x, vec3 nl, out float toLightDist, out float cosNL) {
 vec3 CalculateRadiance(out vec3 objectNormal, out vec3 objectColor,
                        out float objectID,    out float pixelSharpness)
 {
+    // ── DEBUG_VIS: single-hit diagnostic output ──────────────────────────
+    // 0 = normal path tracing (default)
+    // 1 = world-space normal (RGB = XYZ mapped 0..1)
+    // 2 = shading normal nl (after flip)
+    // 3 = albedo / material color
+    // 4 = material type (LIGHT=white, DIFF/PBR=green, REFR=cyan)
+    // 5 = direct cosine lighting (nl · toLight) — no shadows
+    #if DEBUG_VIS > 0
+    {
+        float t = SceneIntersect();
+        if (t == INFINITY) { pixelSharpness = 1.0; return GetSkyColor(rayDirection); }
+        vec3 n  = normalize(hitNormal);
+        vec3 nl = dot(n, rayDirection) < 0.0 ? n : -n;
+        vec3 x  = rayOrigin + rayDirection * t;
+        objectNormal = n; objectColor = hitColor; objectID = 0.0;
+
+        #if DEBUG_VIS == 1
+            return n * 0.5 + 0.5;          // world normal → RGB
+        #elif DEBUG_VIS == 2
+            return nl * 0.5 + 0.5;         // shading normal → RGB
+        #elif DEBUG_VIS == 3
+            return hitColor;                // material color
+        #elif DEBUG_VIS == 4
+            if (hitType == LIGHT) return vec3(1.0, 1.0, 1.0);
+            if (hitType == REFR)  return vec3(0.0, 1.0, 1.0);
+            return vec3(0.2, 0.8, 0.2);    // PBR/DIFF
+        #elif DEBUG_VIS == 5
+            // simple N·L with first light
+            if (uNumPTLights < 1) return vec3(0.1);
+            PTLight L = getLight(0);
+            vec3 toLight;
+            if (L.type < 0.5) { toLight = -L.dir; }
+            else { toLight = normalize(L.pos - x); }
+            float NdL = max(0.0, dot(nl, toLight));
+            return hitColor * NdL;
+        #endif
+    }
+    #endif
+
     vec3  accumCol = vec3(0.0);
     vec3  mask     = vec3(1.0);
     vec3  n, nl, x;
@@ -281,7 +312,6 @@ vec3 CalculateRadiance(out vec3 objectNormal, out vec3 objectColor,
     {
         float t = SceneIntersect();
 
-        // ── Resolve shadow ray ────────────────────────────────────────────────
         if (nee_active) {
             bool reached = nee_isInfinite ? (t == INFINITY)
                                           : (t > nee_lightDist - uEPS_intersect * 20.0);
@@ -289,7 +319,6 @@ vec3 CalculateRadiance(out vec3 objectNormal, out vec3 objectColor,
             break;
         }
 
-        // ── Miss — sky / environment ──────────────────────────────────────────
         if (t == INFINITY) {
             if (bounce == 0) { pixelSharpness = 1.0; accumCol += GetSkyColor(rayDirection); break; }
             if (lastWasDiffuse) {
@@ -300,7 +329,6 @@ vec3 CalculateRadiance(out vec3 objectNormal, out vec3 objectColor,
             break;
         }
 
-        // ── Emissive area light ───────────────────────────────────────────────
         if (hitType == LIGHT) { accumCol += mask * hitColor; break; }
 
         n  = normalize(hitNormal);
@@ -308,12 +336,11 @@ vec3 CalculateRadiance(out vec3 objectNormal, out vec3 objectColor,
         x  = rayOrigin + rayDirection * t;
 
         vec3 albedo = hitColor;
-        if (hitAlbedoTextureID >= 0 && hitUV.x > -0.5)
-            albedo *= sampleAlbedo(hitAlbedoTextureID, hitUV);
+        if (hitAlbedoLayer >= 0 && hitUV.x > -0.5)
+            albedo *= sampleAlbedo(hitAlbedoLayer, hitUV);
 
         if (bounce == 0) { objectNormal += n; objectColor += albedo; objectID += hitObjectID; }
 
-        // ── REFR — glass / dielectric ─────────────────────────────────────────
         if (hitType == REFR) {
             float nc = 1.0, nt = 1.5;
             Re = calcFresnelReflectance(rayDirection, n, nc, nt, ratioIoR);
@@ -337,7 +364,6 @@ vec3 CalculateRadiance(out vec3 objectNormal, out vec3 objectColor,
             continue;
         }
 
-        // ── PBR_MATERIAL ──────────────────────────────────────────────────────
         {
             vec3  F0   = mix(vec3(0.04), albedo, hitMetalness);
             float cosV = max(dot(nl, -rayDirection), 0.0);
@@ -364,6 +390,17 @@ vec3 CalculateRadiance(out vec3 objectNormal, out vec3 objectColor,
                 bounceIsSpecular = FALSE;
                 lastWasDiffuse   = true;
 
+                // Unbiased 50/50 split between NEE (direct) and hemisphere
+                // bounce (indirect). Each branch's contribution is multiplied
+                // by 2 to compensate the 1/2 selection probability.
+                //
+                // CRITICAL: when the NEE branch is chosen but NEE fails
+                // (cosNL ≤ 0 or shadowed), we MUST terminate the path with
+                // zero contribution — NOT fall through to hemisphere bounce.
+                // Falling through would double-count the indirect bounce on
+                // back-facing surfaces (bottom of sphere / shadow side),
+                // producing the classic "lower hemisphere too bright with
+                // hard NEE-validity line" artifact.
                 if (uNumPTLights > 0 && rand() < 0.5) {
                     float nee_cosNL, nee_dist;
                     vec3 lightRad = SetupNEE(x, nl, nee_dist, nee_cosNL);
@@ -374,6 +411,9 @@ vec3 CalculateRadiance(out vec3 objectNormal, out vec3 objectColor,
                         nee_lightColor = lightRad * nee_cosNL * 2.0;
                         continue;
                     }
+                    // NEE invalid → zero direct contribution. Terminate path
+                    // so we don't bias the indirect (hemisphere) branch.
+                    break;
                 }
 
                 mask        *= 2.0;
