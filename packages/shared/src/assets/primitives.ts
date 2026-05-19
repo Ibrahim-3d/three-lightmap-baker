@@ -2,16 +2,24 @@ import {
   BoxGeometry,
   ConeGeometry,
   CylinderGeometry,
-  type Light,
+  DirectionalLight,
+  DirectionalLightHelper,
+  Group,
   Mesh,
+  MeshBasicMaterial,
   MeshStandardMaterial,
-  type Object3D,
+  Object3D,
   PlaneGeometry,
   PointLight,
+  PointLightHelper,
+  RectAreaLight,
   SphereGeometry,
+  SpotLight,
+  SpotLightHelper,
   type Texture,
   TorusGeometry,
 } from 'three';
+import { RectAreaLightHelper } from 'three/examples/jsm/helpers/RectAreaLightHelper';
 
 /**
  * Asset Library catalog (T-D7). Each entry is a factory producing a fresh
@@ -42,7 +50,13 @@ export type LightDef = {
   label: string;
   icon: 'lightbulb' | 'sun' | 'spot' | 'area';
   enabled: boolean;
-  create: (() => Light) | null;
+  /**
+   * Factory returns the visible scene node — usually a Group bundling the
+   * actual Light + a TargetObject + a LightHelper (Blender-style gizmo).
+   * Marking the group's `userData.bakerLightType` lets the inspector know
+   * which type-specific fields to render.
+   */
+  create: (() => Object3D) | null;
 };
 
 function defaultMat(): MeshStandardMaterial {
@@ -109,17 +123,138 @@ export const primitiveCatalog: {
       label: 'Point',
       icon: 'lightbulb',
       enabled: true,
-      create: () => {
-        const l = new PointLight(0xffffff, 2.0, 0, 2);
-        l.name = 'Point Light';
-        return l;
-      },
+      create: () => makePointLight(),
     },
-    { id: 'spot', label: 'Spot', icon: 'spot', enabled: false, create: null },
-    { id: 'sun', label: 'Sun', icon: 'sun', enabled: false, create: null },
-    { id: 'area', label: 'Area', icon: 'area', enabled: false, create: null },
+    {
+      id: 'spot',
+      label: 'Spot',
+      icon: 'spot',
+      enabled: true,
+      create: () => makeSpotLight(),
+    },
+    {
+      id: 'sun',
+      label: 'Sun',
+      icon: 'sun',
+      enabled: true,
+      create: () => makeSunLight(),
+    },
+    {
+      id: 'area',
+      label: 'Area',
+      icon: 'area',
+      enabled: true,
+      create: () => makeAreaLight(),
+    },
   ],
 };
+
+/**
+ * Tag all descendants of a helper subtree as bake-ignored. Helpers are visual
+ * gizmos and must never contribute to lightmap energy. (The actual Light
+ * inside the same Group is NOT tagged — only the helper subtree.)
+ */
+function markHelperLightmapIgnore(helper: Object3D): void {
+  helper.userData.lightmapIgnore = true;
+  helper.traverse((c) => {
+    c.userData.lightmapIgnore = true;
+  });
+}
+
+function makePointLight(): Object3D {
+  const group = new Group();
+  group.name = 'Point Light';
+  group.userData.bakerLightType = 'point';
+
+  const light = new PointLight(0xffffff, 2.0, 0, 2);
+  light.name = 'PointLight';
+  group.add(light);
+
+  // PointLightHelper draws a wireframe sphere at light's worldPos. The bulb
+  // body is a small emissive sphere so the light is visible in solid view.
+  const bulb = new Mesh(
+    new SphereGeometry(0.08, 16, 12),
+    new MeshBasicMaterial({ color: 0xffe080 }),
+  );
+  bulb.userData.lightmapIgnore = true;
+  group.add(bulb);
+
+  const helper = new PointLightHelper(light, 0.35, 0xffe080);
+  markHelperLightmapIgnore(helper);
+  group.add(helper);
+
+  group.userData.lightHelper = helper;
+  return group;
+}
+
+function makeSpotLight(): Object3D {
+  const group = new Group();
+  group.name = 'Spot Light';
+  group.userData.bakerLightType = 'spot';
+
+  const light = new SpotLight(0xffffff, 4.0, 0, Math.PI / 6, 0.3, 2);
+  light.name = 'SpotLight';
+  // Spot needs an explicit target object inside the group so rotating the
+  // group rotates the cone. Target sits one unit along -Z (group local).
+  const target = new Object3D();
+  target.position.set(0, 0, -1);
+  target.userData.lightmapIgnore = true;
+  group.add(light);
+  group.add(target);
+  light.target = target;
+
+  const helper = new SpotLightHelper(light, 0xffd200);
+  markHelperLightmapIgnore(helper);
+  group.add(helper);
+
+  group.userData.lightHelper = helper;
+  group.userData.lightTarget = target;
+  return group;
+}
+
+function makeSunLight(): Object3D {
+  const group = new Group();
+  group.name = 'Sun';
+  group.userData.bakerLightType = 'directional';
+
+  const light = new DirectionalLight(0xffffff, 1.0);
+  light.name = 'DirectionalLight';
+  const target = new Object3D();
+  target.position.set(0, 0, -1);
+  target.userData.lightmapIgnore = true;
+  group.add(light);
+  group.add(target);
+  light.target = target;
+
+  // DirectionalLightHelper draws a plane + an arrow showing direction.
+  // `size` controls plane edge length; tuned to feel Blender-ish in our scene.
+  const helper = new DirectionalLightHelper(light, 1.5, 0xffd200);
+  markHelperLightmapIgnore(helper);
+  group.add(helper);
+
+  group.userData.lightHelper = helper;
+  group.userData.lightTarget = target;
+  return group;
+}
+
+function makeAreaLight(): Object3D {
+  const group = new Group();
+  group.name = 'Area Light';
+  group.userData.bakerLightType = 'area';
+
+  const light = new RectAreaLight(0xffffff, 5.0, 2, 2);
+  light.name = 'RectAreaLight';
+  group.add(light);
+
+  // RectAreaLightHelper is from /examples/jsm; it adds a thin rectangle outline
+  // matching the emitter footprint. NOT a child of light (positions itself).
+  const helper = new RectAreaLightHelper(light);
+  markHelperLightmapIgnore(helper);
+  light.add(helper);
+
+  group.userData.lightHelper = helper;
+  return group;
+}
 
 /** Factory dispatcher used by SceneController.addAsset. Returns null when the
  *  spec id is unknown or the catalog entry is disabled (e.g. Spot placeholder). */

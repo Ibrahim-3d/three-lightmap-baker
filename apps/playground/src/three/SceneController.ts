@@ -225,7 +225,10 @@ export class SceneController {
   lookupObject(id: string | null): Object3D | null {
     if (!id) return null;
     if (id === LIGHT_DUMMY_ID) return this.lightDummy;
-    return this.meshes.find((m) => m.uuid === id) ?? null;
+    const mesh = this.meshes.find((m) => m.uuid === id);
+    if (mesh) return mesh;
+    // Asset-library light groups live as direct scene children.
+    return this.scene.children.find((o) => o.uuid === id && o.userData?.bakerLightType) ?? null;
   }
 
   /** Attach the gizmo to a tree node (or the light dummy when null/light id).
@@ -256,6 +259,17 @@ export class SceneController {
         name: m.name || `Mesh (${m.geometry.type.replace('Geometry', '')})`,
         kind: 'mesh',
         visible: m.visible,
+      });
+    }
+    // Asset-library lights (Point / Spot / Sun / Area) — top-level scene
+    // children carrying `userData.bakerLightType`.
+    for (const child of this.scene.children) {
+      if (!child.userData?.bakerLightType) continue;
+      tree.push({
+        id: child.uuid,
+        name: child.name || 'Light',
+        kind: 'light',
+        visible: child.visible,
       });
     }
     return tree;
@@ -525,13 +539,30 @@ export class SceneController {
       this.meshes.push(mesh as SceneObj);
       this.hooks.installDummyLightmaps([mesh as SceneObj]);
     } else {
-      // Light path — parent directly to scene; no dummy lightmap install.
-      this.scene.add(node as Light);
+      // Asset-library lights are Group objects bundling Light + Target + Helper.
+      // Parented directly to the scene so they survive cornellRoot tear-downs
+      // on preset swaps and dispose with the scene.
+      this.scene.add(node);
+      // Lift a touch so they don't sit on the floor.
+      node.position.y = Math.max(node.position.y, 2);
     }
 
     this.hooks.onSceneChanged(this.meshes);
     this.hooks.onStaleChange?.();
     return node.uuid;
+  }
+
+  /**
+   * Update every asset-library light helper. Three's helpers cache the
+   * light's matrixWorld + target.matrixWorld and need an explicit .update()
+   * call after any transform change. Cheap; safe to call every RAF.
+   */
+  updateLightHelpers(): void {
+    for (const child of this.scene.children) {
+      if (!child.userData?.bakerLightType) continue;
+      const helper = child.userData?.lightHelper as { update?: () => void } | undefined;
+      helper?.update?.();
+    }
   }
 
   /**
