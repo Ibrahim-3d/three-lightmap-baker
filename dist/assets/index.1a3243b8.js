@@ -1,4 +1,4 @@
-import{S as R,s as z,t as M,G as O,M as G,P as X,O as Y,c as E,u as j,v as k,R as y,w as K,N as b,k as g,F as C,x as Q}from"./index.09fba1b2.js";import{y as se}from"./index.09fba1b2.js";var $=`/**\r
+import{S as R,s as z,t as M,G as O,M as G,P as X,O as Y,c as E,u as j,v as k,R as y,w as K,N as b,k as g,F as C,x as Q}from"./index.c31f1e76.js";import{y as se}from"./index.c31f1e76.js";var $=`/**\r
  * UV-space bake vertex shader.\r
  *\r
  * Instead of normal clip-space rendering, projects geometry into UV2 space\r
