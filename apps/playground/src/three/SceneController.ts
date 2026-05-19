@@ -1,19 +1,24 @@
 import {
+  ACESFilmicToneMapping,
   Box3,
   BoxGeometry,
+  CineonToneMapping,
   Color,
   DoubleSide,
   Euler,
   type Light,
+  LinearToneMapping,
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
+  NoToneMapping,
   Object3D,
   PerspectiveCamera,
   Plane,
   PlaneGeometry,
   PointLight,
   Raycaster,
+  ReinhardToneMapping,
   Scene,
   SphereGeometry,
   SRGBColorSpace,
@@ -27,13 +32,29 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass';
+import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass';
+import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader';
 import { Diagnostics } from 'baker-classic';
-import { createAsset, type AssetSpec, sceneRegistry } from 'shared';
+import { createAsset, type AssetSpec, postFXSettings, sceneRegistry } from 'shared';
 import type { SceneObj } from './types';
 
 // Classic Cornell box dims: 10×10×10 unit room centered at (0, 5, 0)
 export const ROOM = 10;
 const HALF = ROOM / 2;
+
+const TONE_MAP_LOOKUP = {
+  none: NoToneMapping,
+  linear: LinearToneMapping,
+  reinhard: ReinhardToneMapping,
+  cineon: CineonToneMapping,
+  aces: ACESFilmicToneMapping,
+  // AgX not exported by THREE 0.161; fall back to ACES so the option still works.
+  agx: ACESFilmicToneMapping,
+} as const;
 
 export type ScenePreset = 'classic' | 'advanced';
 
@@ -85,6 +106,13 @@ export class SceneController {
   meshes: SceneObj[] = [];
 
   diag: Diagnostics;
+
+  // ── Post-FX composer (lazy; built on first enabled-render) ──────────────────
+  private composer: EffectComposer | null = null;
+  private renderPass: RenderPass | null = null;
+  private ssaoPass: SSAOPass | null = null;
+  private bloomPass: UnrealBloomPass | null = null;
+  private fxaaPass: ShaderPass | null = null;
 
   private _preDragSnap: TransformSnap | null = null;
 
@@ -475,10 +503,99 @@ export class SceneController {
   }
 
   updateSize(): void {
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.camera.aspect = window.innerWidth / window.innerHeight;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    this.renderer.setSize(w, h);
+    this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.renderer.setPixelRatio(window.devicePixelRatio);
+
+    if (this.composer) {
+      this.composer.setSize(w, h);
+      this.bloomPass?.setSize(w, h);
+      this.ssaoPass?.setSize(w, h);
+      if (this.fxaaPass) {
+        const dpr = this.renderer.getPixelRatio();
+        const res = this.fxaaPass.material.uniforms.resolution;
+        if (res) res.value.set(1 / (w * dpr), 1 / (h * dpr));
+      }
+    }
+  }
+
+  /**
+   * Lazy-build the EffectComposer chain: RenderPass → SSAO → Bloom → FXAA.
+   * Built only on first \`renderFrame\` call with postFX.master = true so the
+   * default (composer-less) bake-QA path pays zero memory/perf cost.
+   */
+  private ensureComposer(): EffectComposer {
+    if (this.composer) return this.composer;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const composer = new EffectComposer(this.renderer);
+    composer.setSize(w, h);
+
+    this.renderPass = new RenderPass(this.scene, this.camera);
+    composer.addPass(this.renderPass);
+
+    this.ssaoPass = new SSAOPass(this.scene, this.camera, w, h);
+    this.ssaoPass.kernelRadius = 0.2;
+    this.ssaoPass.minDistance = 0.005;
+    this.ssaoPass.maxDistance = 0.1;
+    composer.addPass(this.ssaoPass);
+
+    this.bloomPass = new UnrealBloomPass(new Vector2(w, h), 0.35, 0.4, 0.85);
+    composer.addPass(this.bloomPass);
+
+    this.fxaaPass = new ShaderPass(FXAAShader);
+    const dpr = this.renderer.getPixelRatio();
+    const res = this.fxaaPass.material.uniforms.resolution;
+    if (res) res.value.set(1 / (w * dpr), 1 / (h * dpr));
+    composer.addPass(this.fxaaPass);
+
+    this.composer = composer;
+    return composer;
+  }
+
+  /**
+   * Pull current postFXSettings into renderer + composer passes. Called every
+   * frame; cheap (just a handful of uniform writes).
+   */
+  private syncPostFX(): void {
+    const s = postFXSettings.value;
+    // Tone mapping + exposure live on the renderer regardless of composer use.
+    this.renderer.toneMapping = TONE_MAP_LOOKUP[s.toneMapping] ?? NoToneMapping;
+    this.renderer.toneMappingExposure = s.exposure;
+
+    if (!this.composer) return;
+    if (this.ssaoPass) {
+      this.ssaoPass.enabled = s.ssaoEnabled;
+      this.ssaoPass.kernelRadius = s.ssaoRadius;
+      // SSAOPass output mode 0 = scene + occlusion blended.
+      // Intensity tweak via output mix.
+      this.ssaoPass.minDistance = 0.005;
+      this.ssaoPass.maxDistance = 0.1 + s.ssaoIntensity * 0.05;
+    }
+    if (this.bloomPass) {
+      this.bloomPass.enabled = s.bloomEnabled;
+      this.bloomPass.strength = s.bloomStrength;
+      this.bloomPass.radius = s.bloomRadius;
+      this.bloomPass.threshold = s.bloomThreshold;
+    }
+  }
+
+  /**
+   * Single render entry point. Composer when master toggle is on, plain
+   * renderer otherwise. AtlasViewer and other scissor overlays still
+   * render *after* this returns, against the default framebuffer.
+   */
+  renderFrame(): void {
+    this.syncPostFX();
+    const s = postFXSettings.value;
+    if (s.master) {
+      this.ensureComposer().render();
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
   }
 
   /** Update gizmo visibility/enabled state (called from RAF). */

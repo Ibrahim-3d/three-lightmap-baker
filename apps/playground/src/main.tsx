@@ -8,7 +8,7 @@ import { registerBakerClassicUI } from 'baker-classic/ui';
 // Code stays in tree (packages/pt-renderer/) — flip back on by uncommenting:
 //   import { registerPTRendererUI } from 'pt-renderer/ui';
 //   registerPTRendererUI();
-import { App, GalleryPage, showToast } from 'demo-shell';
+import { App, GalleryPage, PostFXPage, showToast } from 'demo-shell';
 import {
   activeSceneId,
   atlasViewerVisible,
@@ -16,6 +16,7 @@ import {
   bakeStatus,
   gizmoMode,
   isStale,
+  panelRegistry,
   renderMode,
   sceneTree,
   selectedId,
@@ -155,6 +156,9 @@ void (async () => {
   // Publish app-side view-layer table to the shell so `<ViewportToggle/>` can
   // render the top-right pass picker without importing app internals.
   viewLayers.value = LAYERS.map((l) => ({ id: l.id, label: l.label, group: l.group }));
+
+  // Generic Post-FX tab (renderer-agnostic; reads the `postFXSettings` signal).
+  panelRegistry.register({ id: 'postfx', label: 'Post FX', component: PostFXPage });
 
   app.externalHooks = {
     onSceneChanged: () => {

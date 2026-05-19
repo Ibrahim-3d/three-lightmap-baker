@@ -41,6 +41,7 @@ export {
   viewLayers,
   atlasViewerVisible,
   dirtyMeshIds,
+  postFXSettings,
   log,
 } from './signals/ui';
 export type {
@@ -49,6 +50,7 @@ export type {
   LogEntry,
   LogLevel,
   ViewLayerDescriptor,
+  PostFXSettings,
 } from './signals/ui';
 
 export {

@@ -82,6 +82,42 @@ export const atlasViewerVisible = signal<boolean>(false);
  */
 export const dirtyMeshIds = signal<ReadonlySet<string>>(new Set<string>());
 
+/**
+ * Post-processing controls (Unreal-style). \`master\` gates the whole composer;
+ * each effect has its own toggle + parameters. Off by default so the
+ * baker-QA workflow stays pristine — CLAUDE.md rule against post-FX is
+ * honored unless the user explicitly enables for the showcase view.
+ */
+export type PostFXSettings = {
+  master: boolean;
+  bloomEnabled: boolean;
+  bloomStrength: number;
+  bloomRadius: number;
+  bloomThreshold: number;
+  ssaoEnabled: boolean;
+  ssaoIntensity: number;
+  ssaoRadius: number;
+  toneMapping: 'none' | 'linear' | 'reinhard' | 'cineon' | 'aces' | 'agx';
+  exposure: number;
+  vignetteEnabled: boolean;
+  vignetteStrength: number;
+};
+
+export const postFXSettings = signal<PostFXSettings>({
+  master: false,
+  bloomEnabled: true,
+  bloomStrength: 0.35,
+  bloomRadius: 0.4,
+  bloomThreshold: 0.85,
+  ssaoEnabled: true,
+  ssaoIntensity: 0.5,
+  ssaoRadius: 0.2,
+  toneMapping: 'aces',
+  exposure: 1.0,
+  vignetteEnabled: false,
+  vignetteStrength: 0.4,
+});
+
 /** Append a log entry (ring-buffered to 200 entries). */
 export function log(level: LogLevel, msg: string): void {
   const next = logBuffer.value.concat({ ts: Date.now(), level, msg });

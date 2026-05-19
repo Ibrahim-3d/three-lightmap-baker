@@ -506,10 +506,10 @@ export class CornellBoxExample implements BakerOrchestrator {
       } else {
         // PT mode: PTController owns the render loop — skip normal Three.js render.
         if (!this.ptController?.isActive) {
-          this.sceneController.renderer.render(
-            this.sceneController.scene,
-            this.sceneController.camera,
-          );
+          // renderFrame() runs the EffectComposer if postFX.master is on,
+          // otherwise a plain renderer.render. Either way the default
+          // framebuffer is updated before the atlas-viewer scissor pass.
+          this.sceneController.renderFrame();
         }
       }
 
