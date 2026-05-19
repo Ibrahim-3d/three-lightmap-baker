@@ -1,8 +1,9 @@
 import { type Object3D, MeshStandardMaterial, Mesh, type Texture, Vector3 } from 'three';
-import { BakeFrameInfo, exportLightmap, ExportFormat } from 'baker-classic';
+import { AtlasViewer, BakeFrameInfo, exportLightmap, ExportFormat } from 'baker-classic';
 import type { BakerOrchestrator } from 'baker-classic/ui';
 import type { AssetSpec } from 'shared';
-import { bakeProgress, bakeStatus } from 'shared';
+import { atlasViewerVisible, bakeProgress, bakeStatus } from 'shared';
+import { LAYERS } from './three/modes';
 import { BakeController } from './three/BakeController';
 import {
   SceneController,
@@ -41,6 +42,7 @@ export class CornellBoxExample implements BakerOrchestrator {
   bakeController: BakeController;
   renderModeRunner: RenderModeRunner;
   ptController: PTController | null = null;
+  atlasViewer: AtlasViewer;
 
   options = {
     preset: 'advanced' as 'classic' | 'advanced',
@@ -146,6 +148,12 @@ export class CornellBoxExample implements BakerOrchestrator {
       getDummyLightmap: () => this.bakeController.getDummyLightmap(),
     });
     this.bakeController.onProgress = (info) => this.onBakeFrame(info);
+
+    // Multi-atlas overlay: corner panel that mirrors active layer's textures.
+    // Hidden by default; View → Toggle Atlas Viewer flips it on.
+    this.atlasViewer = new AtlasViewer({ size: 256, margin: 16, corner: 'br', sRGB: true });
+    this.atlasViewer.attachHeader(document.body);
+    this.atlasViewer.visible = false;
 
     this.initGLBInput();
     this.rebuildScene();
@@ -447,8 +455,33 @@ export class CornellBoxExample implements BakerOrchestrator {
           );
         }
       }
+
+      // Atlas viewer overlay (toggled from View → Toggle Atlas Viewer).
+      // Skipped during PT to avoid clobbering the PT framebuffer.
+      this.atlasViewer.visible = atlasViewerVisible.value && !this.ptController?.isActive;
+      if (this.atlasViewer.visible) {
+        this.syncAtlasViewerTextures();
+        this.atlasViewer.render(this.sceneController.renderer);
+      }
     };
     tick();
+  }
+
+  /**
+   * Pull each bake group's texture for the current view layer and feed the
+   * atlas viewer. Texel-density and albedo layers have no per-group texture —
+   * fall back to the composite (or hide if pre-bake).
+   */
+  private syncAtlasViewerTextures(): void {
+    const layer = LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0]!;
+    const groups = this.bakeController.bakeGroups;
+    const texs: Texture[] = [];
+    for (const g of groups) {
+      const t = layer.getLightMap({ group: g }) ?? g.composite.texture;
+      if (t) texs.push(t);
+    }
+    this.atlasViewer.setTextures(texs);
+    this.atlasViewer.setLayerLabel(layer.label);
   }
 
   /** Bake gate for slider/input change events. Skips mid-drag + auto-bake disabled. */

@@ -39,6 +39,7 @@ export {
   logBuffer,
   inspectorTab,
   viewLayers,
+  atlasViewerVisible,
   log,
 } from './signals/ui';
 export type {
