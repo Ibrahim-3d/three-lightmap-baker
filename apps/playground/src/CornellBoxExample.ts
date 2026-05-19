@@ -151,7 +151,7 @@ export class CornellBoxExample implements BakerOrchestrator {
     this.rebuildScene();
 
     // Init PT viewport (async, resolves before user can switch mode).
-    void this._initPT().catch((err) => console.error("[PT] init failed:", err));
+    void this._initPT().catch((err) => console.error('[PT] init failed:', err));
   }
 
   private async _initPT(): Promise<void> {
@@ -160,7 +160,7 @@ export class CornellBoxExample implements BakerOrchestrator {
     sc.scene.updateMatrixWorld(true);
     this.ptController = new PTController({
       renderer: sc.renderer,
-      camera:   sc.camera,
+      camera: sc.camera,
       controls: sc.controls,
       getScene: () => sc.scene,
     });
@@ -648,27 +648,29 @@ export class CornellBoxExample implements BakerOrchestrator {
     const { renderAtlas } = await import('baker-classic');
     const { runRefinement } = await import('baker-classic');
 
-    const sc  = this.sceneController;
+    const sc = this.sceneController;
     const lts = this.ptController?.lightTextureState;
 
     bakeStatus.value = 'baking';
     bakeProgress.value = { pct: 0, samples: 0, atlas: 1, total: 1, elapsedMs: 0 };
 
     const sceneData = buildBVHScene(sc.scene);
-    const baker     = new PTBaker();
+    const baker = new PTBaker();
 
     try {
       const result = await baker.bake(sc.renderer, meshes, sceneData, {
-        size:         this.options.lightMapSize,
-        samples:      this.options.targetSamples,
+        size: this.options.lightMapSize,
+        samples: this.options.targetSamples,
         skyIntensity: this.options.skyIntensity,
-        lightTex:     lts?.tex,
-        numLights:    lts?.count ?? 0,
-        onProgress:   (pct) => {
+        lightTex: lts?.tex,
+        numLights: lts?.count ?? 0,
+        onProgress: (pct) => {
           bakeProgress.value = {
             pct: pct * 100,
             samples: Math.round(pct * this.options.targetSamples),
-            atlas: 1, total: 1, elapsedMs: 0,
+            atlas: 1,
+            total: 1,
+            elapsedMs: 0,
           };
         },
       });
@@ -683,10 +685,10 @@ export class CornellBoxExample implements BakerOrchestrator {
         this.options.lightMapSize,
         {
           dilationIterations: Math.max(1, this.options.dilationIterations),
-          denoiseEnabled:     this.options.denoiseEnabled,
-          denoiseSigma:       this.options.denoiseSigma,
-          denoiseThreshold:   this.options.denoiseThreshold,
-          denoiseKSigma:      this.options.denoiseKSigma,
+          denoiseEnabled: this.options.denoiseEnabled,
+          denoiseSigma: this.options.denoiseSigma,
+          denoiseThreshold: this.options.denoiseThreshold,
+          denoiseKSigma: this.options.denoiseKSigma,
         },
       );
       atlasResult.positionTexture.dispose();
@@ -705,8 +707,14 @@ export class CornellBoxExample implements BakerOrchestrator {
       }
 
       // Store result so exportFinal() can access it.
-      console.info('[PTBaker] done — ' + this.options.targetSamples + ' samples, ' + this.options.lightMapSize + '×' + this.options.lightMapSize);
-
+      console.info(
+        '[PTBaker] done — ' +
+          this.options.targetSamples +
+          ' samples, ' +
+          this.options.lightMapSize +
+          '×' +
+          this.options.lightMapSize,
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error('[PTBaker] bake failed:', err);
@@ -717,5 +725,4 @@ export class CornellBoxExample implements BakerOrchestrator {
       bakeStatus.value = 'done';
     }
   }
-
 }

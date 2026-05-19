@@ -80,7 +80,10 @@ export function WorldPage() {
       </Section>
 
       <Section title="Sky / Environment  (baker + PT)">
-        <Row label="Color" hint="Ambient sky tint — GI miss-hit fill in bake and sky color in path tracer.">
+        <Row
+          label="Color"
+          hint="Ambient sky tint — GI miss-hit fill in bake and sky color in path tracer."
+        >
           <ColorField
             value={o.skyColor}
             onChange={(hex) => {
@@ -155,7 +158,9 @@ export function WorldPage() {
               min={0}
               max={0.05}
               step={0.001}
-              onChange={(v) => { ptSettings.value = { ...ptSettings.value, aperture: v }; }}
+              onChange={(v) => {
+                ptSettings.value = { ...ptSettings.value, aperture: v };
+              }}
             />
           </Row>
           <Row label="Focus dist" hint="Distance to the focal plane in world units.">
@@ -164,16 +169,23 @@ export function WorldPage() {
               min={1}
               max={500}
               step={1}
-              onChange={(v) => { ptSettings.value = { ...ptSettings.value, focusDist: v }; }}
+              onChange={(v) => {
+                ptSettings.value = { ...ptSettings.value, focusDist: v };
+              }}
             />
           </Row>
-          <Row label="Light scale" hint="Global multiplier for scene lights in PT mode (default 0.15).">
+          <Row
+            label="Light scale"
+            hint="Global multiplier for scene lights in PT mode (default 0.15)."
+          >
             <RangeField
               value={pt.lightScale}
               min={0}
               max={2}
               step={0.01}
-              onChange={(v) => { ptSettings.value = { ...ptSettings.value, lightScale: v }; }}
+              onChange={(v) => {
+                ptSettings.value = { ...ptSettings.value, lightScale: v };
+              }}
             />
           </Row>
         </Section>

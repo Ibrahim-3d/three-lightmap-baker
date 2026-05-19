@@ -27,9 +27,7 @@ export function ViewportToggle() {
         onClick={() => set('combined')}
         class={[
           'px-3 py-1 transition-colors',
-          !isPT
-            ? 'bg-accent text-white'
-            : 'text-text-1 hover:text-text-0 hover:bg-bg-2',
+          !isPT ? 'bg-accent text-white' : 'text-text-1 hover:text-text-0 hover:bg-bg-2',
         ].join(' ')}
         title="Fast Preview — standard rasterisation (hotkey: P)"
       >
@@ -40,9 +38,7 @@ export function ViewportToggle() {
         onClick={() => set('pathtraced')}
         class={[
           'px-3 py-1 transition-colors',
-          isPT
-            ? 'bg-accent text-white'
-            : 'text-text-1 hover:text-text-0 hover:bg-bg-2',
+          isPT ? 'bg-accent text-white' : 'text-text-1 hover:text-text-0 hover:bg-bg-2',
         ].join(' ')}
         title="Path Traced — progressive BVH path tracer (hotkey: P)"
       >

@@ -58,29 +58,39 @@ controls.update();
 
 // ── Cornell Box scene ─────────────────────────────────────────────────────────
 
-const scene    = new Scene();
+const scene = new Scene();
 scene.background = new Color(0x0a0a0a);
 
 const root = new Object3D();
 scene.add(root);
 
-const ROOM = 10, HALF = ROOM / 2, T = 0.2;
+const ROOM = 10,
+  HALF = ROOM / 2,
+  T = 0.2;
 const mat = (c: number, r = 0.95) => new MeshStandardMaterial({ color: c, roughness: r });
 
-const addBox = (w: number, h: number, d: number, m: MeshStandardMaterial, x: number, y: number, z: number) => {
+const addBox = (
+  w: number,
+  h: number,
+  d: number,
+  m: MeshStandardMaterial,
+  x: number,
+  y: number,
+  z: number,
+) => {
   const mesh = new Mesh(new BoxGeometry(w, h, d), m);
   mesh.position.set(x, y, z);
   root.add(mesh);
   return mesh;
 };
 
-addBox(ROOM, T,    ROOM, mat(0xf0f0f0), 0,          -T/2,        0);
-addBox(ROOM, T,    ROOM, mat(0xf0f0f0), 0,          ROOM+T/2,    0);
-addBox(ROOM, ROOM, T,    mat(0xf0f0f0), 0,          HALF,        -HALF-T/2);
-addBox(T,    ROOM, ROOM, mat(0xd62728), -HALF-T/2,  HALF,        0);
-addBox(T,    ROOM, ROOM, mat(0x2ca02c),  HALF+T/2,  HALF,        0);
-addBox(3,    6,    3,    mat(0xe8e8e8), -1.8,        3,           -1.5);
-addBox(3,    3,    3,    mat(0xe8e8e8),  1.8,        1.5,          1.5);
+addBox(ROOM, T, ROOM, mat(0xf0f0f0), 0, -T / 2, 0);
+addBox(ROOM, T, ROOM, mat(0xf0f0f0), 0, ROOM + T / 2, 0);
+addBox(ROOM, ROOM, T, mat(0xf0f0f0), 0, HALF, -HALF - T / 2);
+addBox(T, ROOM, ROOM, mat(0xd62728), -HALF - T / 2, HALF, 0);
+addBox(T, ROOM, ROOM, mat(0x2ca02c), HALF + T / 2, HALF, 0);
+addBox(3, 6, 3, mat(0xe8e8e8), -1.8, 3, -1.5);
+addBox(3, 3, 3, mat(0xe8e8e8), 1.8, 1.5, 1.5);
 const sphere = new Mesh(new SphereGeometry(1.0, 48, 32), mat(0xf5f5f5, 0.3));
 sphere.position.set(2.4, 1.0, 3.0);
 root.add(sphere);
@@ -93,7 +103,9 @@ ptLight.userData['lightmapIgnore'] = true;
 lightDummy.add(ptLight);
 
 const meshes: Mesh[] = [];
-root.traverse((o) => { if (o instanceof Mesh) meshes.push(o); });
+root.traverse((o) => {
+  if (o instanceof Mesh) meshes.push(o);
+});
 
 scene.updateMatrixWorld(true);
 
@@ -116,14 +128,19 @@ async function initPT(): Promise<void> {
     fragmentShader: bvhFrag,
     sceneIsDynamic: false,
     sceneUniforms: {
-      tTriangleTexture:   { value: ptData.triangleTexture },
-      tAABBTexture:       { value: ptData.aabbTexture },
-      uHasSkyTexture:     { value: false },
-      tHDRTexture:        { value: null },
+      tTriangleTexture: { value: ptData.triangleTexture },
+      tAABBTexture: { value: ptData.aabbTexture },
+      uHasSkyTexture: { value: false },
+      tHDRTexture: { value: null },
       uSkyLightIntensity: { value: 1.0 },
-      tLightTexture:      { value: null },
-      uNumPTLights:       { value: 0 },
-      ...Object.fromEntries(Array.from({ length: 16 }, (_, i) => [`tAlbedoTex${i}`, { value: ptData!.albedoTextures[i] ?? null }])),
+      tLightTexture: { value: null },
+      uNumPTLights: { value: 0 },
+      ...Object.fromEntries(
+        Array.from({ length: 16 }, (_, i) => [
+          `tAlbedoTex${i}`,
+          { value: ptData!.albedoTextures[i] ?? null },
+        ]),
+      ),
     },
   });
 
@@ -179,7 +196,9 @@ async function runBake(): Promise<void> {
   statusEl.textContent = `Done — ${SAMPLES} samples, 1024² px`;
 }
 
-document.getElementById('btn-bake')!.addEventListener('click', () => { void runBake(); });
+document.getElementById('btn-bake')!.addEventListener('click', () => {
+  void runBake();
+});
 
 // ── Render loop ───────────────────────────────────────────────────────────────
 
@@ -191,7 +210,8 @@ function tick(): void {
   const now = performance.now();
   const delta = now - lastMs;
   lastMs = now;
-  const w = W(), h = H();
+  const w = W(),
+    h = H();
   const half = Math.floor(w / 2);
 
   renderer.setScissorTest(true);
@@ -214,4 +234,6 @@ function tick(): void {
   renderer.setScissorTest(false);
 }
 
-void initPT().then(() => { tick(); });
+void initPT().then(() => {
+  tick();
+});
