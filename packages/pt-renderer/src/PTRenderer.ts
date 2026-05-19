@@ -8,6 +8,7 @@
  */
 
 import {
+  DataTexture,
   FloatType,
   Matrix4,
   Mesh,
@@ -17,9 +18,10 @@ import {
   PlaneGeometry,
   type PerspectiveCamera,
   RGBAFormat,
+  RedFormat,
   Scene,
   ShaderMaterial,
-  TextureLoader,
+  UnsignedByteType,
   Vector2,
   WebGLRenderer,
   WebGLRenderTarget,
@@ -29,7 +31,6 @@ import { registerChunks } from './chunks';
 import { resolveIncludes } from './preprocess';
 
 import vertSrc from './shaders/vertex.glsl?raw';
-import blueNoiseAsset from './BlueNoise_R_128.png';
 import screenCopySrc from './shaders/screen-copy.frag.glsl?raw';
 import screenOutSrc from './shaders/screen-output.frag.glsl?raw';
 
@@ -50,8 +51,6 @@ export interface PTRendererOptions {
   sceneIsDynamic?: boolean;
   /** Resolution scale factor. Default 1.0. Use 0.5 on mobile. */
   renderScale?: number;
-  /** URL for the 128×128 blue-noise R8 texture. Default: /BlueNoise_R_128.png */
-  blueNoiseUrl?: string;
 }
 
 // Shared fullscreen plane for all three passes
@@ -100,9 +99,16 @@ export class PTRenderer {
   // ── Async init (loads blue-noise texture, builds materials) ──────────────
 
   async init(renderer: WebGLRenderer): Promise<void> {
-    const blueNoise = await new TextureLoader().loadAsync(this.opts.blueNoiseUrl ?? blueNoiseAsset);
+    // Generate 128x128 blue-noise approximation on the CPU — no file loading,
+    // no URL resolution, works everywhere. Uniform random is slightly noisier
+    // per-frame than true blue noise but visually identical after ~10 samples.
+    const noiseSize = 128;
+    const noiseData = new Uint8Array(noiseSize * noiseSize);
+    for (let i = 0; i < noiseData.length; i++) noiseData[i] = Math.floor(Math.random() * 256);
+    const blueNoise = new DataTexture(noiseData, noiseSize, noiseSize, RedFormat, UnsignedByteType);
     blueNoise.minFilter = blueNoise.magFilter = NearestFilter;
     blueNoise.generateMipmaps = false;
+    blueNoise.needsUpdate = true;
 
     const w = Math.floor(renderer.domElement.width * this.renderScale);
     const h = Math.floor(renderer.domElement.height * this.renderScale);
