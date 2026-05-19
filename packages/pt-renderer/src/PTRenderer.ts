@@ -10,7 +10,6 @@
 import {
   DataTexture,
   FloatType,
-  GLSL3,
   Matrix4,
   Mesh,
   NearestFilter,
@@ -159,7 +158,6 @@ export class PTRenderer {
       defines: { NUM_ALBEDO_TEXTURES: 0 },
       vertexShader: vertSrc,
       fragmentShader: resolvedFrag,
-      glslVersion: GLSL3,
       depthTest: false,
       depthWrite: false,
     });

@@ -84,6 +84,11 @@ vec3 F_Schlick(float cosTheta, vec3 F0) {
 }
 
 
+#include <pathtracing_random_functions>
+#include <pathtracing_calc_fresnel_reflectance>
+#include <pathtracing_boundingbox_intersect>
+#include <pathtracing_bvhTriangle_intersect>
+
 float SceneIntersect() {
     vec4 cur0, cur1, nA0, nA1, nB0, nB1, tmp0, tmp1;
     vec4 vd0, vd1, vd2, vd3, vd4, vd5, vd6, vd7;
@@ -259,10 +264,6 @@ vec3 SetupNEE(vec3 x, vec3 nl, out float toLightDist, out float cosNL) {
 
 
 
-#include <pathtracing_random_functions>
-#include <pathtracing_calc_fresnel_reflectance>
-#include <pathtracing_boundingbox_intersect>
-#include <pathtracing_bvhTriangle_intersect>
 
 // ── Path integrator ───────────────────────────────────────────────────────────
 vec3 CalculateRadiance(out vec3 objectNormal, out vec3 objectColor,
