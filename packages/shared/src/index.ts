@@ -38,9 +38,16 @@ export {
   layout,
   logBuffer,
   inspectorTab,
+  viewLayers,
   log,
 } from './signals/ui';
-export type { SceneNode, SceneNodeKind, LogEntry, LogLevel } from './signals/ui';
+export type {
+  SceneNode,
+  SceneNodeKind,
+  LogEntry,
+  LogLevel,
+  ViewLayerDescriptor,
+} from './signals/ui';
 
 export {
   bakeStatus,

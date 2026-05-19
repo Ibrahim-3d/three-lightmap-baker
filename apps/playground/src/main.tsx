@@ -15,13 +15,16 @@ import {
   bakeStatus,
   gizmoMode,
   isStale,
+  renderMode,
   sceneTree,
   selectedId,
   setOrchestrator,
+  viewLayers,
   type AssetSpec,
 } from 'shared';
 import { CornellBoxExample } from './CornellBoxExample';
 import { LIGHT_DUMMY_ID } from './three/SceneController';
+import { LAYERS } from './three/modes';
 
 /**
  * Playground entry. With no `?scene=` param renders the gallery landing.
@@ -77,6 +80,9 @@ function wireSelectionEffects(app: CornellBoxExample): void {
   });
   effect(() => {
     app.setGizmoMode(gizmoMode.value);
+  });
+  effect(() => {
+    app.setLayer(renderMode.value);
   });
 }
 
@@ -142,6 +148,10 @@ void (async () => {
   setOrchestrator(app);
   registerBakerClassicUI();
   // registerPTRendererUI(); // disabled 2026-05-19 — see top-of-file note
+
+  // Publish app-side view-layer table to the shell so `<ViewportToggle/>` can
+  // render the top-right pass picker without importing app internals.
+  viewLayers.value = LAYERS.map((l) => ({ id: l.id, label: l.label, group: l.group }));
 
   app.externalHooks = {
     onSceneChanged: () => {
