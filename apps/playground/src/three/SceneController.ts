@@ -562,21 +562,26 @@ export class SceneController {
    */
   private syncPostFX(): void {
     const s = postFXSettings.value;
-    // Tone mapping + exposure live on the renderer regardless of composer use.
-    this.renderer.toneMapping = TONE_MAP_LOOKUP[s.toneMapping] ?? NoToneMapping;
-    this.renderer.toneMappingExposure = s.exposure;
+    // Tone mapping + exposure are renderer-global — must FULLY revert when
+    // master flips off, otherwise a previously-set ACES curve keeps mutating
+    // colors even with the composer bypassed.
+    if (s.master) {
+      this.renderer.toneMapping = TONE_MAP_LOOKUP[s.toneMapping] ?? NoToneMapping;
+      this.renderer.toneMappingExposure = s.exposure;
+    } else {
+      this.renderer.toneMapping = NoToneMapping;
+      this.renderer.toneMappingExposure = 1.0;
+    }
 
     if (!this.composer) return;
     if (this.ssaoPass) {
-      this.ssaoPass.enabled = s.ssaoEnabled;
+      this.ssaoPass.enabled = s.master && s.ssaoEnabled;
       this.ssaoPass.kernelRadius = s.ssaoRadius;
-      // SSAOPass output mode 0 = scene + occlusion blended.
-      // Intensity tweak via output mix.
       this.ssaoPass.minDistance = 0.005;
       this.ssaoPass.maxDistance = 0.1 + s.ssaoIntensity * 0.05;
     }
     if (this.bloomPass) {
-      this.bloomPass.enabled = s.bloomEnabled;
+      this.bloomPass.enabled = s.master && s.bloomEnabled;
       this.bloomPass.strength = s.bloomStrength;
       this.bloomPass.radius = s.bloomRadius;
       this.bloomPass.threshold = s.bloomThreshold;
