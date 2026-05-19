@@ -40,6 +40,7 @@ export {
   inspectorTab,
   viewLayers,
   atlasViewerVisible,
+  dirtyMeshIds,
   log,
 } from './signals/ui';
 export type {

@@ -1,23 +1,28 @@
-import { bakeStatus, getOrchestrator, isStale } from 'shared';
+import { bakeStatus, dirtyMeshIds, getOrchestrator, isStale } from 'shared';
 import { AlertTriangle } from './icons';
 
 /**
- * Overlay chip pinned to the viewport bottom-center (T-D7). Visible whenever
- * `isStale` is true AND we are not mid-bake. Click or press B to kick a re-bake.
- *
- * The keyboard binding is registered in `main.tsx` (`wireHotkeys`) — this
- * component is the click target.
+ * Overlay chip pinned to the viewport bottom-center. Shows when bake is
+ * stale or any mesh has drifted from its baked transform. Click or hit B
+ * to kick a re-bake. Dirty meshes meanwhile render unlit (intensity 0) so
+ * the user can see which objects need rebuilding (Unreal-style).
  */
 export function StaleBanner() {
   const stale = isStale.value;
   const baking = bakeStatus.value === 'baking';
-  if (!stale || baking) return null;
+  const dirtyCount = dirtyMeshIds.value.size;
+  if ((!stale && dirtyCount === 0) || baking) return null;
 
   const onClick = () => {
     const app = getOrchestrator();
     if (!app?.requestBake) return;
     void app.requestBake();
   };
+
+  const label =
+    dirtyCount > 0
+      ? `${dirtyCount} object${dirtyCount === 1 ? '' : 's'} need rebuild — Re-bake (B)`
+      : 'Scene changed — Re-bake (B)';
 
   return (
     <button
@@ -28,7 +33,7 @@ export function StaleBanner() {
       title="Re-bake the lightmap (B)"
     >
       <AlertTriangle size={14} />
-      <span>Scene changed — Re-bake (B)</span>
+      <span>{label}</span>
     </button>
   );
 }

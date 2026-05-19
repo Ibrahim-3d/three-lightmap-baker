@@ -71,6 +71,17 @@ export const viewLayers = signal<ReadonlyArray<ViewLayerDescriptor>>([]);
  */
 export const atlasViewerVisible = signal<boolean>(false);
 
+/**
+ * Unreal-style "dirty mesh" set. Each entry is a mesh uuid that has been
+ * transformed (or had lighting-relevant material edited) since the last
+ * successful bake. Dirty meshes render unlit while the rest of the scene
+ * keeps its baked lightmap — same UX as Unreal's "needs rebuild" outline.
+ *
+ * Renderer populates / clears the underlying Set + bumps the signal; UI
+ * reads `.size` for badges.
+ */
+export const dirtyMeshIds = signal<ReadonlySet<string>>(new Set<string>());
+
 /** Append a log entry (ring-buffered to 200 entries). */
 export function log(level: LogLevel, msg: string): void {
   const next = logBuffer.value.concat({ ts: Date.now(), level, msg });
