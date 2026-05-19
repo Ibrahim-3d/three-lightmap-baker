@@ -237,7 +237,7 @@ Visual verification against Cornell Box:
   so consumers can drop it into any stack. (The DCC-style demo under `src/demo/`
   uses Preact + @preact/signals + Tailwind v3 as of T-D2 — this is an exception
   scoped to the demo bundle. The library bundle has zero framework imports.)
-- Add postprocessing (SSAO, bloom, tone mapping) — they mask bake quality issues
+- Add postprocessing to the LIBRARY bundle (`packages/baker-classic/`) — it masks bake quality issues. The shell-level Post-FX panel (`packages/demo-shell/inspector/PostFXPage.tsx`) is a demo-only showcase feature gated by the `postFXSettings.master` signal (off by default). Bake-QA workflow must keep master = off.
 - Over-engineer — this is a focused library, not an engine
 - Add code outside `packages/` or `apps/` once Roadmap Step 2 lands
 - Cross-import between sibling packages (use `packages/shared/` or compose at the app layer)
