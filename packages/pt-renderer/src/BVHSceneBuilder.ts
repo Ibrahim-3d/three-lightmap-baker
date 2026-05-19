@@ -24,6 +24,7 @@ import {
   ClampToEdgeWrapping,
   DataTexture,
   FloatType,
+  Material,
   Mesh,
   MeshStandardMaterial,
   NearestFilter,
@@ -67,9 +68,11 @@ export function buildBVHScene(scene: Scene): BVHSceneData {
   const meshes: Mesh[] = [];
   scene.traverse((obj) => {
     if (!(obj instanceof Mesh) || !obj.geometry || !obj.visible) return;
-    // Skip gizmo helpers, light markers, and any non-renderable/non-standard meshes.
-    // Gizmos use MeshBasicMaterial / LineBasicMaterial; bake-ignore flag set on light dummy.
-    if (obj.userData['lightmapIgnore']) return;
+    // PT renderer needs ALL MeshStandardMaterial geometry for correct ray tracing —
+    // emissive surfaces are light sources, glass/mirrors affect reflections.
+    // lightmapIgnore is a classic-baker flag ("don't bake onto this"); the PT
+    // renderer must still see the mesh. Non-standard materials (gizmos, helpers)
+    // are filtered by the hasStandardMat check below.
     const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
     const hasStandardMat = mats.some((m) => m instanceof MeshStandardMaterial);
     if (!hasStandardMat) return;
@@ -120,12 +123,25 @@ export function buildBVHScene(scene: Scene): BVHSceneData {
 
     const triCount = nonIndexed.attributes['position']!.count / 3;
 
-    // Material groups: if the mesh has groups, each group gets its own descriptor
-    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    // Material lookup — Three.js convention:
+    //   • mesh.material as ARRAY → groups index into the array by group.materialIndex
+    //   • mesh.material as SINGLE → that material is used for ALL groups regardless of
+    //     group.materialIndex (BoxGeometry assigns 0..5 to its 6 face groups, but a single
+    //     material always wins). Falling back to mats[materialIndex] for a single material
+    //     mesh yielded undefined for indices ≥ 1 → 5 of 6 faces silently became default-white.
+    const isArrayMat = Array.isArray(mesh.material);
+    const mats: (Material | Material[] | undefined)[] = isArrayMat
+      ? (mesh.material as Material[])
+      : [mesh.material as Material];
+    const pickMat = (groupMatIdx: number | undefined): Material | undefined => {
+      if (!isArrayMat) return mats[0] as Material | undefined;
+      return (mats[groupMatIdx ?? 0] as Material | undefined) ?? (mats[0] as Material | undefined);
+    };
+
     if (nonIndexed.groups.length > 0) {
       for (const group of nonIndexed.groups) {
         const groupTriCount = group.count / 3;
-        const mat = mats[group.materialIndex ?? 0];
+        const mat = pickMat(group.materialIndex);
         materialDescs.push(
           _matDesc(mat instanceof MeshStandardMaterial ? mat : null, albedoTextures),
         );
@@ -133,7 +149,7 @@ export function buildBVHScene(scene: Scene): BVHSceneData {
         triangleMaterialMarkers.push(runningTriCount);
       }
     } else {
-      const mat = mats[0];
+      const mat = pickMat(0);
       materialDescs.push(
         _matDesc(mat instanceof MeshStandardMaterial ? mat : null, albedoTextures),
       );
@@ -141,8 +157,25 @@ export function buildBVHScene(scene: Scene): BVHSceneData {
       triangleMaterialMarkers.push(runningTriCount);
     }
 
+    // ── DEBUG: per-mesh diagnostics ──────────────────────────────────────
+    const nrm = nonIndexed.attributes['normal']!;
+    const pos = nonIndexed.attributes['position']!;
+    const p0 = [pos.getX(0), pos.getY(0), pos.getZ(0)].map((v) => v.toFixed(2));
+    const n0 = [nrm.getX(0), nrm.getY(0), nrm.getZ(0)].map((v) => v.toFixed(3));
+    // Sample a mid-triangle normal for spherical meshes
+    const midVtx = Math.min(Math.floor(pos.count / 2), pos.count - 1);
+    const nM = [nrm.getX(midVtx), nrm.getY(midVtx), nrm.getZ(midVtx)].map((v) =>
+      v.toFixed(3),
+    );
+    console.log(
+      `[PTSceneBuilder] mesh="${mesh.name}" tris=${triCount} ` +
+        `pos0=(${p0.join(',')}) nrm0=(${n0.join(',')}) nrmMid=(${nM.join(',')}) ` +
+        `groups=${nonIndexed.groups.length} runTri=${runningTriCount}`,
+    );
+
     geoList.push(nonIndexed);
-    geo.dispose();
+    // Only dispose the clone when toNonIndexed created a separate geometry
+    if (nonIndexed !== geo) geo.dispose();
   }
 
   if (geoList.length === 0) return _emptyScene();
@@ -314,6 +347,18 @@ export function buildBVHScene(scene: Scene): BVHSceneData {
     aabb_array[ab + 6] = (vp0x + vp1x + vp2x) * 0.333333333; // centroid
     aabb_array[ab + 7] = (vp0y + vp1y + vp2y) * 0.333333333;
     aabb_array[ab + 8] = (vp0z + vp1z + vp2z) * 0.333333333;
+  }
+
+  // ── DEBUG: dump material descriptors ────────────────────────────────────
+  for (let m = 0; m < materialDescs.length; m++) {
+    const md = materialDescs[m]!;
+    const marker = triangleMaterialMarkers[m] ?? '?';
+    console.log(
+      `[PTSceneBuilder] mat[${m}] type=${md.type} ` +
+        `rgb=(${md.r.toFixed(3)},${md.g.toFixed(3)},${md.b.toFixed(3)}) ` +
+        `rough=${md.roughness.toFixed(2)} metal=${md.metalness.toFixed(2)} ` +
+        `tex=${md.texID} cumTri=${marker}`,
+    );
   }
 
   merged.dispose();
