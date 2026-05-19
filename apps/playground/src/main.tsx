@@ -15,6 +15,7 @@ import {
   bakeProgress,
   bakeStatus,
   gizmoMode,
+  inspectorTab,
   isStale,
   panelRegistry,
   renderMode,
@@ -85,6 +86,23 @@ function wireSelectionEffects(app: CornellBoxExample): void {
   });
   effect(() => {
     app.setLayer(renderMode.value);
+  });
+  // Auto-switch inspector tab on selection: lights → Light; meshes → Object.
+  effect(() => {
+    const id = selectedId.value;
+    if (!id) return;
+    if (id === LIGHT_DUMMY_ID) {
+      inspectorTab.value = 'light';
+      return;
+    }
+    const obj = app.lookupObject(id);
+    if (obj?.userData?.bakerLightType) {
+      inspectorTab.value = 'light';
+    } else if (obj) {
+      // Keep current tab if already on a per-mesh tab (Material / Lightmap).
+      const t = inspectorTab.value;
+      if (t !== 'material' && t !== 'lightmap') inspectorTab.value = 'object';
+    }
   });
 }
 
