@@ -198,7 +198,17 @@ export class RenderModeRunner {
     }
 
     (lightMarker.material as MeshBasicMaterial).color = new Color(0xffffff);
-    visualLight.visible = layer.id === 'albedo';
+
+    // Visual disc light is the viewport "scene lamp". On.
+    //   - Albedo layer (always — that layer is the unlit/textured preview).
+    //   - Any output layer when no bake exists yet. Without this, Combined
+    //     pre-bake mounts a dummy lightmap with intensity 0 AND no scene
+    //     lights → MeshStandardMaterial renders fully black. With it on,
+    //     pre-bake Combined shows the scene lit by the viewport lamp; once
+    //     the bake completes, lightMap kicks in (intensity 1) and the lamp
+    //     turns off so the user is judging the baked lighting alone.
+    const hasBake = bakeGroups.length > 0;
+    visualLight.visible = layer.id === 'albedo' || !hasBake;
   }
 
   /**

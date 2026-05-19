@@ -2,7 +2,7 @@ import { Matrix4, type Object3D, MeshStandardMaterial, Mesh, type Texture, Vecto
 import { AtlasViewer, BakeFrameInfo, exportLightmap, ExportFormat } from 'baker-classic';
 import type { BakerOrchestrator } from 'baker-classic/ui';
 import type { AssetSpec } from 'shared';
-import { atlasViewerVisible, bakeProgress, bakeStatus, dirtyMeshIds, renderMode } from 'shared';
+import { atlasViewerVisible, bakeProgress, bakeStatus, dirtyMeshIds } from 'shared';
 import { LAYERS } from './three/modes';
 import { BakeController } from './three/BakeController';
 import {
@@ -250,13 +250,6 @@ export class CornellBoxExample implements BakerOrchestrator {
     this.options.spp = this.options.targetSamples * this.options.casts;
     this.options.etaSec = 0;
     this.options.pause = false;
-
-    // Auto-flip to Combined on first bake done IF user is still on the
-    // pre-bake default (Albedo). Keeps debug-layer selections intact.
-    if (renderMode.value === 'albedo') {
-      renderMode.value = 'combined';
-      this.options.layer = 'combined';
-    }
 
     this.renderModeRunner.apply();
     this.bakeController.diag.snap('after applyRenderMode (lightmaps mounted)');

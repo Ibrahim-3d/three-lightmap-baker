@@ -25,13 +25,8 @@ export const bakeProgress = signal<{
 /** True after any scene mutation that invalidates the current lightmap. */
 export const isStale = signal<boolean>(false);
 
-/**
- * Active render-mode layer id (from `modes.ts` LAYERS in the playground app).
- * Default = 'albedo' so a fresh scene with no bake still shows lit geometry
- * via the visual disc-light (the 'combined' layer needs a bake to look
- * non-black). Orchestrator flips this to 'combined' on first bake complete.
- */
-export const renderMode = signal<string>('albedo');
+/** Active render-mode layer id (from `modes.ts` LAYERS in the playground app). */
+export const renderMode = signal<string>('combined');
 
 /** Compare ⇄ split-screen toggle. */
 export const compareMode = signal<boolean>(false);
