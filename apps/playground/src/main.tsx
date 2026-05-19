@@ -4,14 +4,17 @@ import { effect } from '@preact/signals';
 import { render } from 'preact';
 import { loadXAtlasThree } from 'baker-classic';
 import { registerBakerClassicUI } from 'baker-classic/ui';
-import { registerPTRendererUI } from 'pt-renderer/ui';
-import { App, showToast } from 'demo-shell';
+// PT renderer UI hidden 2026-05-19 while focus is on baker polish.
+// Code stays in tree (packages/pt-renderer/) — flip back on by uncommenting:
+//   import { registerPTRendererUI } from 'pt-renderer/ui';
+//   registerPTRendererUI();
+import { App, GalleryPage, showToast } from 'demo-shell';
 import {
+  activeSceneId,
   bakeProgress,
   bakeStatus,
   gizmoMode,
   isStale,
-  renderMode,
   sceneTree,
   selectedId,
   setOrchestrator,
@@ -21,19 +24,29 @@ import { CornellBoxExample } from './CornellBoxExample';
 import { LIGHT_DUMMY_ID } from './three/SceneController';
 
 /**
- * Playground entry. Mounts the demo shell, registers baker-classic UI panels
- * + menu items, registers pt-renderer UI, then wires Preact signals to the
- * vanilla orchestrator.
+ * Playground entry. With no `?scene=` param renders the gallery landing.
+ * With `?scene=<id>` boots the full editor and loads the chosen preset.
  *
- * `?legacy=1` skips Preact entirely — escape hatch.
- * `?test=1` exposes `window.__baker` for Playwright.
+ * `?legacy=1` skips Preact + bypasses gallery — escape hatch.
+ * `?test=1` exposes `window.__baker` for Playwright and bypasses gallery.
  */
+function getSceneParam(): string | null {
+  return new URLSearchParams(window.location.search).get('scene');
+}
+
 function isLegacy(): boolean {
   return new URLSearchParams(window.location.search).get('legacy') === '1';
 }
 
 function isTestMode(): boolean {
   return new URLSearchParams(window.location.search).get('test') === '1';
+}
+
+function mountGallery(): void {
+  const mount = document.createElement('div');
+  mount.id = 'app';
+  document.body.appendChild(mount);
+  render(<GalleryPage />, mount);
 }
 
 /**
@@ -68,7 +81,7 @@ function wireSelectionEffects(app: CornellBoxExample): void {
 }
 
 /** W/E/R = translate/rotate/scale. Escape = deselect. Delete = remove node.
- *  B = re-bake when stale. P = toggle path-traced mode. */
+ *  B = re-bake when stale. */
 function wireHotkeys(app: CornellBoxExample): void {
   window.addEventListener('keydown', (e) => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
@@ -84,10 +97,6 @@ function wireHotkeys(app: CornellBoxExample): void {
       selectedId.value = null;
     } else if (k === 'b') {
       if (isStale.value && bakeStatus.value !== 'baking') void app.requestBake();
-    } else if (k === 'p') {
-      const next = renderMode.value === 'pathtraced' ? 'combined' : 'pathtraced';
-      renderMode.value = next;
-      app.setRenderMode(next);
     }
   });
 }
@@ -119,12 +128,20 @@ function wireDragDrop(app: CornellBoxExample): void {
 }
 
 void (async () => {
+  // Gallery landing: no scene param, not legacy, not test → render static
+  // gallery and stop. The orchestrator (and THREE renderer) never spin up.
+  const sceneParam = getSceneParam();
+  if (!sceneParam && !isLegacy() && !isTestMode()) {
+    mountGallery();
+    return;
+  }
+
   await loadXAtlasThree();
 
   const app = new CornellBoxExample();
   setOrchestrator(app);
   registerBakerClassicUI();
-  registerPTRendererUI();
+  // registerPTRendererUI(); // disabled 2026-05-19 — see top-of-file note
 
   app.externalHooks = {
     onSceneChanged: () => {
@@ -140,6 +157,17 @@ void (async () => {
       showToast('error', `Bake failed: ${msg}`);
     },
   };
+
+  // URL-driven initial scene. Falls back silently to the default Cornell that
+  // the orchestrator built in its constructor if the id is unknown.
+  if (sceneParam) {
+    activeSceneId.value = sceneParam;
+    try {
+      await app.loadScenePreset(sceneParam);
+    } catch (err) {
+      console.warn('[baker] failed to load scene from URL:', sceneParam, err);
+    }
+  }
 
   sceneTree.value = app.getSceneTree();
   selectedId.value = LIGHT_DUMMY_ID;

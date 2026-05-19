@@ -17,10 +17,11 @@ function clickGlbInput(): void {
 }
 
 menuRegistry.register('File', {
-  id: 'file.new',
-  label: 'New Scene',
+  id: 'file.gallery',
+  label: 'Open Gallery…',
   action: () => {
-    console.log('[demo] File → New Scene (stub)');
+    // Full reload to the gallery — drops orchestrator + renderer cleanly.
+    window.location.href = '/';
   },
 });
 
@@ -28,6 +29,7 @@ menuRegistry.register('File', {
   id: 'file.open-glb',
   label: 'Open .glb…',
   hotkey: 'Ctrl+O',
+  separatorBefore: true,
   action: clickGlbInput,
 });
 
