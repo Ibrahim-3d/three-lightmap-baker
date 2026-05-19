@@ -258,6 +258,12 @@ vec3 SetupNEE(vec3 x, vec3 nl, out float toLightDist, out float cosNL) {
 }
 
 
+
+#include <pathtracing_random_functions>
+#include <pathtracing_calc_fresnel_reflectance>
+#include <pathtracing_boundingbox_intersect>
+#include <pathtracing_bvhTriangle_intersect>
+
 // ── Path integrator ───────────────────────────────────────────────────────────
 vec3 CalculateRadiance(out vec3 objectNormal, out vec3 objectColor,
                        out float objectID,    out float pixelSharpness)
