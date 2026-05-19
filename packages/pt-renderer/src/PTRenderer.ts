@@ -100,7 +100,7 @@ export class PTRenderer {
 
   async init(renderer: WebGLRenderer): Promise<void> {
     const blueNoise = await new TextureLoader().loadAsync(
-      this.opts.blueNoiseUrl ?? '/BlueNoise_R_128.png'
+      this.opts.blueNoiseUrl ?? 'BlueNoise_R_128.png'
     );
     blueNoise.minFilter = blueNoise.magFilter = NearestFilter;
     blueNoise.generateMipmaps = false;

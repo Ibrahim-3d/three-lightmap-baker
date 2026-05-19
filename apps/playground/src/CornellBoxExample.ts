@@ -151,7 +151,7 @@ export class CornellBoxExample implements BakerOrchestrator {
     this.rebuildScene();
 
     // Init PT viewport (async, resolves before user can switch mode).
-    void this._initPT();
+    void this._initPT().catch((err) => console.error("[PT] init failed:", err));
   }
 
   private async _initPT(): Promise<void> {
