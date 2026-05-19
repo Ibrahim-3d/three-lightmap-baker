@@ -50,6 +50,7 @@ export {
   compareMode,
   isBaking,
   ptSettings,
+  hdriTexture,
 } from './signals/bake';
 export type { BakeStatus, PTSettings } from './signals/bake';
 

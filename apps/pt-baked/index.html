@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PT Baked — Real-time Preview + Baked Lightmap</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #111;
+        color: #eee;
+        font-family: system-ui, sans-serif;
+        overflow: hidden;
+      }
+      #ui {
+        position: fixed;
+        top: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 10;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        background: rgba(0, 0, 0, 0.6);
+        padding: 8px 12px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        backdrop-filter: blur(4px);
+      }
+      button {
+        padding: 4px 14px;
+        border-radius: 4px;
+        border: 1px solid #444;
+        background: #2a2a2a;
+        color: #ddd;
+        cursor: pointer;
+        font-size: 12px;
+        transition: background 0.15s;
+      }
+      button:hover {
+        background: #3a3a3a;
+      }
+      button.active {
+        background: #4a9eff;
+        color: #fff;
+        border-color: #4a9eff;
+      }
+      #status {
+        font-size: 11px;
+        color: #9a9;
+      }
+      #labels {
+        position: fixed;
+        bottom: 16px;
+        width: 100%;
+        display: flex;
+        justify-content: space-around;
+        pointer-events: none;
+        z-index: 10;
+      }
+      #labels span {
+        background: rgba(0, 0, 0, 0.55);
+        border-radius: 4px;
+        padding: 3px 10px;
+        font-size: 11px;
+        color: #ccc;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="ui">
+      <span style="font-size: 11px; color: #9a9">PT Baked</span>
+      <button id="btn-preview" class="active">Live Preview</button>
+      <button id="btn-bake">Bake (PT)</button>
+      <span id="status">Ready — press Bake to generate a lightmap</span>
+    </div>
+    <div id="labels">
+      <span id="lbl-left">PT Preview</span>
+      <span id="lbl-right">Baked Lightmap</span>
+    </div>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

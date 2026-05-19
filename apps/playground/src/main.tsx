@@ -59,8 +59,12 @@ function startStatusSync(app: CornellBoxExample): void {
 }
 
 function wireSelectionEffects(app: CornellBoxExample): void {
-  effect(() => { app.setSelection(selectedId.value); });
-  effect(() => { app.setGizmoMode(gizmoMode.value); });
+  effect(() => {
+    app.setSelection(selectedId.value);
+  });
+  effect(() => {
+    app.setGizmoMode(gizmoMode.value);
+  });
 }
 
 /** W/E/R = translate/rotate/scale. Escape = deselect. Delete = remove node.
@@ -123,10 +127,18 @@ void (async () => {
   registerPTRendererUI();
 
   app.externalHooks = {
-    onSceneChanged: () => { sceneTree.value = app.getSceneTree(); },
-    onStaleChange:  () => { isStale.value = true; },
-    onViewportPick: (id) => { selectedId.value = id; },
-    onBakeError: (msg) => { showToast('error', `Bake failed: ${msg}`); },
+    onSceneChanged: () => {
+      sceneTree.value = app.getSceneTree();
+    },
+    onStaleChange: () => {
+      isStale.value = true;
+    },
+    onViewportPick: (id) => {
+      selectedId.value = id;
+    },
+    onBakeError: (msg) => {
+      showToast('error', `Bake failed: ${msg}`);
+    },
   };
 
   sceneTree.value = app.getSceneTree();

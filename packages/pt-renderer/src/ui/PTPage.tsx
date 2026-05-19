@@ -11,13 +11,18 @@ export function PTPage() {
   return (
     <div class="text-[12px]">
       <Section title="Sampling">
-        <Row label="Light scale" hint="Global multiplier for all scene lights in PT mode. 0.15 works for most THREE.js scenes.">
+        <Row
+          label="Light scale"
+          hint="Global multiplier for all scene lights in PT mode. 0.15 works for most THREE.js scenes."
+        >
           <RangeField
             value={pt.lightScale}
             min={0}
             max={2}
             step={0.01}
-            onChange={(v) => { ptSettings.value = { ...ptSettings.value, lightScale: v }; }}
+            onChange={(v) => {
+              ptSettings.value = { ...ptSettings.value, lightScale: v };
+            }}
           />
         </Row>
         <Row label="Sky intensity" hint="Environment sky brightness. Also drives baker GI fill.">
@@ -26,7 +31,9 @@ export function PTPage() {
             min={0}
             max={4}
             step={0.05}
-            onChange={(v) => { ptSettings.value = { ...ptSettings.value, skyIntensity: v }; }}
+            onChange={(v) => {
+              ptSettings.value = { ...ptSettings.value, skyIntensity: v };
+            }}
           />
         </Row>
       </Section>
@@ -38,7 +45,9 @@ export function PTPage() {
             min={0}
             max={0.05}
             step={0.001}
-            onChange={(v) => { ptSettings.value = { ...ptSettings.value, aperture: v }; }}
+            onChange={(v) => {
+              ptSettings.value = { ...ptSettings.value, aperture: v };
+            }}
           />
         </Row>
         <Row label="Focus dist" hint="Focal plane distance in world units.">
@@ -47,7 +56,9 @@ export function PTPage() {
             min={1}
             max={500}
             step={1}
-            onChange={(v) => { ptSettings.value = { ...ptSettings.value, focusDist: v }; }}
+            onChange={(v) => {
+              ptSettings.value = { ...ptSettings.value, focusDist: v };
+            }}
           />
         </Row>
       </Section>

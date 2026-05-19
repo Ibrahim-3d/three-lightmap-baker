@@ -28,7 +28,6 @@ import {
   WebGLRenderer,
   WebGLRenderTarget,
   type Object3D,
-  type Texture,
 } from 'three';
 import { buildBVHScene, disposeBVHSceneData, type BVHSceneData } from 'pt-renderer';
 import { PTBakeMaterial } from './PTBakeMaterial';
@@ -64,7 +63,13 @@ export interface PTBakeResult {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function makeWhiteTex(): DataTexture {
-  const t = new DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, RGBAFormat, UnsignedByteType);
+  const t = new DataTexture(
+    new Uint8Array([255, 255, 255, 255]),
+    1,
+    1,
+    RGBAFormat,
+    UnsignedByteType,
+  );
   t.colorSpace = NoColorSpace;
   t.minFilter = t.magFilter = NearestFilter;
   t.generateMipmaps = false;
@@ -138,59 +143,62 @@ export class PTBaker {
     sceneData: BVHSceneData,
     options: PTBakeOptions = {},
   ): Promise<PTBakeResult> {
-    const size       = options.size        ?? 1024;
-    const samples    = options.samples     ?? 128;
-    const yieldEvery = options.yieldEvery  ?? 4;
+    const size = options.size ?? 1024;
+    const samples = options.samples ?? 128;
+    const yieldEvery = options.yieldEvery ?? 4;
     const onProgress = options.onProgress;
 
     const lightTex = options.lightTex ?? (this.ownedLightTex = makeEmptyLightTex());
     const numLights = options.numLights ?? 0;
 
     // Two ping-pong accum RTs + a final output RT.
-    const rtA    = makeRT(size);
-    const rtB    = makeRT(size);
-    const rtOut  = makeRT(size);
+    const rtA = makeRT(size);
+    const rtB = makeRT(size);
+    const rtOut = makeRT(size);
 
     // Bake material — one instance, shared across all meshes in the scene.
     const mat = new PTBakeMaterial(sceneData, lightTex, this.whiteTex);
-    mat.uniforms['uNumPTLights']!.value    = numLights;
+    mat.uniforms['uNumPTLights']!.value = numLights;
     mat.uniforms['uSkyLightIntensity']!.value = options.skyIntensity ?? 1.0;
 
     // Divide material — renders accumulated RT → normalised output.
     const divideMat = new ShaderMaterial({
-      vertexShader:   _divideVert,
+      vertexShader: _divideVert,
       fragmentShader: _divideFrag,
       uniforms: {
-        tAccum:        { value: null },
-        uSampleCount:  { value: 1 },
+        tAccum: { value: null },
+        uSampleCount: { value: 1 },
       },
       glslVersion: /* GLSL3 */ '300 es' as never,
-      depthTest:  false,
+      depthTest: false,
       depthWrite: false,
     });
 
     const divQuad = new Mesh(new PlaneGeometry(2, 2), divideMat);
-    const divCam  = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const divCam = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
     const divScene = new Scene();
     divScene.add(divQuad);
 
     // Save + restore renderer state.
-    const prevRT    = renderer.getRenderTarget();
+    const prevRT = renderer.getRenderTarget();
     const prevAuto = renderer.autoClear;
     renderer.autoClear = false;
 
     try {
       // Clear accum buffers.
-      renderer.setRenderTarget(rtA); renderer.clear();
-      renderer.setRenderTarget(rtB); renderer.clear();
+      renderer.setRenderTarget(rtA);
+      renderer.clear();
+      renderer.setRenderTarget(rtB);
+      renderer.clear();
 
-      let writeRT = rtA, readRT = rtB;
+      let writeRT = rtA,
+        readRT = rtB;
 
       for (let s = 0; s < samples; s++) {
         // Update per-sample uniforms.
         mat.uniforms['uSampleCounter']!.value = s + 1;
-        mat.uniforms['uFrameCounter']!.value  = s + 1;
-        mat.uniforms['uRandomVec2']!.value    = { x: Math.random(), y: Math.random() };
+        mat.uniforms['uFrameCounter']!.value = s + 1;
+        mat.uniforms['uRandomVec2']!.value = { x: Math.random(), y: Math.random() };
         mat.setPreviousTexture(readRT);
 
         renderer.setRenderTarget(writeRT);
@@ -221,12 +229,11 @@ export class PTBaker {
       }
 
       // Final divide pass: readRT has the accumulated sum.
-      divideMat.uniforms['tAccum']!.value       = readRT.texture;
+      divideMat.uniforms['tAccum']!.value = readRT.texture;
       divideMat.uniforms['uSampleCount']!.value = samples;
       renderer.setRenderTarget(rtOut);
       renderer.clear();
       renderer.render(divScene, divCam);
-
     } finally {
       renderer.setRenderTarget(prevRT);
       renderer.autoClear = prevAuto;
@@ -268,8 +275,8 @@ export async function bakeWithPT(
   options: PTBakeOptions = {},
 ): Promise<{ result: PTBakeResult; sceneData: BVHSceneData }> {
   const sceneData = buildBVHScene(scene as Scene);
-  const baker     = new PTBaker();
-  const result    = await baker.bake(renderer, meshes, sceneData, options);
+  const baker = new PTBaker();
+  const result = await baker.bake(renderer, meshes, sceneData, options);
   baker.dispose();
   return { result, sceneData };
 }

@@ -4,13 +4,13 @@ import { getBakerOrchestrator } from './orchestrator';
 /**
  * Baker-classic menu items. Registered when the app calls
  * `registerBakerClassicUI()`. Owns: Render → Re-bake, Render → Re-bake AO,
- * File → Export Lightmap PNG.
+ * Render → Path-Traced Bake, File → Export Lightmap PNG.
  */
 
 export function registerBakerMenus(): void {
   menuRegistry.register('Render', {
     id: 'render.rebake',
-    label: 'Re-bake',
+    label: 'Quick Bake',
     hotkey: 'B',
     action: () => {
       void getBakerOrchestrator()?.requestBake();
@@ -22,6 +22,16 @@ export function registerBakerMenus(): void {
     label: 'Re-bake AO only',
     action: () => {
       void getBakerOrchestrator()?.requestAORebake();
+    },
+  });
+
+  menuRegistry.register('Render', {
+    id: 'render.pt-bake',
+    label: 'Path-Traced Bake',
+    separatorBefore: true,
+    action: () => {
+      const orc = getBakerOrchestrator() as unknown as { requestPTBake?(): Promise<void> } | null;
+      void orc?.requestPTBake?.();
     },
   });
 

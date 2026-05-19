@@ -62,20 +62,28 @@ const T = 0.2;
 
 const mat = (c: number) => new MeshStandardMaterial({ color: c, roughness: 0.95 });
 
-const addBox = (w: number, h: number, d: number, m: MeshStandardMaterial, x: number, y: number, z: number) => {
+const addBox = (
+  w: number,
+  h: number,
+  d: number,
+  m: MeshStandardMaterial,
+  x: number,
+  y: number,
+  z: number,
+) => {
   const mesh = new Mesh(new BoxGeometry(w, h, d), m);
   mesh.position.set(x, y, z);
   root.add(mesh);
   return mesh;
 };
 
-addBox(ROOM, T, ROOM, mat(0xf0f0f0), 0, -T / 2, 0);                    // floor
-addBox(ROOM, T, ROOM, mat(0xf0f0f0), 0, ROOM + T / 2, 0);              // ceiling
-addBox(ROOM, ROOM, T, mat(0xf0f0f0), 0, HALF, -HALF - T / 2);          // back
-addBox(T, ROOM, ROOM, mat(0xd62728), -HALF - T / 2, HALF, 0);          // left red
-addBox(T, ROOM, ROOM, mat(0x2ca02c), HALF + T / 2, HALF, 0);           // right green
-addBox(3, 6, 3, mat(0xe8e8e8), -1.8, 3, -1.5);                         // tall block
-addBox(3, 3, 3, mat(0xe8e8e8), 1.8, 1.5, 1.5);                         // short block
+addBox(ROOM, T, ROOM, mat(0xf0f0f0), 0, -T / 2, 0); // floor
+addBox(ROOM, T, ROOM, mat(0xf0f0f0), 0, ROOM + T / 2, 0); // ceiling
+addBox(ROOM, ROOM, T, mat(0xf0f0f0), 0, HALF, -HALF - T / 2); // back
+addBox(T, ROOM, ROOM, mat(0xd62728), -HALF - T / 2, HALF, 0); // left red
+addBox(T, ROOM, ROOM, mat(0x2ca02c), HALF + T / 2, HALF, 0); // right green
+addBox(3, 6, 3, mat(0xe8e8e8), -1.8, 3, -1.5); // tall block
+addBox(3, 3, 3, mat(0xe8e8e8), 1.8, 1.5, 1.5); // short block
 
 const sphere = new Mesh(new SphereGeometry(1.0, 48, 32), mat(0xf5f5f5));
 sphere.position.set(2.4, 1.0, 3.0);
@@ -94,18 +102,18 @@ const pt = new PTRenderer({
   fragmentShader: bvhFrag,
   sceneIsDynamic: false,
   sceneUniforms: {
-    tTriangleTexture:   { value: null },
-    tAABBTexture:       { value: null },
-    uHasSkyTexture:     { value: false },
-    tHDRTexture:        { value: null },
+    tTriangleTexture: { value: null },
+    tAABBTexture: { value: null },
+    uHasSkyTexture: { value: false },
+    tHDRTexture: { value: null },
     uSkyLightIntensity: { value: ptSettings.value.skyIntensity },
-    uNumPTLights:       { value: 1 },
-    uPTLightPos:        { value: [light.position.clone()] },
-    uPTLightDir:        { value: [{ x: 0, y: -1, z: 0 }] },
-    uPTLightColor:      { value: [new Color(1, 1, 1)] },
-    uPTLightType:       { value: new Float32Array([1]) },
-    uPTLightDist:       { value: new Float32Array([0]) },
-    uPTLightSpotCos:    { value: new Float32Array([0]) },
+    uNumPTLights: { value: 1 },
+    uPTLightPos: { value: [light.position.clone()] },
+    uPTLightDir: { value: [{ x: 0, y: -1, z: 0 }] },
+    uPTLightColor: { value: [new Color(1, 1, 1)] },
+    uPTLightType: { value: new Float32Array([1]) },
+    uPTLightDist: { value: new Float32Array([0]) },
+    uPTLightSpotCos: { value: new Float32Array([0]) },
   },
 });
 
@@ -115,7 +123,7 @@ void (async () => {
   const data = buildBVHScene(scene);
   const u = pt.uniforms;
   if (u['tTriangleTexture']) u['tTriangleTexture'].value = data.triangleTexture;
-  if (u['tAABBTexture'])     u['tAABBTexture'].value     = data.aabbTexture;
+  if (u['tAABBTexture']) u['tAABBTexture'].value = data.aabbTexture;
 
   controls.addEventListener('change', () => pt.notifyCameraMoving());
 

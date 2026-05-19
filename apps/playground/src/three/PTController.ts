@@ -26,7 +26,7 @@ import {
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 
 import { PTRenderer } from 'pt-renderer';
-import { ptSettings } from 'shared';
+import { ptSettings, hdriTexture } from 'shared';
 import { buildBVHScene, disposeBVHSceneData, type BVHSceneData } from 'pt-renderer';
 import bvhFrag from 'pt-renderer/shaders/bvh-scene.frag.glsl?raw';
 
@@ -45,14 +45,20 @@ const MAX_ALBEDO_TEXTURES = 16;
  *   texel i*4+2 : dir.xyz,   spotCos
  *   texel i*4+3 : width,     height, 0, 0
  */
-const MAX_PT_LIGHTS   = 16;
+const MAX_PT_LIGHTS = 16;
 const TEXELS_PER_LIGHT = 4;
-const LIGHT_TEX_WIDTH  = MAX_PT_LIGHTS * TEXELS_PER_LIGHT; // 64
+const LIGHT_TEX_WIDTH = MAX_PT_LIGHTS * TEXELS_PER_LIGHT; // 64
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function makeWhiteTex(): DataTexture {
-  const t = new DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, RGBAFormat, UnsignedByteType);
+  const t = new DataTexture(
+    new Uint8Array([255, 255, 255, 255]),
+    1,
+    1,
+    RGBAFormat,
+    UnsignedByteType,
+  );
   t.colorSpace = NoColorSpace;
   t.minFilter = t.magFilter = NearestFilter;
   t.generateMipmaps = false;
@@ -71,7 +77,10 @@ function makeLightTexture(): DataTexture {
   return t;
 }
 
-function albedoUniforms(textures: Texture[], fallback: DataTexture): Record<string, { value: Texture }> {
+function albedoUniforms(
+  textures: Texture[],
+  fallback: DataTexture,
+): Record<string, { value: Texture }> {
   const out: Record<string, { value: Texture }> = {};
   for (let i = 0; i < MAX_ALBEDO_TEXTURES; i++)
     out[`tAlbedoTex${i}`] = { value: textures[i] ?? fallback };
@@ -82,20 +91,20 @@ function albedoUniforms(textures: Texture[], fallback: DataTexture): Record<stri
 
 export interface PTControllerDeps {
   renderer: WebGLRenderer;
-  camera:   PerspectiveCamera;
+  camera: PerspectiveCamera;
   controls: OrbitControls;
   getScene: () => Scene;
 }
 
 export class PTController {
-  private pt:          PTRenderer | null = null;
-  private sceneData:   BVHSceneData | null = null;
-  private whiteTex:    DataTexture | null = null;
-  private lightTex:    DataTexture | null = null;
-  private _lightData:  Float32Array = new Float32Array(0);
+  private pt: PTRenderer | null = null;
+  private sceneData: BVHSceneData | null = null;
+  private whiteTex: DataTexture | null = null;
+  private lightTex: DataTexture | null = null;
+  private _lightData: Float32Array = new Float32Array(0);
 
   private active = false;
-  private rafId  = 0;
+  private rafId = 0;
   private lastMs = 0;
 
   // Reusable scratch vectors — avoids GC pressure in render loop.
@@ -115,15 +124,15 @@ export class PTController {
     this.pt = new PTRenderer({
       fragmentShader: bvhFrag,
       sceneIsDynamic: false,
-      renderScale:    1.0,
+      renderScale: 1.0,
       sceneUniforms: {
-        tTriangleTexture:   { value: null },
-        tAABBTexture:       { value: null },
-        uHasSkyTexture:     { value: false },
-        tHDRTexture:        { value: null },
+        tTriangleTexture: { value: null },
+        tAABBTexture: { value: null },
+        uHasSkyTexture: { value: false },
+        tHDRTexture: { value: null },
         uSkyLightIntensity: { value: 1.0 },
-        tLightTexture:      { value: this.lightTex },
-        uNumPTLights:       { value: 0 },
+        tLightTexture: { value: this.lightTex },
+        uNumPTLights: { value: 0 },
         ...albedoUniforms([], this.whiteTex),
       },
     });
@@ -148,7 +157,7 @@ export class PTController {
       return;
     }
     u['tTriangleTexture'].value = newData.triangleTexture;
-    u['tAABBTexture'].value     = newData.aabbTexture;
+    u['tAABBTexture'].value = newData.aabbTexture;
 
     const fallback = this.whiteTex!;
     for (let i = 0; i < MAX_ALBEDO_TEXTURES; i++) {
@@ -171,7 +180,16 @@ export class PTController {
     this.rafId = 0;
   }
 
-  get isActive(): boolean { return this.active; }
+  get isActive(): boolean {
+    return this.active;
+  }
+
+  /** Expose light DataTexture + count for pt-baker to share. */
+  get lightTextureState(): { tex: DataTexture; count: number } | null {
+    if (!this.lightTex) return null;
+    const count = (this.pt?.uniforms['uNumPTLights']?.value as number) ?? 0;
+    return { tex: this.lightTex, count };
+  }
 
   dispose(): void {
     this.deactivate();
@@ -191,7 +209,7 @@ export class PTController {
   private _loop = (): void => {
     if (!this.active) return;
     this.rafId = requestAnimationFrame(this._loop);
-    const now   = performance.now();
+    const now = performance.now();
     const delta = now - this.lastMs;
     this.lastMs = now;
     this._syncLights();
@@ -199,9 +217,12 @@ export class PTController {
     this.pt!.render(this.deps.renderer, this.deps.camera, delta);
   };
 
-  private _onCameraChange = (): void => { this.pt?.notifyCameraMoving(); };
+  private _onCameraChange = (): void => {
+    this.pt?.notifyCameraMoving();
+  };
 
   private _prevSkyIntensity = -1;
+  private _prevHdri: import('three').Texture | null = null;
   private _syncSettings(): void {
     if (!this.pt) return;
     const u = this.pt.uniforms;
@@ -211,8 +232,16 @@ export class PTController {
       this._prevSkyIntensity = s.skyIntensity;
       this.pt.resetAccumulation();
     }
-    if (u['uApertureSize'])  u['uApertureSize'].value  = s.aperture;
+    if (u['uApertureSize']) u['uApertureSize'].value = s.aperture;
     if (u['uFocusDistance']) u['uFocusDistance'].value = s.focusDist;
+    // HDRI environment sync.
+    const hdri = hdriTexture.value;
+    if (hdri !== this._prevHdri) {
+      this._prevHdri = hdri;
+      if (u['tHDRTexture']) u['tHDRTexture'].value = hdri;
+      if (u['uHasSkyTexture']) u['uHasSkyTexture'].value = hdri !== null;
+      this.pt.resetAccumulation();
+    }
   }
 
   /**
@@ -227,9 +256,9 @@ export class PTController {
     const texData = this._lightData;
     texData.fill(0);
 
-    let count    = 0;
+    let count = 0;
     const lScale = ptSettings.value.lightScale;
-    const scene  = this.deps.getScene();
+    const scene = this.deps.getScene();
 
     scene.traverse((obj) => {
       if (count >= MAX_PT_LIGHTS) return;
@@ -251,12 +280,11 @@ export class PTController {
         texData[base + 6] = obj.color.b * obj.intensity * lScale;
         texData[base + 7] = 0;
         // texel 2: dir.xyz, spotCos=0
-        texData[base + 8]  = this._lightDir.x;
-        texData[base + 9]  = this._lightDir.y;
+        texData[base + 8] = this._lightDir.x;
+        texData[base + 9] = this._lightDir.y;
         texData[base + 10] = this._lightDir.z;
         texData[base + 11] = 0;
         count++;
-
       } else if (obj instanceof SpotLight) {
         if (obj.userData.lightmapIgnore) return;
         obj.getWorldPosition(this._lightPos);
@@ -270,12 +298,11 @@ export class PTController {
         texData[base + 5] = obj.color.g * obj.intensity * lScale;
         texData[base + 6] = obj.color.b * obj.intensity * lScale;
         texData[base + 7] = obj.distance || 0;
-        texData[base + 8]  = this._lightDir.x;
-        texData[base + 9]  = this._lightDir.y;
+        texData[base + 8] = this._lightDir.x;
+        texData[base + 9] = this._lightDir.y;
         texData[base + 10] = this._lightDir.z;
         texData[base + 11] = Math.cos(obj.angle);
         count++;
-
       } else if (obj instanceof PointLight) {
         if (obj.userData.lightmapIgnore) return;
         obj.getWorldPosition(this._lightPos);
@@ -287,12 +314,11 @@ export class PTController {
         texData[base + 5] = obj.color.g * obj.intensity * lScale;
         texData[base + 6] = obj.color.b * obj.intensity * lScale;
         texData[base + 7] = obj.distance || 0;
-        texData[base + 8]  = 0;
-        texData[base + 9]  = -1;
+        texData[base + 8] = 0;
+        texData[base + 9] = -1;
         texData[base + 10] = 0;
         texData[base + 11] = 0;
         count++;
-
       } else if (obj instanceof RectAreaLight) {
         // Type 3 — true area light. Shader picks random point on face.
         obj.getWorldPosition(this._lightPos);
@@ -306,8 +332,8 @@ export class PTController {
         texData[base + 5] = obj.color.g * obj.intensity * lScale;
         texData[base + 6] = obj.color.b * obj.intensity * lScale;
         texData[base + 7] = 0; // dist (unused for area)
-        texData[base + 8]  = this._lightDir.x;
-        texData[base + 9]  = this._lightDir.y;
+        texData[base + 8] = this._lightDir.x;
+        texData[base + 9] = this._lightDir.y;
         texData[base + 10] = this._lightDir.z;
         texData[base + 11] = 0; // spotCos (unused)
         // texel 3: width, height

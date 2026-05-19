@@ -1,4 +1,5 @@
 import { computed, signal } from '@preact/signals';
+import type { Texture } from 'three';
 
 /**
  * Bake-progress signals. Technically baker-specific, but the shell's
@@ -57,3 +58,12 @@ export const ptSettings = signal<PTSettings>({
   aperture: 0.0,
   focusDist: 100.0,
 });
+
+/**
+ * HDRI environment texture for the PT renderer.
+ * Set by WorldPage's file picker when the user loads a .hdr / .exr file.
+ * PTController reads this signal each frame and uploads to tHDRTexture uniform.
+ *
+ * null = use procedural sky gradient.
+ */
+export const hdriTexture = signal<Texture | null>(null);
