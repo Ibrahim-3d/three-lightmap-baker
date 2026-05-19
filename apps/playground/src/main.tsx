@@ -89,7 +89,9 @@ function wireSelectionEffects(app: CornellBoxExample): void {
 }
 
 /** W/E/R = translate/rotate/scale. Escape = deselect. Delete = remove node.
- *  B = re-bake when stale. */
+ *  B = re-bake when stale. A = toggle atlas viewer. 1/3/7/0 = view orbits
+ *  (front / right / top / persp — Blender numpad convention; Shift+ = back/
+ *  left/bottom). */
 function wireHotkeys(app: CornellBoxExample): void {
   window.addEventListener('keydown', (e) => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
@@ -107,6 +109,14 @@ function wireHotkeys(app: CornellBoxExample): void {
       if (isStale.value && bakeStatus.value !== 'baking') void app.requestBake();
     } else if (k === 'a') {
       atlasViewerVisible.value = !atlasViewerVisible.value;
+    } else if (e.key === '1') {
+      app.sceneController.setView(e.shiftKey ? 'back' : 'front');
+    } else if (e.key === '3') {
+      app.sceneController.setView(e.shiftKey ? 'left' : 'right');
+    } else if (e.key === '7') {
+      app.sceneController.setView(e.shiftKey ? 'bottom' : 'top');
+    } else if (e.key === '0') {
+      app.sceneController.setView('persp');
     }
   });
 }

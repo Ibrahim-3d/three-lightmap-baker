@@ -64,6 +64,17 @@ export function WorldPage() {
     );
   };
 
+  // Camera reachable from the orchestrator via the scene's first child
+  // chain; we keep things loose-typed since Orchestrator doesn't expose it.
+  const camera = (app as unknown as { sceneController?: { camera?: { fov?: number } } })
+    .sceneController?.camera;
+  const sc = (app as unknown as {
+    sceneController?: {
+      setView?(v: 'front' | 'right' | 'top' | 'persp'): void;
+      setCameraFov?(v: number): void;
+    };
+  }).sceneController;
+
   return (
     <div class="text-[12px]">
       <Section title="Viewport background">
@@ -76,6 +87,35 @@ export function WorldPage() {
               bumpObject();
             }}
           />
+        </Row>
+      </Section>
+
+      <Section title="Camera">
+        <Row label="FOV" hint="Field of view in degrees. Hotkeys 1 / 3 / 7 / 0 jump views.">
+          <RangeField
+            value={camera?.fov ?? 45}
+            min={10}
+            max={120}
+            step={1}
+            onChange={(v) => {
+              sc?.setCameraFov?.(v);
+              bumpObject();
+            }}
+          />
+        </Row>
+        <Row label="Views" hint="Blender-style numpad: 1 Front, 3 Right, 7 Top, 0 Persp.">
+          <div class="flex flex-wrap gap-1">
+            {(['front', 'right', 'top', 'persp'] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                class="px-2 py-0.5 text-[10px] rounded bg-bg-2 hover:bg-accent hover:text-white border border-border transition-colors uppercase"
+                onClick={() => sc?.setView?.(v)}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
         </Row>
       </Section>
 
