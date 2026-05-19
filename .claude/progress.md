@@ -1,5 +1,58 @@
 # Lightmap Baker — Progress Tracker
 
+## Recent: Session 16 — 2026-05-19 — Overnight polish sweep (no PT, baker focus)
+
+Context: user paused PT renderer work, asked for a sweeping demo polish run
+to bring the editor up to game-engine standard (Blender / Unreal / Unity
+reference). Single overnight run on branch `feat/step-4-5-completion`.
+
+| Phase | Commit | Change |
+|---|---|---|
+| 1 | `b049194` | Gallery landing restored; PT renderer UI hidden (PT code stays in tree); ScenePicker dropdown removed; menu z-index fix (Topbar wrapper `relative z-50`); File menu gains `Open Gallery…` |
+| 2 | `59b7b1e` | Blender-style viewport pass dropdown (11 layers, Output/Debug grouped); LightmapPage `Layer Intensities` sliders (Direct / Indirect / AO Intensity / AO Exponent) → `BakeController.refreshAllComposites`; `viewLayers` signal in shared |
+| 3 | `e99d9a7` | AtlasViewer multi-atlas overlay mounted; `atlasViewerVisible` signal + View menu toggle (hotkey **A**); texel density viz back via dropdown |
+| 4 | `dc2a78f` | All 4 light types enabled in asset library (Point / Spot / Sun / Area); each spawns a Group{Light + Target + Helper}; Blender-grade gizmos via `PointLightHelper` / `SpotLightHelper` / `DirectionalLightHelper` / `RectAreaLightHelper`; Outliner walks `userData.bakerLightType`; LightPage rewritten into type-aware editor (color, intensity, distance/decay/angle/penumbra/width/height per type) |
+| 5 | `38cc6be` | Unreal-style per-object dirty tracking — snapshots `matrixWorld` per mesh post-bake; RAF compares each frame; dirty meshes get `lightMapIntensity = 0` (unlit albedo) while rest of scene stays baked; `dirtyMeshIds` signal feeds StaleBanner badge count |
+| 6 | `7e61edb` | EffectComposer chain in SceneController (RenderPass → SSAO → UnrealBloom → FXAA); `postFXSettings` signal in shared; new `PostFXPage` inspector tab (Master / Tone Mapping / SSAO / Bloom); master off by default — bake QA pristine |
+| 7 | `6abfbd4` | Camera viewpoints — `SceneController.setView(...)` + `setCameraFov(...)`; hotkeys 1/3/7/0 (Blender numpad: Front / Right / Top / Persp; Shift+ = Back/Left/Bottom); WorldPage gains Camera section with FOV slider + 4 shortcut buttons |
+| 8 | `0b5ab93` | Polish — Inspector auto-switches to Light tab on light selection / Object on mesh; Help → Keyboard Shortcuts dialog enumerates every hotkey; CLAUDE.md amended: library still bans post-FX, demo shell PostFXPage permitted gated by `master = false` default |
+
+**Architectural ground laid (reusable):**
+- `shared/signals/ui.ts` grew: `viewLayers`, `atlasViewerVisible`, `dirtyMeshIds`, `postFXSettings`. Renderer-agnostic; demo-shell + baker-classic both consume.
+- `viewLayers` pattern keeps the shell free of app-domain enums — playground populates the signal at boot from its `modes.LAYERS` table.
+- Light groups carry `userData.bakerLightType` so SceneController / Outliner / Inspector / asset library all key off one flag instead of `instanceof` checks.
+- `BakerOrchestrator` interface extended with `refreshComposites(overrides)` — view-time intensity tweaks bypass the rebake path.
+
+**Verification.** `npx tsc --noEmit` clean across all 8 commits.
+`npm run build` green throughout — last bundle 940 KiB / 257 KiB gz
+(+21 KiB vs S15.1's 919 KiB; the bulk is EffectComposer + RectAreaLightHelper
++ FXAA shader, all from `three/examples/jsm/`). Cornell visual smoke test
+deferred to user environment per convention.
+
+**Deferred (deliberate scope cuts):**
+- True in-scene Camera objects with render-target switching — needs to
+  coexist with the bake's RT lifecycle. Numpad viewpoint shortcuts cover
+  ~90% of the value at a fraction of the risk.
+- Outliner per-light-type icons (Point / Spot / Sun / Area glyphs).
+- Light auto-fit-to-helper-size when scaling the gizmo.
+
+**Carry-overs from S15.1 / earlier sessions (still open):**
+- iGPU TDR validation (S12 work) — deferred to user environment.
+- Task 11 (SH light probes).
+- Modularity CI job still advisory — legacy oversized files
+  (`LightmapBaker.ts`, `CornellBoxExample.ts`, `SceneController.ts`,
+  `BakeController.ts`, `LightmapperMaterial.ts`) untouched. This session
+  added ~160 LOC to CornellBoxExample and ~180 LOC to SceneController;
+  both still over the 300-LOC modularity target. Splitting deferred.
+
+**Next session.** User-environment smoke test on the polished demo:
+gallery → pick scene → drop in lights of each type → verify gizmos →
+bake → move objects → verify dirty count → toggle Post-FX → enable
+atlas viewer. Once smoke is clean, can flip the modularity CI job to
+hard-fail and start splitting the oversized files.
+
+---
+
 **Checkpoint: 2026-05-06.** Sessions 1–11 (Tasks 01–09, 12, 13 + multi-bounce
 GI + AO split + TDR/timeout protection + public API foundation) archived to
 [`.claude/archive/sessions-2026-04-27.md`](archive/sessions-2026-04-27.md).
