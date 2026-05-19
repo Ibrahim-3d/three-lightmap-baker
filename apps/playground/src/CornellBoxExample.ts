@@ -1,8 +1,8 @@
-import { type Object3D, MeshStandardMaterial, Mesh, type Texture, Vector3 } from 'three';
+import { Matrix4, type Object3D, MeshStandardMaterial, Mesh, type Texture, Vector3 } from 'three';
 import { AtlasViewer, BakeFrameInfo, exportLightmap, ExportFormat } from 'baker-classic';
 import type { BakerOrchestrator } from 'baker-classic/ui';
 import type { AssetSpec } from 'shared';
-import { atlasViewerVisible, bakeProgress, bakeStatus } from 'shared';
+import { atlasViewerVisible, bakeProgress, bakeStatus, dirtyMeshIds } from 'shared';
 import { LAYERS } from './three/modes';
 import { BakeController } from './three/BakeController';
 import {
@@ -253,6 +253,61 @@ export class CornellBoxExample implements BakerOrchestrator {
 
     this.renderModeRunner.apply();
     this.bakeController.diag.snap('after applyRenderMode (lightmaps mounted)');
+
+    // Unreal-style dirty tracking: snapshot the world matrix of every baked
+    // mesh now. From here on, any mesh whose matrixWorld drifts from its
+    // snapshot is rendered unlit until the next rebake.
+    this.snapshotBakedTransforms();
+    dirtyMeshIds.value = new Set();
+  }
+
+  /** Per-mesh "baked at this transform" snapshot. Cleared on scene reload. */
+  private bakedMatrices = new Map<string, Matrix4>();
+  /** Cached dirty set so we only bump the signal on transition. */
+  private _lastDirtySet = new Set<string>();
+
+  private snapshotBakedTransforms(): void {
+    this.bakedMatrices.clear();
+    for (const m of this.sceneController.meshes) {
+      m.updateMatrixWorld(true);
+      this.bakedMatrices.set(m.uuid, m.matrixWorld.clone());
+    }
+  }
+
+  /**
+   * Per-RAF dirty check. Compares each mesh's current matrixWorld to its
+   * post-bake snapshot. Dirty meshes get \`lightMapIntensity = 0\` so they
+   * fall back to unlit albedo while the rest of the scene keeps its baked
+   * appearance — same UX as Unreal's "stationary light needs rebuild".
+   *
+   * Cheap — Matrix4.equals is a 16-element compare per mesh.
+   */
+  private updateDirtyTracking(): void {
+    if (!this.bakedMatrices.size) return;
+    const dirty = new Set<string>();
+    for (const m of this.sceneController.meshes) {
+      const snap = this.bakedMatrices.get(m.uuid);
+      const mat = m.material as MeshStandardMaterial;
+      if (!snap) {
+        // Mesh added after the last bake — implicitly dirty.
+        dirty.add(m.uuid);
+        if (mat.lightMap) mat.lightMapIntensity = 0;
+        continue;
+      }
+      const moved = !snap.equals(m.matrixWorld);
+      if (moved) {
+        dirty.add(m.uuid);
+        if (mat.lightMap) mat.lightMapIntensity = 0;
+      } else if (mat.lightMap && mat.lightMapIntensity === 0 && this._lastDirtySet.has(m.uuid)) {
+        // Returned to the baked transform → restore lightmap intensity.
+        mat.lightMapIntensity = 1;
+      }
+    }
+    // Signal only on transition (Preact signal equality is reference-based).
+    if (dirty.size !== this._lastDirtySet.size || !setsEqual(dirty, this._lastDirtySet)) {
+      this._lastDirtySet = dirty;
+      dirtyMeshIds.value = dirty;
+    }
   }
 
   /** Fired by BakeController per library bake frame. Updates options mirrors. */
@@ -404,6 +459,7 @@ export class CornellBoxExample implements BakerOrchestrator {
 
       this.sceneController.syncGizmo(this.options.showGizmo);
       this.sceneController.updateLightHelpers();
+      this.updateDirtyTracking();
 
       // Bake step.
       if (this.bakeController.bakeGroups.length && !this.options.pause) {
@@ -770,4 +826,10 @@ export class CornellBoxExample implements BakerOrchestrator {
       bakeStatus.value = 'done';
     }
   }
+}
+
+function setsEqual<T>(a: ReadonlySet<T>, b: ReadonlySet<T>): boolean {
+  if (a.size !== b.size) return false;
+  for (const v of a) if (!b.has(v)) return false;
+  return true;
 }
