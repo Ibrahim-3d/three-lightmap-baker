@@ -48,9 +48,7 @@ export function ViewportFlySpeed() {
           }}
           class="w-28 accent-accent"
         />
-        <span class="text-[11px] tabular-nums text-text-1 w-12 text-right">
-          {v.toFixed(1)} m/s
-        </span>
+        <span class="text-[11px] tabular-nums text-text-1 w-12 text-right">{v.toFixed(1)} m/s</span>
       </div>
     </div>
   );

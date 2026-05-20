@@ -68,12 +68,14 @@ export function WorldPage() {
   // chain; we keep things loose-typed since Orchestrator doesn't expose it.
   const camera = (app as unknown as { sceneController?: { camera?: { fov?: number } } })
     .sceneController?.camera;
-  const sc = (app as unknown as {
-    sceneController?: {
-      setView?(v: 'front' | 'right' | 'top' | 'persp'): void;
-      setCameraFov?(v: number): void;
-    };
-  }).sceneController;
+  const sc = (
+    app as unknown as {
+      sceneController?: {
+        setView?(v: 'front' | 'right' | 'top' | 'persp'): void;
+        setCameraFov?(v: number): void;
+      };
+    }
+  ).sceneController;
 
   return (
     <div class="text-[12px]">

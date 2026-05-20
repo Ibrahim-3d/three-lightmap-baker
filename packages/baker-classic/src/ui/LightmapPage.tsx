@@ -32,7 +32,10 @@ export function LightmapPage() {
   return (
     <div class="text-[12px]">
       <Section title="Layer Intensities (view-time)">
-        <Row label="Direct" hint="Multiplier on the direct-lighting pass at composite time. No rebake.">
+        <Row
+          label="Direct"
+          hint="Multiplier on the direct-lighting pass at composite time. No rebake."
+        >
           <RangeField
             value={options.directIntensity}
             min={0}
