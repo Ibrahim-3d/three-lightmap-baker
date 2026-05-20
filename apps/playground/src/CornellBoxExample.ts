@@ -294,20 +294,21 @@ export class CornellBoxExample implements BakerOrchestrator {
     const dirty = new Set<string>();
     for (const m of this.sceneController.meshes) {
       const snap = this.bakedMatrices.get(m.uuid);
-      const mat = m.material as MeshStandardMaterial;
-      if (!snap) {
-        // Mesh added after the last bake — implicitly dirty.
+      // Multi-material meshes are real (GLB imports often carry arrays);
+      // accessing `.lightMap` on the array directly is undefined-behavior,
+      // so iterate each slot.
+      const mats = Array.isArray(m.material) ? m.material : [m.material];
+      const isDirty = !snap || !snap.equals(m.matrixWorld);
+      if (isDirty) {
         dirty.add(m.uuid);
-        if (mat.lightMap) mat.lightMapIntensity = 0;
-        continue;
-      }
-      const moved = !snap.equals(m.matrixWorld);
-      if (moved) {
-        dirty.add(m.uuid);
-        if (mat.lightMap) mat.lightMapIntensity = 0;
-      } else if (mat.lightMap && mat.lightMapIntensity === 0 && this._lastDirtySet.has(m.uuid)) {
+        for (const mat of mats) {
+          if (mat instanceof MeshStandardMaterial && mat.lightMap) mat.lightMapIntensity = 0;
+        }
+      } else if (this._lastDirtySet.has(m.uuid)) {
         // Returned to the baked transform → restore lightmap intensity.
-        mat.lightMapIntensity = 1;
+        for (const mat of mats) {
+          if (mat instanceof MeshStandardMaterial && mat.lightMap) mat.lightMapIntensity = 1;
+        }
       }
     }
     // Signal only on transition (Preact signal equality is reference-based).

@@ -42,6 +42,7 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass';
 import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass';
 import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader';
+import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader';
 import { Diagnostics } from 'baker-classic';
 import { createAsset, type AssetSpec, postFXSettings, sceneRegistry } from 'shared';
 import type { SceneObj } from './types';
@@ -124,6 +125,7 @@ export class SceneController {
   private ssaoPass: SSAOPass | null = null;
   private bloomPass: UnrealBloomPass | null = null;
   private fxaaPass: ShaderPass | null = null;
+  private vignettePass: ShaderPass | null = null;
 
   private _preDragSnap: TransformSnap | null = null;
 
@@ -620,6 +622,12 @@ export class SceneController {
     this.bloomPass = new UnrealBloomPass(new Vector2(w, h), 0.35, 0.4, 0.85);
     composer.addPass(this.bloomPass);
 
+    // Vignette runs after bloom so the corner darkening isn't blown out by
+    // bloom-bright pixels. `offset` is fixed at the shader default (1.0) and
+    // `darkness` is driven by `vignetteStrength` in syncPostFX.
+    this.vignettePass = new ShaderPass(VignetteShader);
+    composer.addPass(this.vignettePass);
+
     this.fxaaPass = new ShaderPass(FXAAShader);
     const dpr = this.renderer.getPixelRatio();
     const res = this.fxaaPass.material.uniforms.resolution;
@@ -659,6 +667,11 @@ export class SceneController {
       this.bloomPass.strength = s.bloomStrength;
       this.bloomPass.radius = s.bloomRadius;
       this.bloomPass.threshold = s.bloomThreshold;
+    }
+    if (this.vignettePass) {
+      this.vignettePass.enabled = s.master && s.vignetteEnabled;
+      const darkness = this.vignettePass.material.uniforms.darkness;
+      if (darkness) darkness.value = s.vignetteStrength;
     }
   }
 
@@ -796,8 +809,12 @@ export class SceneController {
       // Parented directly to the scene so they survive cornellRoot tear-downs
       // on preset swaps and dispose with the scene.
       this.scene.add(node);
-      // Lift a touch so they don't sit on the floor.
-      node.position.y = Math.max(node.position.y, 2);
+      // Lift to the scene's vertical mid-line so lights don't sit on the floor
+      // and scale with the environment (a 100m scene needs more headroom than
+      // a 1m one). Falls back to 2 when the scene is empty.
+      const { center, size } = this.sceneBoundsOrFallback();
+      const lift = Math.max(center.y, size * 0.2);
+      node.position.y = Math.max(node.position.y, lift);
     }
 
     this.hooks.onSceneChanged(this.meshes);

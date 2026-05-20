@@ -112,6 +112,21 @@ export function PostFXPage() {
           />
         </Row>
       </Section>
+
+      <Section title="Vignette">
+        <Row label="Enabled">
+          <BoolField value={s.vignetteEnabled} onChange={(v) => set('vignetteEnabled', v)} />
+        </Row>
+        <Row label="Strength" hint="Darkness applied to frame corners.">
+          <RangeField
+            value={s.vignetteStrength}
+            min={0}
+            max={2}
+            step={0.01}
+            onChange={(v) => set('vignetteStrength', v)}
+          />
+        </Row>
+      </Section>
     </div>
   );
 }
