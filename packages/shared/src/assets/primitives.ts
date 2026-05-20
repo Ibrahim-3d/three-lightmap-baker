@@ -1,6 +1,7 @@
 import {
   BoxGeometry,
   BufferGeometry,
+  Color,
   ConeGeometry,
   CylinderGeometry,
   DirectionalLight,
@@ -20,6 +21,16 @@ import {
   type Texture,
   TorusGeometry,
 } from 'three';
+
+/** Materials used on light-gizmo meshes and line helpers. Both expose
+ *  `.color: Color`, so {@link paintGizmos} can tint them uniformly. */
+type GizmoMaterial = MeshBasicMaterial | LineBasicMaterial;
+
+/** Narrow check for a renderable child carrying a gizmo material. */
+function hasGizmoMaterial(o: Object3D): o is Mesh<BufferGeometry, GizmoMaterial> | LineSegments<BufferGeometry, GizmoMaterial> {
+  const mat = (o as Mesh | LineSegments).material;
+  return mat instanceof MeshBasicMaterial || mat instanceof LineBasicMaterial;
+}
 import { RectAreaLightHelper } from 'three/examples/jsm/helpers/RectAreaLightHelper';
 
 /**
@@ -218,13 +229,10 @@ function buildSunGizmo(length: number, color: number): LineSegments {
 
 /** Set color on every gizmo material in a light group (Mesh + LineSegments
  *  children flagged `lightGizmo`). Used by per-frame helper updaters. */
-function paintGizmos(group: Object3D, color: { r: number; g: number; b: number }): void {
+function paintGizmos(group: Object3D, color: Color): void {
   group.traverse((o) => {
     if (!o.userData?.lightGizmo) return;
-    const mesh = o as Mesh & { material?: { color?: { copy: (c: unknown) => unknown } } };
-    if (mesh.material && 'color' in mesh.material && mesh.material.color) {
-      (mesh.material.color as { copy: (c: unknown) => unknown }).copy(color);
-    }
+    if (hasGizmoMaterial(o)) o.material.color.copy(color);
   });
 }
 
