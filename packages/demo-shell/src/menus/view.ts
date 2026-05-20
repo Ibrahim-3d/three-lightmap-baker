@@ -1,4 +1,4 @@
-import { atlasViewerVisible, layout, menuRegistry } from 'shared';
+import { atlasViewerVisible, layout, menuRegistry, showAxes, showGrid } from 'shared';
 
 /**
  * View menu (T-D9). Toggles remember the last non-zero width in a local
@@ -33,6 +33,23 @@ menuRegistry.register('View', {
     } else {
       layout.value = { ...layout.value, inspectorW: lastInspectorW || 320 };
     }
+  },
+});
+
+menuRegistry.register('View', {
+  id: 'view.toggle-grid',
+  label: 'Show Ground Grid',
+  separatorBefore: true,
+  action: () => {
+    showGrid.value = !showGrid.value;
+  },
+});
+
+menuRegistry.register('View', {
+  id: 'view.toggle-axes',
+  label: 'Show World Axes',
+  action: () => {
+    showAxes.value = !showAxes.value;
   },
 });
 

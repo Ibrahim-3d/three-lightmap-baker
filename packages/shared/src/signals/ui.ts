@@ -81,6 +81,15 @@ export const flySpeed = signal<number>(5);
 export const flyActive = signal<boolean>(false);
 
 /**
+ * Viewport editor helpers — Blender-style ground grid + RGB world axes.
+ * Both default on; toggled from the View menu. Renderer reads the signals
+ * each RAF to flip helper `.visible` so the bake path stays untouched
+ * (helpers are tagged `lightmapIgnore`).
+ */
+export const showGrid = signal<boolean>(true);
+export const showAxes = signal<boolean>(true);
+
+/**
  * Unreal-style "dirty mesh" set. Each entry is a mesh uuid that has been
  * transformed (or had lighting-relevant material edited) since the last
  * successful bake. Dirty meshes render unlit while the rest of the scene
