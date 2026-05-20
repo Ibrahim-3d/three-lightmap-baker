@@ -60,7 +60,7 @@ export function ViewportToggle() {
   return (
     <div
       ref={anchorRef}
-      class="pointer-events-auto absolute top-3 right-3 z-20"
+      class="pointer-events-auto relative"
       data-testid="view-layer-dropdown"
     >
       <button

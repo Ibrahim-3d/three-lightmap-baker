@@ -741,6 +741,23 @@ export class SceneController {
     this.controls.update();
   }
 
+  /** Frame an object: drop the orbit target on its bounding-box center and
+   *  pull the camera back along the current view direction so the box fits in
+   *  view. Mirrors the "F" / "frame selected" hotkey common to Maya, Blender,
+   *  Unreal, and Unity editors. */
+  frameObject(obj: Object3D): void {
+    const box = new Box3().setFromObject(obj);
+    if (box.isEmpty()) return;
+    const center = box.getCenter(new Vector3());
+    const size = box.getSize(new Vector3()).length();
+    const dist = Math.max(size * 1.4, 1);
+    const dir = new Vector3();
+    this.camera.getWorldDirection(dir).negate(); // away from look-at
+    this.controls.target.copy(center);
+    this.camera.position.copy(center).addScaledVector(dir, dist);
+    this.controls.update();
+  }
+
   /** Update the perspective camera FOV (in degrees) and refresh projection. */
   setCameraFov(deg: number): void {
     this.camera.fov = Math.max(1, Math.min(170, deg));

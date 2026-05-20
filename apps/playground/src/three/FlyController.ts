@@ -1,4 +1,4 @@
-import { MathUtils, type PerspectiveCamera, Vector3, type WebGLRenderer } from 'three';
+import { MathUtils, MOUSE, type PerspectiveCamera, Vector3, type WebGLRenderer } from 'three';
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { flyActive, flySpeed } from 'shared';
 
@@ -44,8 +44,15 @@ export class FlyController {
     private readonly renderer: WebGLRenderer,
     private readonly controls: OrbitControls,
   ) {
-    // Free RMB for our use; OrbitControls otherwise binds it to PAN.
-    (this.controls.mouseButtons as { RIGHT: unknown }).RIGHT = null;
+    // Industry-standard editor viewport mapping (Unreal/Unity-style):
+    //   LMB = orbit, MMB = pan, wheel = dolly, RMB = fly-look (handled here).
+    // OrbitControls defaults pan to RMB and dolly to MMB; we swap so RMB is
+    // free for fly mode and panning lives on MMB.
+    this.controls.mouseButtons = {
+      LEFT: MOUSE.ROTATE,
+      MIDDLE: MOUSE.PAN,
+      RIGHT: null,
+    } as typeof this.controls.mouseButtons;
 
     const dom = renderer.domElement;
     dom.addEventListener('pointerdown', this.onPointerDown);
