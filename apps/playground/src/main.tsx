@@ -14,6 +14,7 @@ import {
   atlasViewerVisible,
   bakeProgress,
   bakeStatus,
+  commandHistory,
   gizmoMode,
   inspectorTab,
   isStale,
@@ -28,6 +29,7 @@ import {
 import { CornellBoxExample } from './CornellBoxExample';
 import { LIGHT_DUMMY_ID } from './three/SceneController';
 import { LAYERS } from './three/modes';
+import { AddCommand, RemoveCommand, TransformCommand } from './three/commands';
 
 /**
  * Playground entry. With no `?scene=` param renders the gallery landing.
@@ -113,6 +115,18 @@ function wireSelectionEffects(app: CornellBoxExample): void {
 function wireHotkeys(app: CornellBoxExample): void {
   window.addEventListener('keydown', (e) => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+    // Undo / Redo — check BEFORE key-letter routing so 'z' doesn't fall through.
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+      e.preventDefault();
+      if (e.shiftKey) commandHistory.redo();
+      else commandHistory.undo();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+      e.preventDefault();
+      commandHistory.redo();
+      return;
+    }
     const k = e.key.toLowerCase();
     if (k === 'w') gizmoMode.value = 'translate';
     else if (k === 'e') gizmoMode.value = 'rotate';
@@ -121,7 +135,11 @@ function wireHotkeys(app: CornellBoxExample): void {
     else if (e.key === 'Delete' || e.key === 'Backspace') {
       const id = selectedId.value;
       if (!id || id === LIGHT_DUMMY_ID) return;
-      app.removeNode(id);
+      // Undoable delete — detach (no dispose), retain on the command.
+      const detached = app.sceneController.detachNode(id);
+      if (detached) {
+        commandHistory.push(new RemoveCommand(app.sceneController, detached.node, detached.parent));
+      }
       selectedId.value = null;
     } else if (k === 'b') {
       if (isStale.value && bakeStatus.value !== 'baking') void app.requestBake();
@@ -161,7 +179,18 @@ function wireDragDrop(app: CornellBoxExample): void {
     }
     const worldPos = app.pickGroundPoint(e.clientX, e.clientY);
     const uuid = app.addAsset(spec, worldPos);
-    if (uuid) selectedId.value = uuid;
+    if (uuid) {
+      selectedId.value = uuid;
+      const node = app.lookupObject(uuid);
+      // Primitives are parented to cornellRoot; lights are direct scene children.
+      const parent =
+        spec.kind === 'primitive'
+          ? app.sceneController.getCornellRoot()
+          : app.sceneController.scene;
+      if (node && parent) {
+        commandHistory.push(new AddCommand(app.sceneController, node, parent));
+      }
+    }
   });
 }
 
@@ -200,6 +229,21 @@ void (async () => {
     },
     onBakeError: (msg) => {
       showToast('error', `Bake failed: ${msg}`);
+    },
+    onTransformChange: (obj, before, after) => {
+      // Light dummy position is queried at bake time, so its transforms don't
+      // dirty the bake — mirror the producer-side rule in SceneController.
+      const skipStale = obj === app.sceneController.lightDummy;
+      commandHistory.push(
+        new TransformCommand(obj, before, after, () => {
+          if (!skipStale) isStale.value = true;
+        }),
+      );
+    },
+    // Full scene replacement (preset load / GLB import) invalidates every
+    // retained Object3D in history — clear the stack and dispose orphans.
+    onSceneLoad: () => {
+      commandHistory.clear();
     },
   };
 

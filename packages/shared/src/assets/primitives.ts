@@ -1,21 +1,22 @@
 import {
   BoxGeometry,
+  BufferGeometry,
   ConeGeometry,
   CylinderGeometry,
   DirectionalLight,
-  DirectionalLightHelper,
+  Float32BufferAttribute,
   Group,
+  LineBasicMaterial,
+  LineSegments,
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
   Object3D,
   PlaneGeometry,
   PointLight,
-  PointLightHelper,
   RectAreaLight,
   SphereGeometry,
   SpotLight,
-  SpotLightHelper,
   type Texture,
   TorusGeometry,
 } from 'three';
@@ -161,6 +162,72 @@ function markHelperLightmapIgnore(helper: Object3D): void {
   });
 }
 
+/** Tiny lines material used for all custom light gizmos. */
+function gizmoLineMat(color: number): LineBasicMaterial {
+  return new LineBasicMaterial({ color, toneMapped: false, fog: false });
+}
+
+/** Unit spot cone — apex at origin, opens along -Z, base radius 1 at z=-1.
+ *  Scale via `cone.scale.set(r, r, length)` to match light angle/distance. */
+function buildUnitSpotCone(color: number): LineSegments {
+  const positions: number[] = [];
+  // 4 ribs from apex to base ring (cross pattern).
+  positions.push(0, 0, 0, 1, 0, -1, 0, 0, 0, -1, 0, -1, 0, 0, 0, 0, 1, -1, 0, 0, 0, 0, -1, -1);
+  // Base ring (24 segments) on the z=-1 plane.
+  const segs = 24;
+  for (let i = 0; i < segs; i++) {
+    const a1 = (i / segs) * Math.PI * 2;
+    const a2 = ((i + 1) / segs) * Math.PI * 2;
+    positions.push(Math.cos(a1), Math.sin(a1), -1, Math.cos(a2), Math.sin(a2), -1);
+  }
+  const geo = new BufferGeometry();
+  geo.setAttribute('position', new Float32BufferAttribute(positions, 3));
+  return new LineSegments(geo, gizmoLineMat(color));
+}
+
+/** Sun gizmo: short rays radiating from origin + arrow shaft along -Z. */
+function buildSunGizmo(length: number, color: number): LineSegments {
+  const positions: number[] = [];
+  // 8 rays radiating in the XY plane around the origin.
+  const rays = 8;
+  const rOuter = 0.5;
+  const rInner = 0.2;
+  for (let i = 0; i < rays; i++) {
+    const a = (i / rays) * Math.PI * 2;
+    positions.push(
+      Math.cos(a) * rInner,
+      Math.sin(a) * rInner,
+      0,
+      Math.cos(a) * rOuter,
+      Math.sin(a) * rOuter,
+      0,
+    );
+  }
+  // Direction arrow along -Z.
+  positions.push(0, 0, 0, 0, 0, -length);
+  const head = 0.18;
+  const headZ = -length + head * 1.5;
+  positions.push(0, 0, -length, head, 0, headZ);
+  positions.push(0, 0, -length, -head, 0, headZ);
+  positions.push(0, 0, -length, 0, head, headZ);
+  positions.push(0, 0, -length, 0, -head, headZ);
+  const geo = new BufferGeometry();
+  geo.setAttribute('position', new Float32BufferAttribute(positions, 3));
+  return new LineSegments(geo, gizmoLineMat(color));
+}
+
+/** Set color on every gizmo material in a light group (Mesh + LineSegments
+ *  children flagged `lightGizmo`). Used by per-frame helper updaters. */
+function paintGizmos(group: Object3D, color: { r: number; g: number; b: number }): void {
+  group.traverse((o) => {
+    if (!o.userData?.lightGizmo) return;
+    const mesh = o as Mesh & { material?: { color?: { copy: (c: unknown) => unknown } } };
+    if (mesh.material && 'color' in mesh.material && mesh.material.color) {
+      (mesh.material.color as { copy: (c: unknown) => unknown }).copy(color);
+    }
+  });
+}
+
 function makePointLight(): Object3D {
   const group = new Group();
   group.name = 'Point Light';
@@ -170,20 +237,42 @@ function makePointLight(): Object3D {
   light.name = 'PointLight';
   group.add(light);
 
-  // PointLightHelper draws a wireframe sphere at light's worldPos. The bulb
-  // body is a small emissive sphere so the light is visible in solid view.
+  // Bulb: solid emissive sphere — primary visible/clickable indicator at pivot.
   const bulb = new Mesh(
-    new SphereGeometry(0.08, 16, 12),
-    new MeshBasicMaterial({ color: 0xffe080 }),
+    new SphereGeometry(0.12, 16, 12),
+    new MeshBasicMaterial({ color: 0xffe080, toneMapped: false }),
   );
   bulb.userData.lightmapIgnore = true;
+  bulb.userData.lightGizmo = true;
   group.add(bulb);
 
-  const helper = new PointLightHelper(light, 0.35, 0xffe080);
-  markHelperLightmapIgnore(helper);
-  group.add(helper);
+  // Halo: small radial rays to make it read as a light source in the viewport.
+  const haloPositions: number[] = [];
+  const rays = 6;
+  const rIn = 0.18;
+  const rOut = 0.32;
+  for (let i = 0; i < rays; i++) {
+    const a = (i / rays) * Math.PI * 2;
+    haloPositions.push(
+      Math.cos(a) * rIn,
+      Math.sin(a) * rIn,
+      0,
+      Math.cos(a) * rOut,
+      Math.sin(a) * rOut,
+      0,
+    );
+  }
+  const haloGeo = new BufferGeometry();
+  haloGeo.setAttribute('position', new Float32BufferAttribute(haloPositions, 3));
+  const halo = new LineSegments(haloGeo, gizmoLineMat(0xffe080));
+  halo.userData.lightmapIgnore = true;
+  halo.userData.lightGizmo = true;
+  group.add(halo);
 
-  group.userData.lightHelper = helper;
+  // Per-frame sync: gizmo colors follow light.color.
+  group.userData.lightHelper = {
+    update: () => paintGizmos(group, light.color),
+  };
   return group;
 }
 
@@ -194,8 +283,8 @@ function makeSpotLight(): Object3D {
 
   const light = new SpotLight(0xffffff, 4.0, 0, Math.PI / 6, 0.3, 2);
   light.name = 'SpotLight';
-  // Spot needs an explicit target object inside the group so rotating the
-  // group rotates the cone. Target sits one unit along -Z (group local).
+  // Target sits one unit along -Z (group local) — rotating the group rotates
+  // the cone direction.
   const target = new Object3D();
   target.position.set(0, 0, -1);
   target.userData.lightmapIgnore = true;
@@ -203,11 +292,32 @@ function makeSpotLight(): Object3D {
   group.add(target);
   light.target = target;
 
-  const helper = new SpotLightHelper(light, 0xffd200);
-  markHelperLightmapIgnore(helper);
-  group.add(helper);
+  // Unit cone — scaled per-frame to match light.angle + light.distance.
+  const cone = buildUnitSpotCone(0xffd200);
+  cone.userData.lightmapIgnore = true;
+  cone.userData.lightGizmo = true;
+  group.add(cone);
 
-  group.userData.lightHelper = helper;
+  // Small bulb at apex so the pivot is obvious + always raycast-hittable.
+  const bulb = new Mesh(
+    new SphereGeometry(0.08, 12, 8),
+    new MeshBasicMaterial({ color: 0xffd200, toneMapped: false }),
+  );
+  bulb.userData.lightmapIgnore = true;
+  bulb.userData.lightGizmo = true;
+  group.add(bulb);
+
+  // Per-frame sync: cone radius = length * tan(angle), length tracks
+  // light.distance (clamped). Color tracks light.color.
+  group.userData.lightHelper = {
+    update: () => {
+      const len = light.distance > 0 ? Math.min(light.distance, 8) : 2.5;
+      const r = len * Math.tan(light.angle);
+      cone.scale.set(r, r, len);
+      paintGizmos(group, light.color);
+    },
+  };
+
   group.userData.lightTarget = target;
   return group;
 }
@@ -226,13 +336,26 @@ function makeSunLight(): Object3D {
   group.add(target);
   light.target = target;
 
-  // DirectionalLightHelper draws a plane + an arrow showing direction.
-  // `size` controls plane edge length; tuned to feel Blender-ish in our scene.
-  const helper = new DirectionalLightHelper(light, 1.5, 0xffd200);
-  markHelperLightmapIgnore(helper);
-  group.add(helper);
+  // Custom sun gizmo at group origin — rays + direction arrow along -Z.
+  const sun = buildSunGizmo(1.2, 0xffd200);
+  sun.userData.lightmapIgnore = true;
+  sun.userData.lightGizmo = true;
+  group.add(sun);
 
-  group.userData.lightHelper = helper;
+  // Small bulb for hit/visual feedback at pivot.
+  const bulb = new Mesh(
+    new SphereGeometry(0.1, 12, 8),
+    new MeshBasicMaterial({ color: 0xffd200, toneMapped: false }),
+  );
+  bulb.userData.lightmapIgnore = true;
+  bulb.userData.lightGizmo = true;
+  group.add(bulb);
+
+  // Per-frame sync: gizmo colors follow light.color.
+  group.userData.lightHelper = {
+    update: () => paintGizmos(group, light.color),
+  };
+
   group.userData.lightTarget = target;
   return group;
 }

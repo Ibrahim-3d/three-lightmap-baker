@@ -4,7 +4,7 @@ import {
   type Mesh,
   type MeshBasicMaterial,
   type MeshStandardMaterial,
-  type PointLight,
+  type RectAreaLight,
   type Texture,
 } from 'three';
 import { TexelDensityMaterial } from 'baker-classic';
@@ -118,7 +118,7 @@ export type RenderModeRunnerDeps = {
   getBakeGroups(): ReadonlyArray<BakeGroup>;
   getMeshToGroup(): Map<Mesh, BakeGroup>;
   getOptions(): RenderModeOptions;
-  getVisualLight(): PointLight;
+  getVisualLight(): RectAreaLight;
   getLightMarker(): Mesh;
   getDummyLightmap(): Texture;
 };

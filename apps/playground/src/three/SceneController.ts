@@ -16,8 +16,8 @@ import {
   PerspectiveCamera,
   Plane,
   PlaneGeometry,
-  PointLight,
   Raycaster,
+  RectAreaLight,
   ReinhardToneMapping,
   Scene,
   SphereGeometry,
@@ -31,6 +31,8 @@ import {
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader';
+import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib';
+import { RectAreaLightHelper } from 'three/examples/jsm/helpers/RectAreaLightHelper';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass';
@@ -96,8 +98,10 @@ export class SceneController {
   scene: Scene;
   controls: OrbitControls;
 
-  /** Visual-only point light. The baker reads `lightDummy.position` only. */
-  visualLight: PointLight;
+  /** Visual-only area light (formerly a PointLight). The baker reads
+   *  `lightDummy.position` only; this RectAreaLight provides the viewport
+   *  preview shading and the visible footprint marker. */
+  visualLight: RectAreaLight;
   lightDummy: Object3D;
   lightTransformController: TransformControls;
   lightMarker: Mesh;
@@ -163,12 +167,18 @@ export class SceneController {
     this.controls.target.set(0, 5, 0);
     this.controls.update();
 
+    // RectAreaLight needs its uniforms LUT initialised once before any scene
+    // using it is rendered. Safe to call multiple times — LUT is cached.
+    RectAreaLightUniformsLib.init();
+
     // Light dummy — baker reads .position to fire direct-light rays toward it.
+    // (Bake sampling is still point-style; the area light is for the preview.)
     this.lightDummy = new Object3D();
     this.lightDummy.position.set(0, ROOM - 0.001, 0);
     this.scene.add(this.lightDummy);
 
-    // Visual-only: small emissive disc + point light so "Albedo/Standard" looks right.
+    // Visible footprint disc — still used by `modes.ts` to flash the bake
+    // marker. Same dimensions as the area light below so the outline matches.
     this.lightMarker = new Mesh(
       new PlaneGeometry(2.5, 2.5),
       new MeshBasicMaterial({ color: 0xffffff, side: DoubleSide }),
@@ -176,11 +186,22 @@ export class SceneController {
     this.lightMarker.rotation.x = Math.PI / 2;
     this.lightDummy.add(this.lightMarker);
 
-    this.visualLight = new PointLight(0xffffff, 80, 0, 2);
-    // Display-only — `collectLightsFromScene` skips lights tagged this way, so
-    // this PointLight is not treated as a bake input.
+    // Visual-only area light: emits along its local -Z. Rotate so -Z faces
+    // world -Y (downward). Tagged `lightmapIgnore` so the baker skips it.
+    this.visualLight = new RectAreaLight(0xffffff, 80, 2.5, 2.5);
+    this.visualLight.rotation.x = -Math.PI / 2;
     this.visualLight.userData.lightmapIgnore = true;
     this.lightDummy.add(this.visualLight);
+
+    // Thin rectangle outline that traces the emitter — gives the "real area
+    // light" look in solid view. RectAreaLightHelper attaches itself to the
+    // light and updates its own matrixWorld each frame.
+    const areaHelper = new RectAreaLightHelper(this.visualLight);
+    areaHelper.userData.lightmapIgnore = true;
+    areaHelper.traverse((c) => {
+      c.userData.lightmapIgnore = true;
+    });
+    this.visualLight.add(areaHelper);
 
     this.lightTransformController = new TransformControls(this.camera, this.renderer.domElement);
     this.lightTransformController.addEventListener('dragging-changed', (event) => {
@@ -238,15 +259,34 @@ export class SceneController {
   private raycaster = new Raycaster();
   private pointer = new Vector2();
 
-  /** Cast a ray from screen-space (client coords) to find the nearest mesh hit.
-   *  Returns the mesh uuid, or null if no mesh was hit. */
+  /** Cast a ray from screen-space (client coords) to find the nearest pickable
+   *  hit. Tests bake meshes AND asset-library light visuals (bulb + helper
+   *  subtree) so lights can be clicked from the viewport like in Blender.
+   *  Returns the bake-mesh uuid or the light-group uuid. */
   pickAt(clientX: number, clientY: number): string | null {
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
     this.pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
     this.raycaster.setFromCamera(this.pointer, this.camera);
-    const hits = this.raycaster.intersectObjects(this.meshes, false);
-    return hits.length > 0 ? hits[0]!.object.uuid : null;
+    // Generous threshold so thin line helpers (Spot cone, Sun plane, Area rect)
+    // are easy to hit. Default is 1; bump to make them grab-friendly.
+    this.raycaster.params.Line!.threshold = 0.2;
+    const lightGroups = this.scene.children.filter(
+      (c) => c.userData?.bakerLightType,
+    );
+    const targets: Object3D[] = [...this.meshes, ...lightGroups];
+    const hits = this.raycaster.intersectObjects(targets, true);
+    if (!hits.length) return null;
+    // Walk parents up the closest hit until we find either a bake mesh or the
+    // light group that owns the helper/bulb that was clicked.
+    const meshIds = new Set(this.meshes.map((m) => m.uuid));
+    let obj: Object3D | null = hits[0]!.object;
+    while (obj) {
+      if (obj.userData?.bakerLightType) return obj.uuid;
+      if (meshIds.has(obj.uuid)) return obj.uuid;
+      obj = obj.parent;
+    }
+    return null;
   }
 
   /** Resolve a tree-node id back to its Object3D. */
@@ -746,32 +786,80 @@ export class SceneController {
 
   /**
    * Remove a node (mesh or scene-added light) by uuid. No-ops for the built-in
-   * light dummy (id === LIGHT_DUMMY_ID). Fires both hooks on success.
+   * light dummy. Disposes GPU resources — for an undoable removal, use
+   * `detachNode` + `attachNode` instead, and only `disposeDetachedNode` once
+   * the command falls off the history.
    */
   removeNode(id: string): void {
-    if (!id || id === LIGHT_DUMMY_ID) return;
+    const detached = this.detachNode(id);
+    if (detached) this.disposeDetachedNode(detached.node);
+  }
+
+  /**
+   * Like `removeNode` but DOES NOT dispose. Returns the orphaned node plus
+   * the parent it was unparented from so an undo command can re-attach it.
+   * No-ops (returns null) for the built-in light dummy and unknown ids.
+   */
+  detachNode(id: string): { node: Object3D; parent: Object3D } | null {
+    if (!id || id === LIGHT_DUMMY_ID) return null;
 
     const meshIdx = this.meshes.findIndex((m) => m.uuid === id);
     if (meshIdx !== -1) {
       const mesh = this.meshes[meshIdx]!;
-      mesh.parent?.remove(mesh);
-      mesh.geometry?.dispose();
-      const mat = mesh.material as MeshStandardMaterial | MeshStandardMaterial[] | undefined;
-      if (Array.isArray(mat)) mat.forEach((mm) => mm.dispose());
-      else mat?.dispose();
+      const parent = mesh.parent;
+      if (!parent) return null;
+      parent.remove(mesh);
       this.meshes.splice(meshIdx, 1);
       this.hooks.onSceneChanged(this.meshes);
       this.hooks.onStaleChange?.();
-      return;
+      return { node: mesh, parent };
     }
 
-    // Light path — walk scene.children for an Object3D matching uuid.
     const target = this.scene.children.find((o) => o.uuid === id);
     if (target && target !== this.lightDummy) {
       this.scene.remove(target);
       this.hooks.onSceneChanged(this.meshes);
       this.hooks.onStaleChange?.();
+      return { node: target, parent: this.scene };
     }
+    return null;
+  }
+
+  /**
+   * Re-insert a previously detached node into a known parent. For meshes the
+   * parent must be `cornellRoot`; for asset-library lights it must be `scene`.
+   * Used by undo of a removal and by undo of an add.
+   */
+  attachNode(node: Object3D, parent: Object3D): void {
+    parent.add(node);
+    const mesh = node as Mesh;
+    if (mesh.isMesh && !mesh.userData?.bakerLightType) {
+      // Push back into the bake set if it isn't already there.
+      if (!this.meshes.find((m) => m.uuid === mesh.uuid)) {
+        this.meshes.push(mesh as SceneObj);
+        this.hooks.installDummyLightmaps([mesh as SceneObj]);
+      }
+    }
+    this.hooks.onSceneChanged(this.meshes);
+    this.hooks.onStaleChange?.();
+  }
+
+  /** Permanently dispose geometry + materials of a detached node subtree. */
+  disposeDetachedNode(node: Object3D): void {
+    node.traverse((obj) => {
+      const mesh = obj as Mesh;
+      if (!mesh.isMesh) return;
+      mesh.geometry?.dispose();
+      const mat = mesh.material as MeshStandardMaterial | MeshStandardMaterial[] | undefined;
+      if (Array.isArray(mat)) mat.forEach((mm) => mm.dispose());
+      else mat?.dispose();
+    });
+  }
+
+  /** Parent reference for newly added primitives — used by AddCommand for
+   *  redo (so it can re-attach to the same cornellRoot it was added to). */
+  getCornellRoot(): Object3D | null {
+    return this.cornellRoot;
   }
 
   /**
