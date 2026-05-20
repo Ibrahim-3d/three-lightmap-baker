@@ -159,6 +159,14 @@ function wireHotkeys(app: CornellBoxExample): void {
       selectedId.value = null;
     } else if (k === 'b') {
       if (isStale.value && bakeStatus.value !== 'baking') void app.requestBake();
+    } else if (k === 'f') {
+      // Maya/Blender/Unreal "frame selected" — center selection in view.
+      const id = selectedId.value;
+      const obj = id ? app.sceneController.lookupObject(id) : null;
+      if (obj) app.sceneController.frameObject(obj);
+    } else if (k === 'g') {
+      // Toggle ground grid (matches Unity / common viewport "show grid").
+      showGrid.value = !showGrid.value;
     } else if (k === 'a') {
       atlasViewerVisible.value = !atlasViewerVisible.value;
     } else if (e.key === '1') {

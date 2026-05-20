@@ -77,6 +77,7 @@ function Row(props: { item: MenuItem; onClick: (i: MenuItem) => void }) {
   const i = props.item;
   if (i.when && !i.when()) return null;
   const sep = i.separatorBefore ? 'border-t border-border/40 my-0.5' : '';
+  const isChecked = i.checked ? i.checked() : false;
   return (
     <>
       {i.separatorBefore && <div class={sep} />}
@@ -84,12 +85,18 @@ function Row(props: { item: MenuItem; onClick: (i: MenuItem) => void }) {
         role="menuitem"
         data-menu-item-id={i.id}
         aria-disabled={i.disabled ? true : undefined}
+        aria-checked={i.checked ? isChecked : undefined}
         class={`flex items-center justify-between px-3 h-6 text-[12px] text-text-1 ${
           i.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-bg-3 cursor-pointer'
         }`}
         onClick={() => props.onClick(i)}
       >
-        <span class="truncate">{i.label}</span>
+        <span class="flex items-center gap-1.5 truncate">
+          {i.checked && (
+            <span class={`w-3 inline-block text-text-0 ${isChecked ? '' : 'invisible'}`}>✓</span>
+          )}
+          <span class="truncate">{i.label}</span>
+        </span>
         {i.hotkey && <span class="text-text-2 text-[10px] ml-2">{i.hotkey}</span>}
       </div>
     </>

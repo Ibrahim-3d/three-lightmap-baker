@@ -8,6 +8,7 @@ import { StatusBar } from './components/StatusBar';
 import { Toast } from './components/Toast';
 import { Topbar } from './components/Topbar';
 import { ViewportFlySpeed } from './components/ViewportFlySpeed';
+import { ViewportOverlaysMenu } from './components/ViewportOverlaysMenu';
 import { ViewportToggle } from './components/ViewportToggle';
 
 const STORAGE_KEY = 'lightmap-studio.layout.v1';
@@ -63,8 +64,12 @@ export function App() {
         <div class="flex-1 flex min-h-0 relative">
           <Outliner />
           <div class="flex-1 relative pointer-events-none">
-            <ViewportToggle />
-            <ViewportFlySpeed />
+            {/* Top-right viewport overlay row — all dropdowns share one line. */}
+            <div class="absolute top-3 right-3 z-20 flex items-start gap-2 pointer-events-none">
+              <ViewportFlySpeed />
+              <ViewportOverlaysMenu />
+              <ViewportToggle />
+            </div>
           </div>
           <Inspector />
           <StaleBanner />

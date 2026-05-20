@@ -40,6 +40,8 @@ menuRegistry.register('View', {
   id: 'view.toggle-grid',
   label: 'Show Ground Grid',
   separatorBefore: true,
+  hotkey: 'G',
+  checked: () => showGrid.value,
   action: () => {
     showGrid.value = !showGrid.value;
   },
@@ -48,6 +50,7 @@ menuRegistry.register('View', {
 menuRegistry.register('View', {
   id: 'view.toggle-axes',
   label: 'Show World Axes',
+  checked: () => showAxes.value,
   action: () => {
     showAxes.value = !showAxes.value;
   },
@@ -58,6 +61,7 @@ menuRegistry.register('View', {
   label: 'Toggle Atlas Viewer',
   hotkey: 'A',
   separatorBefore: true,
+  checked: () => atlasViewerVisible.value,
   action: () => {
     atlasViewerVisible.value = !atlasViewerVisible.value;
   },
