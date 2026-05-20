@@ -6,7 +6,6 @@ import {
   Color,
   DoubleSide,
   Euler,
-  type Light,
   LinearToneMapping,
   Mesh,
   MeshBasicMaterial,
