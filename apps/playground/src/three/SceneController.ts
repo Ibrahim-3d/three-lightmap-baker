@@ -1,11 +1,14 @@
 import {
   ACESFilmicToneMapping,
+  AxesHelper,
   Box3,
   BoxGeometry,
   CineonToneMapping,
   Color,
   DoubleSide,
   Euler,
+  GridHelper,
+  LineBasicMaterial,
   LinearToneMapping,
   Mesh,
   MeshBasicMaterial,
@@ -105,6 +108,11 @@ export class SceneController {
   lightTransformController: TransformControls;
   lightMarker: Mesh;
 
+  /** Editor-only ground grid (40m × 40m, 1m cells, faint major every 10). */
+  gridHelper: GridHelper;
+  /** Editor-only world-origin RGB axes (X=red, Y=green, Z=blue). */
+  axesHelper: AxesHelper;
+
   cornellRoot: Object3D | null = null;
   meshes: SceneObj[] = [];
 
@@ -165,6 +173,35 @@ export class SceneController {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.target.set(0, 5, 0);
     this.controls.update();
+
+    // Editor helpers — ground grid + world axes at origin. Tagged
+    // `lightmapIgnore` so the baker's BVH/material walks skip them; also
+    // drawn with depthWrite off so they don't z-fight the Cornell floor.
+    this.gridHelper = new GridHelper(40, 40, 0x555555, 0x2a2a2a);
+    this.gridHelper.position.y = 0.001;
+    this.gridHelper.userData.lightmapIgnore = true;
+    const gridMat = this.gridHelper.material as LineBasicMaterial | LineBasicMaterial[];
+    if (Array.isArray(gridMat)) {
+      for (const m of gridMat) {
+        m.transparent = true;
+        m.opacity = 0.5;
+        m.depthWrite = false;
+      }
+    } else {
+      gridMat.transparent = true;
+      gridMat.opacity = 0.5;
+      gridMat.depthWrite = false;
+    }
+    this.scene.add(this.gridHelper);
+
+    this.axesHelper = new AxesHelper(2);
+    this.axesHelper.position.y = 0.002;
+    this.axesHelper.userData.lightmapIgnore = true;
+    const axesMat = this.axesHelper.material as LineBasicMaterial;
+    axesMat.depthTest = false;
+    axesMat.transparent = true;
+    this.axesHelper.renderOrder = 999;
+    this.scene.add(this.axesHelper);
 
     // RectAreaLight needs its uniforms LUT initialised once before any scene
     // using it is rendered. Safe to call multiple times — LUT is cached.

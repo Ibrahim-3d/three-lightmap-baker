@@ -24,6 +24,8 @@ import {
   sceneTree,
   selectedId,
   setOrchestrator,
+  showAxes,
+  showGrid,
   viewLayers,
   type AssetSpec,
 } from 'shared';
@@ -89,6 +91,12 @@ function wireSelectionEffects(app: CornellBoxExample): void {
   });
   effect(() => {
     app.setLayer(renderMode.value);
+  });
+  effect(() => {
+    app.sceneController.gridHelper.visible = showGrid.value;
+  });
+  effect(() => {
+    app.sceneController.axesHelper.visible = showAxes.value;
   });
   // Auto-switch inspector tab on selection: lights → Light; meshes → Object.
   effect(() => {

@@ -44,6 +44,8 @@ export {
   postFXSettings,
   flySpeed,
   flyActive,
+  showGrid,
+  showAxes,
   log,
 } from './signals/ui';
 export type {
