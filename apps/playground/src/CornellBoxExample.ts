@@ -5,6 +5,7 @@ import type { AssetSpec } from 'shared';
 import { atlasViewerVisible, bakeProgress, bakeStatus, dirtyMeshIds } from 'shared';
 import { LAYERS } from './three/modes';
 import { BakeController } from './three/BakeController';
+import { FlyController } from './three/FlyController';
 import {
   SceneController,
   type SceneControllerHooks,
@@ -42,6 +43,7 @@ export class CornellBoxExample implements BakerOrchestrator {
   bakeController: BakeController;
   renderModeRunner: RenderModeRunner;
   ptController: PTController | null = null;
+  flyController!: FlyController;
   atlasViewer: AtlasViewer;
 
   options = {
@@ -129,6 +131,11 @@ export class CornellBoxExample implements BakerOrchestrator {
         this.externalHooks.onTransformChange?.(obj, before, after),
     };
     this.sceneController = new SceneController(hooks);
+    this.flyController = new FlyController(
+      this.sceneController.camera,
+      this.sceneController.renderer,
+      this.sceneController.controls,
+    );
     this.bakeController = new BakeController(
       this.sceneController.renderer,
       this.sceneController.scene,
@@ -457,6 +464,7 @@ export class CornellBoxExample implements BakerOrchestrator {
     const tick = (): void => {
       requestAnimationFrame(tick);
 
+      this.flyController.tick();
       this.sceneController.syncGizmo(this.options.showGizmo);
       this.sceneController.updateLightHelpers();
       this.updateDirtyTracking();

@@ -72,6 +72,15 @@ export const viewLayers = signal<ReadonlyArray<ViewLayerDescriptor>>([]);
 export const atlasViewerVisible = signal<boolean>(false);
 
 /**
+ * Viewport fly-camera state. `flySpeed` is metres per second (range 0.1..50).
+ * `flyActive` flips true while the user is holding right-mouse on the canvas —
+ * read by the hotkey layer to suppress W/E/R gizmo shortcuts during fly mode.
+ * Mouse-wheel while fly-active multiplies `flySpeed`.
+ */
+export const flySpeed = signal<number>(5);
+export const flyActive = signal<boolean>(false);
+
+/**
  * Unreal-style "dirty mesh" set. Each entry is a mesh uuid that has been
  * transformed (or had lighting-relevant material edited) since the last
  * successful bake. Dirty meshes render unlit while the rest of the scene

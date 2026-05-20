@@ -42,6 +42,8 @@ export {
   atlasViewerVisible,
   dirtyMeshIds,
   postFXSettings,
+  flySpeed,
+  flyActive,
   log,
 } from './signals/ui';
 export type {

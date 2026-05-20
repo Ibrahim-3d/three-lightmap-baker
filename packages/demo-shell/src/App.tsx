@@ -7,6 +7,7 @@ import { StaleBanner } from './components/StaleBanner';
 import { StatusBar } from './components/StatusBar';
 import { Toast } from './components/Toast';
 import { Topbar } from './components/Topbar';
+import { ViewportFlySpeed } from './components/ViewportFlySpeed';
 import { ViewportToggle } from './components/ViewportToggle';
 
 const STORAGE_KEY = 'lightmap-studio.layout.v1';
@@ -63,6 +64,7 @@ export function App() {
           <Outliner />
           <div class="flex-1 relative pointer-events-none">
             <ViewportToggle />
+            <ViewportFlySpeed />
           </div>
           <Inspector />
           <StaleBanner />
