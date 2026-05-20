@@ -1,5 +1,21 @@
 # Lightmap Baker — Progress Tracker
 
+## Recent: Session 17 — 2026-05-21 — Task 11 parked; modularity sprint kicked off
+
+**Decisions:**
+- Task 11 (SH light probes) **parked** ⏸. Current demos have zero dynamic
+  geometry; probes solve a problem we don't have today. PT-vs-classic
+  canonical-sampler question must resolve before sampler choice for probes
+  makes sense. Math + Three.js API choice in the task file remain correct
+  when resurrected.
+- Modularity debt sweep started. 13 files over 300-LOC limit, ~6500 LOC
+  overweight in total. Worst-first strategy: split the top monsters,
+  validate the pattern, then flip CI `modularity` job to hard-fail.
+- This session: Step 1 only — `packages/baker-classic/src/LightmapBaker.ts`
+  (1314 LOC). Branch `refactor/lightmap-baker-split` off
+  `feat/step-4-5-completion` (S16 polish branch still live; modularity
+  work doesn't touch the playground UI files S16 is iterating on).
+
 ## Recent: Session 16 — 2026-05-19 — Overnight polish sweep (no PT, baker focus)
 
 Context: user paused PT renderer work, asked for a sweeping demo polish run
@@ -87,7 +103,7 @@ patterns see [`docs/FAILED-APPROACHES.md`](../docs/FAILED-APPROACHES.md).
 | `BakeGroupView` / `result.groups` / `getGroupForMesh` | ✅ Done (S11 P3a) |
 | Demo `→ LightmapBaker.bake()` migration (P3b + P4) | ✅ Done (S12.1) |
 | Task 10 — Lightmap downscaling (superSample) | ✅ Done |
-| Task 11 — Light probes (SH) | ⬜ |
+| Task 11 — Light probes (SH) | ⏸ Parked (S17) |
 | Post-bake TDR mitigations (HalfFloat composite, GPU drain, dummy-LM pin) | ✅ Done (S12) |
 | T-D1 — Demo restructure: SceneController + BakeController + modes.ts | ✅ Done (S13) |
 | **Demo UI shell** (PR #1 `feat/demo-redesign`) | ✅ Merged (Session 13.5) |

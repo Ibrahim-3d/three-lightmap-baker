@@ -1,5 +1,12 @@
 # Task 11 — Light Probe Generation and Export
 
+**Status: ⏸ PARKED 2026-05-21.** Reopen when (a) a consumer ships dynamic
+geometry that needs indirect lighting, OR (b) PT-vs-classic canonical
+sampler decision resolves. Math + API choice below remain correct on
+resurrection; sampler dependency note in `## Dependencies` needs a refresh
+(was written pre-monorepo, references the old classic-baker Task 04 path).
+See progress.md Session 17 for rationale.
+
 ## Objective
 Generate spherical harmonics (SH) light probes at specified positions. Dynamic (moving) objects sample these probes to receive approximate indirect lighting without lightmaps.
 
