@@ -21,17 +21,19 @@ import {
   type Texture,
   TorusGeometry,
 } from 'three';
+import { RectAreaLightHelper } from 'three/examples/jsm/helpers/RectAreaLightHelper';
 
 /** Materials used on light-gizmo meshes and line helpers. Both expose
  *  `.color: Color`, so {@link paintGizmos} can tint them uniformly. */
 type GizmoMaterial = MeshBasicMaterial | LineBasicMaterial;
 
 /** Narrow check for a renderable child carrying a gizmo material. */
-function hasGizmoMaterial(o: Object3D): o is Mesh<BufferGeometry, GizmoMaterial> | LineSegments<BufferGeometry, GizmoMaterial> {
+function hasGizmoMaterial(
+  o: Object3D,
+): o is Mesh<BufferGeometry, GizmoMaterial> | LineSegments<BufferGeometry, GizmoMaterial> {
   const mat = (o as Mesh | LineSegments).material;
   return mat instanceof MeshBasicMaterial || mat instanceof LineBasicMaterial;
 }
-import { RectAreaLightHelper } from 'three/examples/jsm/helpers/RectAreaLightHelper';
 
 /**
  * Asset Library catalog (T-D7). Each entry is a factory producing a fresh

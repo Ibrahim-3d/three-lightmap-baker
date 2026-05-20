@@ -97,9 +97,7 @@ export function ViewportOverlaysMenu() {
                   </span>
                   <span class="truncate">{entry.label}</span>
                 </span>
-                {entry.hotkey && (
-                  <span class="text-text-2 text-[10px] ml-2">{entry.hotkey}</span>
-                )}
+                {entry.hotkey && <span class="text-text-2 text-[10px] ml-2">{entry.hotkey}</span>}
               </div>
             );
           })}

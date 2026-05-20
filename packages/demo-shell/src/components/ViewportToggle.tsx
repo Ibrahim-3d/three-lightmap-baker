@@ -58,11 +58,7 @@ export function ViewportToggle() {
   };
 
   return (
-    <div
-      ref={anchorRef}
-      class="pointer-events-auto relative"
-      data-testid="view-layer-dropdown"
-    >
+    <div ref={anchorRef} class="pointer-events-auto relative" data-testid="view-layer-dropdown">
       <button
         type="button"
         aria-haspopup="menu"
