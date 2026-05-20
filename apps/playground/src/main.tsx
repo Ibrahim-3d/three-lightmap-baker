@@ -15,6 +15,7 @@ import {
   bakeProgress,
   bakeStatus,
   commandHistory,
+  flyActive,
   gizmoMode,
   inspectorTab,
   isStale,
@@ -128,6 +129,10 @@ function wireHotkeys(app: CornellBoxExample): void {
       return;
     }
     const k = e.key.toLowerCase();
+    // Fly mode owns WASD/QE/Shift — don't let them double-fire as gizmo shortcuts.
+    if (flyActive.value && (k === 'w' || k === 'a' || k === 's' || k === 'd' || k === 'q' || k === 'e')) {
+      return;
+    }
     if (k === 'w') gizmoMode.value = 'translate';
     else if (k === 'e') gizmoMode.value = 'rotate';
     else if (k === 'r') gizmoMode.value = 'scale';
