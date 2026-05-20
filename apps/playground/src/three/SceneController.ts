@@ -270,9 +270,7 @@ export class SceneController {
     // Generous threshold so thin line helpers (Spot cone, Sun plane, Area rect)
     // are easy to hit. Default is 1; bump to make them grab-friendly.
     this.raycaster.params.Line!.threshold = 0.2;
-    const lightGroups = this.scene.children.filter(
-      (c) => c.userData?.bakerLightType,
-    );
+    const lightGroups = this.scene.children.filter((c) => c.userData?.bakerLightType);
     const targets: Object3D[] = [...this.meshes, ...lightGroups];
     const hits = this.raycaster.intersectObjects(targets, true);
     if (!hits.length) return null;

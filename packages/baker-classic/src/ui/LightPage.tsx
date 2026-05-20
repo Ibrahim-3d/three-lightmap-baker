@@ -219,7 +219,10 @@ function SceneLightPage({ obj, type }: { obj: Object3D; type: string }) {
 
       {type === 'directional' && (
         <Section title="Sun (Directional)">
-          <Row label="Rotation" hint="Use the rotate gizmo (R key) on the light group to change direction.">
+          <Row
+            label="Rotation"
+            hint="Use the rotate gizmo (R key) on the light group to change direction."
+          >
             <span class="text-[11px] text-text-2 italic">via gizmo</span>
           </Row>
         </Section>
