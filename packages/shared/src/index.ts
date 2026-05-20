@@ -88,3 +88,8 @@ export {
   refreshTreeFromScene,
   markStale,
 } from './ui/helpers';
+
+// Undo/redo command history — generic stack, producers (transforms, asset
+// add/remove, …) push Command objects after applying their effect.
+export { commandHistory, canUndo, canRedo } from './history/command-history';
+export type { Command } from './history/command-history';

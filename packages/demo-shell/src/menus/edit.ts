@@ -1,28 +1,48 @@
-import { menuRegistry } from 'shared';
+import { effect, untracked } from '@preact/signals';
+import { canRedo, canUndo, commandHistory, menuRegistry } from 'shared';
 
 /**
- * Edit menu (T-D9). Undo/Redo ship disabled until a command-history is wired
- * (post T-D12 per design doc §5.4). Preferences is a stub.
+ * Edit menu. Undo / Redo wired to the shared `commandHistory`. Producers
+ * (transform, add, remove) push commands; this menu just invokes the stack.
+ * Disabled state is reactive — re-registers the items when `canUndo`/`canRedo`
+ * flip so the dropdown reflects the current stack.
  */
 
-menuRegistry.register('Edit', {
-  id: 'edit.undo',
-  label: 'Undo',
-  hotkey: 'Ctrl+Z',
-  disabled: true,
-  action: () => {
-    /* disabled */
-  },
+function registerUndo(): void {
+  menuRegistry.register('Edit', {
+    id: 'edit.undo',
+    label: 'Undo',
+    hotkey: 'Ctrl+Z',
+    disabled: !canUndo.value,
+    action: () => {
+      commandHistory.undo();
+    },
+  });
+}
+
+function registerRedo(): void {
+  menuRegistry.register('Edit', {
+    id: 'edit.redo',
+    label: 'Redo',
+    hotkey: 'Ctrl+Shift+Z',
+    disabled: !canRedo.value,
+    action: () => {
+      commandHistory.redo();
+    },
+  });
+}
+
+effect(() => {
+  // Read the signal so the effect re-runs on change, then re-register.
+  // `untracked` so the menuTick read+write inside `menuRegistry.register`
+  // doesn't pull menuTick into this effect's deps (would self-trigger → cycle).
+  void canUndo.value;
+  untracked(registerUndo);
 });
 
-menuRegistry.register('Edit', {
-  id: 'edit.redo',
-  label: 'Redo',
-  hotkey: 'Ctrl+Shift+Z',
-  disabled: true,
-  action: () => {
-    /* disabled */
-  },
+effect(() => {
+  void canRedo.value;
+  untracked(registerRedo);
 });
 
 menuRegistry.register('Edit', {

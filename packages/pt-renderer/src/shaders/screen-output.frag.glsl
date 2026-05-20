@@ -17,9 +17,10 @@ uniform bool uUseToneMapping;
 #define FALSE 0
 
 
-// Inline Reinhard — not injected by Three.js when toneMapping=NoToneMapping
-vec3 ReinhardToneMapping(vec3 color) {
-	return color / (color + vec3(1.0));
+// Proper sRGB OETF (matches classic baker → renderer.outputColorSpace=SRGB pipeline)
+vec3 linearToSRGB(vec3 c) {
+	c = max(c, vec3(0.0));
+	return mix(12.92 * c, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
 }
 
 void main()
@@ -356,9 +357,7 @@ void main()
 	// average accumulation buffer
 	filteredPixelColor *= uOneOverSampleCounter;
 
-	// apply tone mapping (brings pixel into 0.0-1.0 rgb color range)
-	filteredPixelColor = uUseToneMapping ? ReinhardToneMapping(filteredPixelColor) : filteredPixelColor;
-
-	// lastly, apply gamma correction (gives more intensity/brightness range where it's needed)
-	pc_fragColor = vec4(sqrt(filteredPixelColor), 1.0);
+	// No tonemap — match classic baker (writes linear; renderer.outputColorSpace=sRGB).
+	// GLSL3 raw ShaderMaterial bypasses Three's auto sRGB encode, so apply OETF here.
+	pc_fragColor = vec4(linearToSRGB(filteredPixelColor), 1.0);
 }
