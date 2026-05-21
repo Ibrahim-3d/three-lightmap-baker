@@ -2,11 +2,13 @@ import { useRef } from 'preact/hooks';
 import { Color, EquirectangularReflectionMapping } from 'three';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader';
 import {
+  BoolField,
   bumpObject,
   bumpOptions,
   ColorField,
   hdriTexture,
   markStale,
+  NumberField,
   objectTick,
   optionsTick,
   ptSettings,
@@ -147,6 +149,119 @@ export function WorldPage() {
             onChange={(v) => {
               o.skyIntensity = v;
               ptSettings.value = { ...ptSettings.value, skyIntensity: v };
+              bumpOptions();
+              markStale();
+            }}
+          />
+        </Row>
+      </Section>
+
+      <Section title="Bake — Direct &amp; Indirect (master)">
+        <Row label="Direct on" hint="Master switch for all scene direct lights at bake time.">
+          <BoolField
+            value={o.directLightEnabled}
+            onChange={(v) => {
+              o.directLightEnabled = v;
+              bumpOptions();
+              markStale();
+            }}
+          />
+        </Row>
+        <Row label="Indirect on" hint="Master switch for the GI bounce pass.">
+          <BoolField
+            value={o.indirectLightEnabled}
+            onChange={(v) => {
+              o.indirectLightEnabled = v;
+              bumpOptions();
+              markStale();
+            }}
+          />
+        </Row>
+        <Row label="Bounce power" hint="Multiplier on indirect-bounce contribution.">
+          <RangeField
+            value={o.giIntensity}
+            min={0}
+            max={4}
+            step={0.05}
+            onChange={(v) => {
+              o.giIntensity = v;
+              bumpOptions();
+            }}
+          />
+        </Row>
+      </Section>
+
+      <Section title="Bake — Secondary Sun (legacy)">
+        <Row
+          label="Enabled"
+          hint="Bake-only directional sun in addition to scene lights. For a viewport-visible sun, drag in a Sun light from the asset library instead."
+        >
+          <BoolField
+            value={o.secondaryLightEnabled}
+            onChange={(v) => {
+              o.secondaryLightEnabled = v;
+              bumpOptions();
+              markStale();
+            }}
+          />
+        </Row>
+        <Row label="Color">
+          <ColorField
+            value={o.secondaryColor}
+            onChange={(v) => {
+              o.secondaryColor = v;
+              bumpOptions();
+              markStale();
+            }}
+          />
+        </Row>
+        <Row label="Intensity">
+          <RangeField
+            value={o.secondaryIntensity}
+            min={0}
+            max={5}
+            step={0.1}
+            onChange={(v) => {
+              o.secondaryIntensity = v;
+              bumpOptions();
+              markStale();
+            }}
+          />
+        </Row>
+        <Row label="Dir X">
+          <NumberField
+            value={o.secondaryDirX}
+            min={-1}
+            max={1}
+            step={0.05}
+            onChange={(v) => {
+              o.secondaryDirX = v;
+              bumpOptions();
+              markStale();
+            }}
+          />
+        </Row>
+        <Row label="Dir Y">
+          <NumberField
+            value={o.secondaryDirY}
+            min={-1}
+            max={1}
+            step={0.05}
+            onChange={(v) => {
+              o.secondaryDirY = v;
+              bumpOptions();
+              markStale();
+            }}
+          />
+        </Row>
+        <Row label="Dir Z">
+          <NumberField
+            value={o.secondaryDirZ}
+            min={-1}
+            max={1}
+            step={0.05}
+            onChange={(v) => {
+              o.secondaryDirZ = v;
               bumpOptions();
               markStale();
             }}

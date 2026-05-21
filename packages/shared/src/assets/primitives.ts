@@ -7,6 +7,7 @@ import {
   DirectionalLight,
   Float32BufferAttribute,
   Group,
+  type Light,
   LineBasicMaterial,
   LineSegments,
   Mesh,
@@ -20,6 +21,7 @@ import {
   SpotLight,
   type Texture,
   TorusGeometry,
+  Vector3,
 } from 'three';
 import { RectAreaLightHelper } from 'three/examples/jsm/helpers/RectAreaLightHelper';
 
@@ -387,6 +389,98 @@ function makeAreaLight(): Object3D {
 
   group.userData.lightHelper = helper;
   return group;
+}
+
+/**
+ * Wrap an already-created THREE light into a baker-style Group so it becomes
+ * a first-class scene-tree citizen (selectable, deletable, editable through
+ * the same SceneLightPage as asset-library lights). Used by scene presets
+ * that build raw lights with `new PointLight(...)` etc.
+ *
+ * Preserves the light's world position by transferring it to the wrapper
+ * group and zeroing the light's local position. The original light's parent
+ * is left intact for any siblings (markers, etc.) — they are NOT moved here.
+ */
+export function wrapAsBakerLight(light: Light, displayName?: string): Object3D {
+  const type = detectLightType(light);
+  const group = new Group();
+  group.name = displayName ?? light.name ?? defaultLightName(type);
+  group.userData.bakerLightType = type;
+
+  const wp = light.getWorldPosition(new Vector3());
+  const oldParent = light.parent;
+  if (oldParent) oldParent.remove(light);
+  light.position.set(0, 0, 0);
+  group.position.copy(wp);
+  group.add(light);
+
+  // For Spot / Directional, the .target Object3D must be in the same scene
+  // graph as the light. Recompute the target's local position relative to
+  // the new group origin so the world-space direction is preserved.
+  if (type === 'spot' || type === 'directional') {
+    const target = (light as SpotLight | DirectionalLight).target;
+    if (target) {
+      const wt = target.getWorldPosition(new Vector3());
+      target.parent?.remove(target);
+      target.position.copy(wt.sub(wp));
+      target.userData.lightmapIgnore = true;
+      group.add(target);
+      group.userData.lightTarget = target;
+    }
+  }
+
+  // Bulb marker — small emissive-style sphere tinted by the light's color
+  // so the light has a visible, clickable footprint in the viewport.
+  const bulbColor = (light as PointLight).color?.getHex?.() ?? 0xffffff;
+  const bulb = new Mesh(
+    new SphereGeometry(0.14, 16, 12),
+    new MeshBasicMaterial({ color: bulbColor, toneMapped: false }),
+  );
+  bulb.userData.lightmapIgnore = true;
+  bulb.userData.lightGizmo = true;
+  group.add(bulb);
+
+  // For area lights, attach the standard RectAreaLightHelper outline so the
+  // footprint is visible at the editing-time orientation.
+  if (type === 'area') {
+    const helper = new RectAreaLightHelper(light as RectAreaLight);
+    markHelperLightmapIgnore(helper);
+    light.add(helper);
+    group.userData.lightHelper = helper;
+  } else {
+    group.userData.lightHelper = {
+      update: () => paintGizmos(group, light.color),
+    };
+  }
+
+  // If `oldParent` was a sibling-marker container (typical preset pattern of
+  // "PointLight + Mesh marker next to each other"), we leave it alone — the
+  // caller is expected to drop their hand-rolled marker if they want a clean
+  // single visual. The bulb we add above is the canonical marker going forward.
+
+  return group;
+}
+
+function detectLightType(light: Light): 'point' | 'spot' | 'directional' | 'area' {
+  if (light instanceof PointLight) return 'point';
+  if (light instanceof SpotLight) return 'spot';
+  if (light instanceof DirectionalLight) return 'directional';
+  if (light instanceof RectAreaLight) return 'area';
+  // Generic Light (rare). Default to point so the editor still works.
+  return 'point';
+}
+
+function defaultLightName(type: 'point' | 'spot' | 'directional' | 'area'): string {
+  switch (type) {
+    case 'point':
+      return 'Point Light';
+    case 'spot':
+      return 'Spot Light';
+    case 'directional':
+      return 'Sun';
+    case 'area':
+      return 'Area Light';
+  }
 }
 
 /** Factory dispatcher used by SceneController.addAsset. Returns null when the

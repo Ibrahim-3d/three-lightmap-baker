@@ -30,7 +30,6 @@ import {
   type AssetSpec,
 } from 'shared';
 import { CornellBoxExample } from './CornellBoxExample';
-import { LIGHT_DUMMY_ID } from './three/SceneController';
 import { LAYERS } from './three/modes';
 import { AddCommand, RemoveCommand, TransformCommand } from './three/commands';
 
@@ -102,10 +101,6 @@ function wireSelectionEffects(app: CornellBoxExample): void {
   effect(() => {
     const id = selectedId.value;
     if (!id) return;
-    if (id === LIGHT_DUMMY_ID) {
-      inspectorTab.value = 'light';
-      return;
-    }
     const obj = app.lookupObject(id);
     if (obj?.userData?.bakerLightType) {
       inspectorTab.value = 'light';
@@ -150,7 +145,7 @@ function wireHotkeys(app: CornellBoxExample): void {
     else if (e.key === 'Escape') selectedId.value = null;
     else if (e.key === 'Delete' || e.key === 'Backspace') {
       const id = selectedId.value;
-      if (!id || id === LIGHT_DUMMY_ID) return;
+      if (!id) return;
       // Undoable delete — detach (no dispose), retain on the command.
       const detached = app.sceneController.detachNode(id);
       if (detached) {
@@ -283,7 +278,13 @@ void (async () => {
   }
 
   sceneTree.value = app.getSceneTree();
-  selectedId.value = LIGHT_DUMMY_ID;
+  // Pre-select the default area light if the freshly-loaded preset didn't
+  // bring its own lights — gives the Lights page something to show on boot
+  // without locking the selection to a magic id.
+  const initialLight = app.sceneController.scene.children.find(
+    (c) => c.userData?.bakerLightType && c.visible,
+  );
+  selectedId.value = initialLight?.uuid ?? null;
   window.addEventListener('resize', () => app.updateSize());
 
   if (!isLegacy()) {
