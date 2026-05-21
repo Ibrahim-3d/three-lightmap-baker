@@ -112,6 +112,12 @@ export type PostFXSettings = {
   bloomStrength: number;
   bloomRadius: number;
   bloomThreshold: number;
+  /** ESL-style secondary bloom: huge kernel, low threshold = soft global glow.
+   *  Stacked AFTER the primary bloom in the composer. */
+  bloom2Enabled: boolean;
+  bloom2Strength: number;
+  bloom2Radius: number;
+  bloom2Threshold: number;
   ssaoEnabled: boolean;
   ssaoIntensity: number;
   ssaoRadius: number;
@@ -119,6 +125,23 @@ export type PostFXSettings = {
   exposure: number;
   vignetteEnabled: boolean;
   vignetteStrength: number;
+  /** Exponential fog (scene.fog). 0 = off. */
+  fogEnabled: boolean;
+  fogColor: number; // 0xRRGGBB
+  fogDensity: number;
+  /** Hue / saturation pass (HSV in shader). */
+  hueSatEnabled: boolean;
+  hue: number; // -1..1 (radians / PI)
+  saturation: number; // -1..1
+  /** Gamma adjustment (after tonemap). 1 = no change. */
+  gamma: number;
+  /** ESL LUT pass — file resolved from /esl-demos/<name>. Empty = off. */
+  lutFile: string;
+  /** ESL lens distortion. */
+  lensDistortionEnabled: boolean;
+  baseIor: number;
+  bandOffset: number;
+  jitterIntensity: number;
 };
 
 export const postFXSettings = signal<PostFXSettings>({
@@ -127,6 +150,10 @@ export const postFXSettings = signal<PostFXSettings>({
   bloomStrength: 0.35,
   bloomRadius: 0.4,
   bloomThreshold: 0.85,
+  bloom2Enabled: false,
+  bloom2Strength: 0.25,
+  bloom2Radius: 0.85,
+  bloom2Threshold: 0.3,
   ssaoEnabled: true,
   ssaoIntensity: 0.5,
   ssaoRadius: 0.2,
@@ -134,7 +161,28 @@ export const postFXSettings = signal<PostFXSettings>({
   exposure: 1.0,
   vignetteEnabled: false,
   vignetteStrength: 0.4,
+  fogEnabled: false,
+  fogColor: 0x707656,
+  fogDensity: 0.0012,
+  hueSatEnabled: false,
+  hue: 0,
+  saturation: 0,
+  gamma: 1,
+  lutFile: '',
+  lensDistortionEnabled: false,
+  baseIor: 0.935,
+  bandOffset: 0.0013,
+  jitterIntensity: 5,
 });
+
+/**
+ * Master toggle for ESL HDR env contribution. When true:
+ *   - `scene.environmentIntensity` set to 1
+ *   - per-material `envMapIntensity` set to 1
+ * When false: both set to 0 → scene falls back to lights + lightmap only.
+ * SceneController owns the actual side-effect; this signal is the input.
+ */
+export const eslEnvEnabled = signal<boolean>(false);
 
 /** Append a log entry (ring-buffered to 200 entries). */
 export function log(level: LogLevel, msg: string): void {

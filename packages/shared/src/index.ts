@@ -42,6 +42,7 @@ export {
   atlasViewerVisible,
   dirtyMeshIds,
   postFXSettings,
+  eslEnvEnabled,
   flySpeed,
   flyActive,
   showGrid,

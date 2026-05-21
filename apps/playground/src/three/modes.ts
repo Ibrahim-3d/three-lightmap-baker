@@ -2,7 +2,7 @@ import {
   Color,
   type Material,
   type Mesh,
-  type MeshBasicMaterial,
+  MeshBasicMaterial,
   type MeshStandardMaterial,
   type RectAreaLight,
   type Texture,
@@ -76,6 +76,16 @@ export const LAYERS: Layer[] = [
   },
   { id: 'albedo', label: 'Albedo', group: 'debug', showAlbedo: true, getLightMap: () => null },
   {
+    // Material-swap layer: replaces mesh material with MeshBasicMaterial that
+    // shows the albedo texture WITHOUT any lighting, env probe, or lightmap.
+    // Pure unlit diffuse — best for inspecting texture content & uv mapping.
+    id: 'albedoUnlit',
+    label: 'Albedo (Unlit)',
+    group: 'debug',
+    showAlbedo: true,
+    getLightMap: () => null,
+  },
+  {
     id: 'positions',
     label: 'World Position',
     group: 'debug',
@@ -132,6 +142,7 @@ export type RenderModeRunnerDeps = {
  */
 export class RenderModeRunner {
   private texelDensityMats: Map<Mesh, TexelDensityMaterial> = new Map();
+  private albedoUnlitMats: Map<Mesh, MeshBasicMaterial> = new Map();
   private originalMaterials = new WeakMap<Mesh, Material>();
 
   constructor(private deps: RenderModeRunnerDeps) {}
@@ -152,6 +163,34 @@ export class RenderModeRunner {
         if (!this.originalMaterials.has(m)) this.originalMaterials.set(m, m.material);
         const tdm = this.texelDensityMats.get(m);
         if (tdm) m.material = tdm as unknown as SceneObj['material'];
+      }
+      visualLight.visible = false;
+      return;
+    }
+
+    // Material-swap layer (Albedo Unlit) — pure diffuse, no lighting at all.
+    if (layer.id === 'albedoUnlit') {
+      const live = new Set<Mesh>(meshes);
+      for (const m of this.albedoUnlitMats.keys()) {
+        if (!live.has(m)) {
+          this.albedoUnlitMats.get(m)?.dispose();
+          this.albedoUnlitMats.delete(m);
+        }
+      }
+      for (const m of meshes) {
+        if (!this.originalMaterials.has(m)) this.originalMaterials.set(m, m.material);
+        const origStd = this.originalMaterials.get(m) as
+          | (MeshStandardMaterial & { _originalMap?: Texture | null })
+          | undefined;
+        let basic = this.albedoUnlitMats.get(m);
+        if (!basic) {
+          basic = new MeshBasicMaterial({ color: 0xffffff });
+          this.albedoUnlitMats.set(m, basic);
+        }
+        basic.map = origStd?._originalMap ?? origStd?.map ?? null;
+        basic.color = origStd?.color ? origStd.color.clone() : new Color(0xffffff);
+        basic.needsUpdate = true;
+        m.material = basic as unknown as SceneObj['material'];
       }
       visualLight.visible = false;
       return;

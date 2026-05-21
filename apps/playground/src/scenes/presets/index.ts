@@ -11,3 +11,6 @@ import './threejs-pointlights';
 import './threejs-shadowmap';
 import './threejs-decals';
 import './isometric-room';
+import './esl-gym';
+import './esl-desert';
+import './esl-backrooms';

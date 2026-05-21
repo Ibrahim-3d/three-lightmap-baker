@@ -47,6 +47,19 @@ export type SceneBuildResult = {
   camera?: { position: [number, number, number]; target: [number, number, number] };
   lightDummy?: { position: [number, number, number] };
   background?: number; // 0xRRGGBB
+  /** Optional HDR equirectangular file. Loaded by the scene controller via
+   *  RGBELoader + PMREMGenerator, assigned to `scene.environment`. Used by
+   *  presets that have no in-scene lights (ESL demos, env-lit imports). */
+  envmapUrl?: string;
+  /** Optional override for the baker's hemisphere-miss sky intensity. Persists
+   *  into `ptSettings.skyIntensity` so the next bake uses it. ESL outdoor
+   *  scenes want 3-5; closed indoor scenes want 0-1. */
+  skyIntensity?: number;
+  /** If true, the shell's default `lightDummy` fallback RectAreaLight stays
+   *  hidden even when the preset has zero in-scene lights. Used by presets
+   *  that want the user to see a fully-dark scene when they delete every light
+   *  (ESL demos). Default false = keep legacy fallback for primitive presets. */
+  disableFallbackLight?: boolean;
 };
 
 class Registry {

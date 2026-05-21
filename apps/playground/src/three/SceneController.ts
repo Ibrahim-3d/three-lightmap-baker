@@ -6,7 +6,9 @@ import {
   CineonToneMapping,
   Color,
   DoubleSide,
+  EquirectangularReflectionMapping,
   Euler,
+  FogExp2,
   GridHelper,
   type Light,
   LineBasicMaterial,
@@ -19,6 +21,7 @@ import {
   PerspectiveCamera,
   Plane,
   PlaneGeometry,
+  PMREMGenerator,
   Raycaster,
   RectAreaLight,
   ReinhardToneMapping,
@@ -31,6 +34,7 @@ import {
   Vector3,
   WebGLRenderer,
 } from 'three';
+import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader';
@@ -48,10 +52,15 @@ import { Diagnostics } from 'baker-classic';
 import {
   createAsset,
   type AssetSpec,
+  eslEnvEnabled,
   postFXSettings,
+  ptSettings,
   sceneRegistry,
   wrapAsBakerLight,
 } from 'shared';
+import { makeGammaPass } from './postfx/GammaPass';
+import { makeHueSatPass } from './postfx/HueSatPass';
+import { makeLensDistortionPass } from './postfx/LensDistortionPass';
 import type { SceneObj } from './types';
 
 // Classic Cornell box dims: 10×10×10 unit room centered at (0, 5, 0)
@@ -139,8 +148,13 @@ export class SceneController {
   private renderPass: RenderPass | null = null;
   private ssaoPass: SSAOPass | null = null;
   private bloomPass: UnrealBloomPass | null = null;
+  private bloom2Pass: UnrealBloomPass | null = null;
   private fxaaPass: ShaderPass | null = null;
   private vignettePass: ShaderPass | null = null;
+  private hueSatPass: ShaderPass | null = null;
+  private gammaPass: ShaderPass | null = null;
+  private lensDistortionPass: ShaderPass | null = null;
+  private fogObject: FogExp2 | null = null;
 
   private _preDragSnap: TransformSnap | null = null;
 
@@ -164,6 +178,7 @@ export class SceneController {
       preserveDrawingBuffer: isTest,
     });
     this.renderer.outputColorSpace = SRGBColorSpace;
+    this.renderer.shadowMap.enabled = true;
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(window.devicePixelRatio);
     document.body.appendChild(this.renderer.domElement);
@@ -581,6 +596,7 @@ export class SceneController {
     this.cornellRoot.updateMatrixWorld(true);
     this.fitCameraAndLightToScene();
 
+    this.stampOriginalMap(this.meshes);
     this.hooks.installDummyLightmaps(this.meshes);
     this.hooks.onSceneChanged(this.meshes);
   }
@@ -616,6 +632,7 @@ export class SceneController {
     if (this.composer) {
       this.composer.setSize(w, h);
       this.bloomPass?.setSize(w, h);
+      this.bloom2Pass?.setSize(w, h);
       this.ssaoPass?.setSize(w, h);
       if (this.fxaaPass) {
         const dpr = this.renderer.getPixelRatio();
@@ -649,11 +666,25 @@ export class SceneController {
     this.bloomPass = new UnrealBloomPass(new Vector2(w, h), 0.35, 0.4, 0.85);
     composer.addPass(this.bloomPass);
 
+    // ESL-style secondary bloom: bigger kernel, lower threshold → soft global
+    // glow that stacks on top of the primary bloom.
+    this.bloom2Pass = new UnrealBloomPass(new Vector2(w, h), 0.25, 0.85, 0.3);
+    composer.addPass(this.bloom2Pass);
+
+    this.hueSatPass = makeHueSatPass();
+    composer.addPass(this.hueSatPass);
+
     // Vignette runs after bloom so the corner darkening isn't blown out by
     // bloom-bright pixels. `offset` is fixed at the shader default (1.0) and
     // `darkness` is driven by `vignetteStrength` in syncPostFX.
     this.vignettePass = new ShaderPass(VignetteShader);
     composer.addPass(this.vignettePass);
+
+    this.gammaPass = makeGammaPass();
+    composer.addPass(this.gammaPass);
+
+    this.lensDistortionPass = makeLensDistortionPass();
+    composer.addPass(this.lensDistortionPass);
 
     this.fxaaPass = new ShaderPass(FXAAShader);
     const dpr = this.renderer.getPixelRatio();
@@ -671,15 +702,28 @@ export class SceneController {
    */
   private syncPostFX(): void {
     const s = postFXSettings.value;
-    // Tone mapping + exposure are renderer-global — must FULLY revert when
-    // master flips off, otherwise a previously-set ACES curve keeps mutating
-    // colors even with the composer bypassed.
-    if (s.master) {
-      this.renderer.toneMapping = TONE_MAP_LOOKUP[s.toneMapping] ?? NoToneMapping;
-      this.renderer.toneMappingExposure = s.exposure;
+    // Tone mapping + exposure are RENDERER-level — not post-fx passes. They
+    // configure the scene's color pipeline whether or not the composer chain
+    // is active. Gating them behind `master` broke the dropdown/slider for
+    // users in bake-QA mode.
+    this.renderer.toneMapping = TONE_MAP_LOOKUP[s.toneMapping] ?? NoToneMapping;
+    this.renderer.toneMappingExposure = s.exposure;
+
+    // ESL env enable runs whether or not the composer exists — it touches
+    // scene-level state, not composer passes.
+    this.syncEslEnv();
+
+    // Fog is renderer-global. Toggling it forces a one-frame material recompile
+    // (USE_FOG define add/remove) which can flash black; that's inherent.
+    if (s.master && s.fogEnabled) {
+      if (!this.fogObject) this.fogObject = new FogExp2(s.fogColor, s.fogDensity);
+      this.fogObject.color.setHex(s.fogColor);
+      this.fogObject.density = s.fogDensity;
+      this.scene.fog = this.fogObject;
     } else {
-      this.renderer.toneMapping = NoToneMapping;
-      this.renderer.toneMappingExposure = 1.0;
+      // Always clear when not active — covers the toggle-off case even when
+      // a non-ESL preset never set our fogObject.
+      this.scene.fog = null;
     }
 
     if (!this.composer) return;
@@ -695,11 +739,51 @@ export class SceneController {
       this.bloomPass.radius = s.bloomRadius;
       this.bloomPass.threshold = s.bloomThreshold;
     }
+    if (this.bloom2Pass) {
+      this.bloom2Pass.enabled = s.master && s.bloom2Enabled;
+      this.bloom2Pass.strength = s.bloom2Strength;
+      this.bloom2Pass.radius = s.bloom2Radius;
+      this.bloom2Pass.threshold = s.bloom2Threshold;
+    }
+    if (this.hueSatPass) {
+      this.hueSatPass.enabled = s.master && s.hueSatEnabled;
+      const u = this.hueSatPass.material.uniforms;
+      if (u.hue) u.hue.value = s.hue;
+      if (u.saturation) u.saturation.value = s.saturation;
+    }
     if (this.vignettePass) {
       this.vignettePass.enabled = s.master && s.vignetteEnabled;
       const darkness = this.vignettePass.material.uniforms.darkness;
       if (darkness) darkness.value = s.vignetteStrength;
     }
+    if (this.gammaPass) {
+      this.gammaPass.enabled = s.master && Math.abs(s.gamma - 1) > 1e-3;
+      const u = this.gammaPass.material.uniforms;
+      if (u.gamma) u.gamma.value = s.gamma;
+    }
+    if (this.lensDistortionPass) {
+      this.lensDistortionPass.enabled = s.master && s.lensDistortionEnabled;
+      const u = this.lensDistortionPass.material.uniforms;
+      if (u.baseIor) u.baseIor.value = s.baseIor;
+      if (u.bandOffset) u.bandOffset.value = s.bandOffset;
+      if (u.jitterIntensity) u.jitterIntensity.value = s.jitterIntensity;
+    }
+  }
+
+  /** Push `eslEnvEnabled` signal into actual three.js state. Cheap (one walk +
+   *  scalar set) — runs each frame inside syncPostFX. */
+  private syncEslEnv(): void {
+    const on = eslEnvEnabled.value;
+    (this.scene as unknown as { environmentIntensity: number }).environmentIntensity = on ? 1 : 0;
+    if (!this.cornellRoot) return;
+    this.cornellRoot.traverse((obj) => {
+      const m = obj as Mesh;
+      if (!m.isMesh) return;
+      const mat = m.material as MeshStandardMaterial;
+      if (!mat || Array.isArray(mat)) return;
+      const target = on ? 1 : 0;
+      if (mat.envMapIntensity !== target) mat.envMapIntensity = target;
+    });
   }
 
   /**
@@ -713,6 +797,12 @@ export class SceneController {
     if (s.master) {
       this.ensureComposer().render();
     } else {
+      // Defensive: SSAOPass + other composer passes set scene.overrideMaterial
+      // or rebind render targets during their pre-passes. If a pass throws or
+      // gets disabled mid-flight, those leak — direct render then shows black.
+      // Reset known side-effects before falling back to a plain renderer pass.
+      this.scene.overrideMaterial = null;
+      this.renderer.setRenderTarget(null);
       this.renderer.render(this.scene, this.camera);
     }
   }
@@ -1011,10 +1101,12 @@ export class SceneController {
     // Hide the default area light when the preset brought its own lighting —
     // avoids "stuffing an area light into every demo" (e.g. the three.js
     // point-lights port should bake from the point lights only).
+    // `disableFallbackLight` lets presets force it hidden even when no lights
+    // exist (ESL demos: user wants fully-dark scene when they delete all).
     const presetHasLights = this.scene.children.some(
       (c) => c !== this.lightDummy && c.userData?.bakerLightType,
     );
-    this.lightDummy.visible = !presetHasLights;
+    this.lightDummy.visible = !presetHasLights && !result.disableFallbackLight;
 
     // Apply hints.
     if (result.background !== undefined) this.scene.background = new Color(result.background);
@@ -1025,8 +1117,137 @@ export class SceneController {
     }
     if (result.lightDummy) this.lightDummy.position.set(...result.lightDummy.position);
 
+    if (result.envmapUrl) await this.loadPresetEnvmap(result.envmapUrl);
+    else this.clearPresetEnvmap();
+
+    if (result.skyIntensity !== undefined) {
+      ptSettings.value = { ...ptSettings.value, skyIntensity: result.skyIntensity };
+    }
+
+    // Auto-apply preset's ESL post-fx config if the preset stashed one.
+    this.applyEslPostFX(this.cornellRoot);
+
+    // GLB-loaded materials don't carry the `_originalMap` shadow field that
+    // render-mode path expects (only primitives built via `this.mat()` get it).
+    // Without it, the first `applyRenderMode` wipes `mat.map = null` and the
+    // scene goes full white. Stamp it here so render-mode preserves albedo.
+    this.stampOriginalMap(this.meshes);
+
     this.hooks.installDummyLightmaps(this.meshes);
     this.hooks.onSceneChanged(this.meshes);
+  }
+
+  /** Stamp `_originalMap = mat.map` on every mesh material that doesn't have
+   *  the shadow field yet. Idempotent — re-callable across preset swaps. */
+  private stampOriginalMap(meshes: ReadonlyArray<Mesh>): void {
+    for (const m of meshes) {
+      const mat = m.material as
+        | (MeshStandardMaterial & { _originalMap?: Texture | null })
+        | undefined;
+      if (!mat || Array.isArray(mat)) continue;
+      if ('_originalMap' in mat) continue;
+      (mat as unknown as { _originalMap: Texture | null })._originalMap = mat.map ?? null;
+    }
+  }
+
+  private presetEnvmap: Texture | null = null;
+  private presetPmrem: PMREMGenerator | null = null;
+
+  /** Load an equirectangular HDR file, PMREM-process it, assign to
+   *  `scene.environment`. Disposes the prior preset envmap. */
+  private async loadPresetEnvmap(url: string): Promise<void> {
+    this.clearPresetEnvmap();
+    if (!this.presetPmrem) this.presetPmrem = new PMREMGenerator(this.renderer);
+    this.presetPmrem.compileEquirectangularShader();
+    const loader = new RGBELoader();
+    const tex = await new Promise<Texture>((resolve, reject) => {
+      loader.load(url, resolve, undefined, reject);
+    });
+    tex.mapping = EquirectangularReflectionMapping;
+    const env = this.presetPmrem.fromEquirectangular(tex).texture;
+    tex.dispose();
+    this.scene.environment = env;
+    // Default OFF: ESL HDRs are tuned for ESL's shader patch (envPower etc.)
+    // and blow out our vanilla PBR path. WorldPage exposes a slider to bring
+    // it up. Keep the env probe loaded so reflections work the moment user
+    // dials intensity > 0.
+    (this.scene as unknown as { environmentIntensity: number }).environmentIntensity = 0;
+    this.presetEnvmap = env;
+  }
+
+  /**
+   * Read `userData.eslPostFX` from a preset root (or any descendant) and push
+   * the matching fields into the `postFXSettings` signal. Idempotent — safe to
+   * call repeatedly. Does nothing when no ESL config is present (other presets
+   * keep their own post-fx state).
+   */
+  private applyEslPostFX(root: Object3D | null): void {
+    if (!root) return;
+    let cfg: Record<string, unknown> | undefined;
+    root.traverse((obj) => {
+      if (cfg) return;
+      const c = obj.userData?.eslPostFX as Record<string, unknown> | undefined;
+      if (c) cfg = c;
+    });
+    if (!cfg) return;
+    const bloom1 = cfg.bloom1 as
+      | { intensity: number; threshold: number; smoothing: number; kernelSize?: number }
+      | undefined;
+    const bloom2 = cfg.bloom2 as
+      | { intensity: number; threshold: number; smoothing: number; kernelSize?: number }
+      | undefined;
+    const lens = cfg.lensDistortion as
+      | { baseIor: number; bandOffset: number; jitter: number }
+      | undefined;
+    const fogColor = (cfg.fogColor as number) ?? 0x707656;
+    const fogDensity = (cfg.fogDensity as number) ?? 0;
+    // ESL's intensities are tuned for `postprocessing` lib's BloomEffect; our
+    // UnrealBloomPass scales differently. Halve them as a first-cut.
+    const eslBloomScale = 0.5;
+    // ESL `kernelSize` is a 0..5 enum (TINY..HUGE) in postprocessing lib.
+    // Map onto UnrealBloomPass radius (0..1): kernel 0..5 → ~0.2..0.85.
+    const kernelToRadius = (k: number | undefined): number | undefined =>
+      k === undefined ? undefined : 0.2 + Math.min(5, Math.max(0, k)) * 0.13;
+    const cur = postFXSettings.value;
+    const next = {
+      ...cur,
+      master: true,
+      // Keep user's tonemap unless they're on `none` — then default to ACES.
+      toneMapping: cur.toneMapping === 'none' ? ('aces' as const) : cur.toneMapping,
+      exposure: (cfg.toneMappingExposure as number) ?? cur.exposure,
+      bloomEnabled: !!bloom1,
+      bloomStrength: bloom1 ? bloom1.intensity * eslBloomScale : cur.bloomStrength,
+      bloomThreshold: bloom1?.threshold ?? cur.bloomThreshold,
+      bloomRadius: kernelToRadius(bloom1?.kernelSize) ?? cur.bloomRadius,
+      bloom2Enabled: !!bloom2,
+      bloom2Strength: bloom2 ? bloom2.intensity * eslBloomScale : cur.bloom2Strength,
+      bloom2Threshold: bloom2?.threshold ?? cur.bloom2Threshold,
+      bloom2Radius: kernelToRadius(bloom2?.kernelSize) ?? cur.bloom2Radius,
+      fogEnabled: fogDensity > 0,
+      fogColor,
+      fogDensity,
+      hueSatEnabled: ((cfg.hue as number) ?? 0) !== 0 || ((cfg.saturation as number) ?? 0) !== 0,
+      hue: (cfg.hue as number) ?? 0,
+      saturation: (cfg.saturation as number) ?? 0,
+      gamma: (cfg.gamma as number) ?? 1,
+      lensDistortionEnabled: !!lens,
+      baseIor: lens?.baseIor ?? cur.baseIor,
+      bandOffset: lens?.bandOffset ?? cur.bandOffset,
+      jitterIntensity: lens?.jitter ?? cur.jitterIntensity,
+      lutFile: (cfg.lut as string) ?? '',
+      // ESL doesn't ship SSAO; their post-stack is bloom + LUT + lens. SSAO
+      // tuned for Cornell-scale scenes blackens huge interiors like the gym.
+      ssaoEnabled: false,
+    };
+    postFXSettings.value = next;
+  }
+
+  private clearPresetEnvmap(): void {
+    if (this.presetEnvmap) {
+      this.scene.environment = null;
+      this.presetEnvmap.dispose();
+      this.presetEnvmap = null;
+    }
   }
 
   /**

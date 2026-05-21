@@ -38,17 +38,31 @@ export function BakePage() {
           />
         </Row>
         <Row label="Atlas size">
-          <NumberField
-            value={o.lightMapSize}
-            min={128}
-            max={2048}
-            step={128}
-            onChange={(v) => {
-              o.lightMapSize = v;
-              o.quality = 'Custom';
-              bumpOptions();
-            }}
-          />
+          <div class="flex-1 flex gap-1 items-center min-w-0">
+            <NumberField
+              value={o.lightMapSize}
+              min={128}
+              max={4096}
+              step={128}
+              onChange={(v) => {
+                o.lightMapSize = v;
+                o.quality = 'Custom';
+                bumpOptions();
+              }}
+            />
+            <button
+              type="button"
+              class="px-2 py-0.5 rounded text-[11px] bg-bg-3 hover:bg-accent hover:text-white border border-border transition-colors"
+              onClick={() => {
+                o.lightMapSize = Math.min(4096, o.lightMapSize * 2);
+                o.quality = 'Custom';
+                bumpOptions();
+              }}
+              title="Double atlas size (clamped to 4096)"
+            >
+              2x
+            </button>
+          </div>
         </Row>
         <Row label="Density (px/m)">
           <RangeField

@@ -98,16 +98,21 @@ function wireSelectionEffects(app: CornellBoxExample): void {
     app.sceneController.axesHelper.visible = showAxes.value;
   });
   // Auto-switch inspector tab on selection: lights → Light; meshes → Object.
+  // Read current tab via `.peek()` so this effect only re-runs on selection
+  // change, not on its own write — otherwise clicking Light/Post FX/World/Bake
+  // while a mesh is selected immediately reverts the tab back to Object.
   effect(() => {
     const id = selectedId.value;
     if (!id) return;
     const obj = app.lookupObject(id);
+    const t = inspectorTab.peek();
     if (obj?.userData?.bakerLightType) {
-      inspectorTab.value = 'light';
+      if (t !== 'light') inspectorTab.value = 'light';
     } else if (obj) {
       // Keep current tab if already on a per-mesh tab (Material / Lightmap).
-      const t = inspectorTab.value;
-      if (t !== 'material' && t !== 'lightmap') inspectorTab.value = 'object';
+      if (t !== 'material' && t !== 'lightmap' && t !== 'object') {
+        inspectorTab.value = 'object';
+      }
     }
   });
 }
