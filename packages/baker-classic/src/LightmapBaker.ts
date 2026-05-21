@@ -38,7 +38,6 @@ import type {
   GIOptions,
   AOOptions,
   TimeoutProtectionOptions,
-  BakeGroupView,
 } from './bake/types';
 import type { GroupInternals, ContextLossState } from './bake/internals';
 
