@@ -1,27 +1,11 @@
-import {
-  Color,
-  LinearFilter,
-  Mesh,
-  NearestFilter,
-  Object3D,
-  Scene,
-  Texture,
-  Vector3,
-  WebGLRenderer,
-} from 'three';
-import { PackedLight, collectLightsFromScene } from './lightmap/Lights';
+import { Mesh, Object3D, Scene, Texture, Vector3, WebGLRenderer } from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
+import { collectLightsFromScene, type PackedLight } from './lightmap';
 import { generateAtlas } from './atlas/generateAtlas';
-import { renderAtlas } from './atlas/renderAtlas';
-import { generateLightmapper, Lightmapper, RaycastOptions } from './lightmap/Lightmapper';
-import { generateAOMapper, AOMapper, AORaycastOptions } from './lightmap/AOMapper';
-import { runComposite, CompositeResult } from './lightmap/Composite';
-import { runPostProcess, PostProcessOptions, PostProcessResult } from './lightmap/Refinement';
-import { createDownscale } from './lightmap/Downscale';
 import { mergeGeometry, extractPerTriangleMaterials } from './utils/GeometryUtils';
 import { buildMaterialTextures } from './utils/MaterialTextures';
-import { partitionByResolution, partitionByDensity, PerMeshOverride } from './utils/Partition';
-import { BakeError, BakeErrorPhase } from './errors';
+import { partitionByResolution, partitionByDensity } from './utils/Partition';
+import { BakeError, type BakeErrorPhase } from './errors';
 import { detectGPUCapabilities } from './gpu/Capabilities';
 import {
   DEFAULT_REFINEMENT,
@@ -30,13 +14,12 @@ import {
   validateOptions,
 } from './bake/validation';
 import { LightmapBakeResult } from './bake/result';
+import { runGroupBake, type GroupBakeContext } from './bake/groups';
 import type {
   BakeHooks,
   BakeStats,
   LightmapBakerOptions,
-  LightOptions,
-  GIOptions,
-  AOOptions,
+  ResolvedBakerOptions,
   TimeoutProtectionOptions,
 } from './bake/types';
 import type { GroupInternals, ContextLossState } from './bake/internals';
@@ -358,188 +341,4 @@ function collectBakeMeshes(scene: Scene | Object3D): Mesh[] {
       out.push(mesh);
   });
   return out;
-}
-
-function buildRaycastOpts(
-  opts: LightmapBaker['opts'],
-  resolution: number,
-  lights: PackedLight[],
-  skyColor: Color,
-  matTex: { albedoTexture: Texture; emissiveTexture: Texture; side: number },
-  tp: Required<TimeoutProtectionOptions>,
-): RaycastOptions {
-  return {
-    resolution,
-    casts: opts.castsPerFrame,
-    filterMode: opts.filtering === 'linear' ? LinearFilter : NearestFilter,
-    lights,
-    skyColor,
-    skyIntensity: opts.gi.skyIntensity,
-    directLightEnabled: opts.light.enabled,
-    indirectLightEnabled: opts.gi.enabled,
-    albedoTexture: matTex.albedoTexture,
-    emissiveTexture: matTex.emissiveTexture,
-    materialTextureSize: matTex.side,
-    targetSamples: opts.samples,
-    bounces: opts.bounces,
-    tileSize: tp.initialTileSize,
-  };
-}
-
-/** Build the AOMapper options for a group at the given resolution. */
-function buildAORaycastOpts(
-  opts: LightmapBaker['opts'],
-  resolution: number,
-  tp: Required<TimeoutProtectionOptions>,
-): AORaycastOptions {
-  return {
-    resolution,
-    aoSamples: opts.ao.samples,
-    ambientDistance: opts.ao.distance,
-    targetSamples: opts.samples,
-    tileSize: tp.initialTileSize,
-  };
-}
-
-/**
- * Decide whether to shrink the tile size based on recent RAF intervals.
- *
- * Called once per RAF tick. Receives:
- *   - `intervals`: ring buffer of the last few RAF deltas (ms, newest last)
- *   - `currentTileSize`: tile size in effect right now
- *   - `tp.maxFrameMs`: the per-frame budget the orchestrator targets
- *   - `tp.maxBatchMs`: the per-tile soft ceiling
- *
- * Returns the next tile size. Return `currentTileSize` to leave it alone, or
- * a smaller power-of-two-ish value to trigger an adaptive shrink. The mapper
- * will commit it at the next sample boundary.
- *
- * Constraints:
- *   - Never grow above `currentTileSize` (we don't have RAF data on the
- *     unloaded GPU; growing risks oscillation and TDR).
- *   - Floor at `MIN_TILE_SIZE` (64). Below that, scissor overhead dominates.
- *   - Be conservative — false positives just slow the bake; false negatives
- *     can TDR the user's machine.
- *
- * @example
- *   adaptiveTileSize([18, 19, 17, 20], 256, tp) // → 256 (steady)
- *   adaptiveTileSize([45, 38, 50, 42], 256, tp) // → 128 (3+ stretched RAFs)
- */
-const MIN_TILE_SIZE = 64;
-function adaptiveTileSize(
-  intervals: number[],
-  currentTileSize: number,
-  tp: Required<TimeoutProtectionOptions>,
-): number {
-  // TODO(user): Implement the adaptive throttling policy. ~5–10 lines.
-  //
-  // The signal: if recent RAF intervals are much longer than `tp.maxFrameMs`,
-  // the GPU is the bottleneck — shrink the tile so each draw is smaller.
-  //
-  // Suggested heuristic (feel free to tune):
-  //   - If we don't have at least 4 samples yet, return currentTileSize.
-  //   - Count how many of the last 4 intervals exceeded `tp.maxFrameMs * 1.5`.
-  //   - If 3 or more did, halve currentTileSize (Math.max(MIN_TILE_SIZE, ...)).
-  //   - Otherwise return currentTileSize.
-  //
-  // Why "3 of last 4" not "1 of last 4": single-RAF spikes happen for
-  // unrelated reasons (GC, OS scheduler, browser layout). We only want to
-  // react to sustained pressure.
-  //
-  // Why halve, not subtract: tile work scales with side² — halving the side
-  // quarters the per-tile cost. Linear shrinking would barely help on the
-  // first iteration.
-  //
-  // Why floor at MIN_TILE_SIZE: each tile incurs ~10–100µs of CPU/driver
-  // overhead per draw. At 64x64 on a 1024² lightmap that's already 256 draws
-  // per sample — going smaller hurts more than it helps.
-  if (intervals.length < 4) return currentTileSize;
-  const lookback = intervals.slice(-4);
-  const overBudget = lookback.filter((i) => i > tp.maxFrameMs * 1.5).length;
-  if (overBudget >= 3) return Math.max(MIN_TILE_SIZE, currentTileSize >> 1);
-  return currentTileSize;
-}
-
-/**
- * Drive bounce + AO mappers with timeout protection: each RAF runs
- * `renderTiled(maxFrameMs)` on both, optionally shrinks tile size when RAFs
- * stretch under load, and rejects with a `'context-loss'` BakeError if the
- * canvas reports webglcontextlost mid-bake.
- */
-function runMappersWithTimeoutProtection(
-  lightmapper: Lightmapper,
-  aoMapper: AOMapper,
-  composite: CompositeResult,
-  targetSamples: number,
-  hooks: BakeHooks,
-  ctxState: ContextLossState,
-  tp: Required<TimeoutProtectionOptions>,
-  groupIndex: number,
-  totalGroups: number,
-  onProgress: (p: number) => void,
-): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const intervals: number[] = [];
-    let lastRaf = performance.now();
-    let tileSize = tp.initialTileSize;
-
-    const tick = (): void => {
-      if (hooks.signal?.aborted) {
-        reject(new BakeError('aborted by signal', 'bake'));
-        return;
-      }
-      if (ctxState.lost) {
-        reject(new BakeError('webgl context lost during bake', 'context-loss'));
-        return;
-      }
-
-      const now = performance.now();
-      intervals.push(now - lastRaf);
-      if (intervals.length > 8) intervals.shift();
-      lastRaf = now;
-
-      if (tp.autoAdapt) {
-        const next = adaptiveTileSize(intervals, tileSize, tp);
-        if (next !== tileSize) {
-          console.warn(`[baker] adaptive throttle: tileSize ${tileSize} → ${next}`);
-          tileSize = next;
-          lightmapper.setTileSize(tileSize);
-          aoMapper.setTileSize(tileSize);
-          intervals.length = 0; // reset history after a change
-        }
-      }
-
-      const lr = lightmapper.renderTiled(tp.maxFrameMs);
-      const ar = aoMapper.renderTiled(tp.maxFrameMs);
-      const minSamples = Math.min(lr.samples, ar.samples);
-      onProgress(targetSamples > 0 ? minSamples / targetSamples : 1);
-
-      // Refresh composite so the live preview reflects this frame's accumulator
-      // state, then fire onFrame with the live texture refs. The composite must
-      // refresh BEFORE onFrame so callers see the up-to-date pixels.
-      // Gate refresh on sample-boundary: accumulators only change when a full
-      // sample completes, so mid-sample RAFs would blit identical pixels.
-      const done = lr.done && ar.done;
-      if (lr.sampleComplete || ar.sampleComplete) composite.refresh();
-      hooks.onFrame?.({
-        groupIndex,
-        totalGroups,
-        bounceSamples: lr.samples,
-        aoSamples: ar.samples,
-        targetSamples,
-        done,
-        compositeTexture: composite.texture,
-        directTexture: lightmapper.textures.direct,
-        indirectTexture: lightmapper.textures.indirect,
-        aoTexture: aoMapper.texture,
-      });
-
-      if (done) {
-        resolve();
-        return;
-      }
-      requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  });
 }
