@@ -1,6 +1,6 @@
 # Lightmap Baker — Progress Tracker
 
-## Recent: Session 17 — 2026-05-21 — Task 11 parked; modularity sprint kicked off
+## Recent: Session 17 — 2026-05-21 — Task 11 parked; LightmapBaker split
 
 **Decisions:**
 - Task 11 (SH light probes) **parked** ⏸. Current demos have zero dynamic
@@ -15,6 +15,53 @@
   (1314 LOC). Branch `refactor/lightmap-baker-split` off
   `feat/step-4-5-completion` (S16 polish branch still live; modularity
   work doesn't touch the playground UI files S16 is iterating on).
+
+**Split shipped (LightmapBaker.ts 1314 → 171 LOC):**
+
+| Commit | New file | LOC | Content |
+|---|---|---|---|
+| `b01b736` | — | — | docs: park Task 11, kick off sprint |
+| `<types>` | `bake/types.ts` | 275 | 13 public type aliases + `BakeGroupView` + `ResolvedBakerOptions` |
+| `<types>` | `bake/internals.ts` | 41 | `GroupInternals`, `ContextLossState` (private) |
+| `<validation>` | `bake/validation.ts` | 154 | `validateOptions`, `resolveTimeoutProtection`, `DEFAULT_REFINEMENT`, `toLinearColor`, `isPowerOfTwo` |
+| `<result>` | `bake/result.ts` | 309 | `LightmapBakeResult` class + `rebakeAOForGroup` helper |
+| `<result>` | `lightmap/index.ts` | 23 | Sub-system barrel for `AOMapper`/`Composite`/`Downscale`/`Lightmapper`/`Lights`/`Refinement` |
+| `<groups>` | `bake/groups.ts` | 324 | `runGroupBake`, `buildRaycastOpts`, `buildAORaycastOpts`, `runMappersWithTimeoutProtection`, `adaptiveTileSize` |
+| `<pipeline>` | `bake/pipeline.ts` | 228 | `runBakePipeline` orchestrator + `collectBakeMeshes` |
+| `<pipeline>` | `bake/index.ts` | 12 | Internal barrel (validation + result + groups + types + internals) |
+| `<pipeline>` | `utils/index.ts` | 11 | Internal barrel (GeometryUtils + MaterialTextures + Partition + exportLightmap) |
+| (facade) | `LightmapBaker.ts` | **171** | constructor + `bake()` entry + re-exports |
+
+**S12 invariants preserved (verified by code-reviewer agent):**
+- `gl.finish()` drain at `bake/pipeline.ts:192`, correct position (post-group-loop, pre-stats, pre-`LightmapBakeResult` construction).
+- Context-loss guard install + `finally` teardown in `LightmapBaker.bake()` (`LightmapBaker.ts:138`).
+- `LightmapBakeResult.dispose()` order unchanged (downscale → refinement → composite → aoMapper → lightmapper → atlasDispose → matTexDispose).
+- `LightmapperMaterial.ts` not touched.
+
+**Modularity status after this PR:**
+
+| File | LOC | State |
+|---|---|---|
+| `LightmapBaker.ts` (facade) | 171 | ✅ under cap |
+| `bake/pipeline.ts` | 228 | ✅ under cap |
+| `bake/types.ts` | 275 | ✅ under cap |
+| `bake/validation.ts` | 154 | ✅ under cap |
+| `bake/internals.ts` | 41 | ✅ under cap |
+| `bake/index.ts` | 12 | ✅ under cap |
+| `lightmap/index.ts` | 23 | ✅ under cap |
+| `utils/index.ts` | 11 | ✅ under cap |
+| `bake/result.ts` | 309 | ⚠ 9 over (class + colocated `rebakeAOForGroup` helper) |
+| `bake/groups.ts` | 324 | ⚠ 24 over (per-group loop + RAF tile loop) |
+
+**Known follow-ups (deferred, deliberate trade-offs):**
+- Function-LOC overage: `runBakePipeline` (149 LOC) and `runGroupBake` (106 LOC) exceed CLAUDE.md's 50-LOC function cap. Pipeline orchestrators by nature exceed it; splitting into 6+ tiny private helpers adds noise without reducing complexity. Candidate Phase-2 split: extract phase helpers (`runGeometryPhase`, `runPerGroupLoop`, `computeBakeStats`) once the call sites mature.
+- File-LOC overage: `bake/groups.ts` and `bake/result.ts` are 9–24 LOC over the 300 cap. Could split `rebakeAOForGroup` out of `result.ts` into `bake/ao-rebake.ts` and split the RAF tile loop out of `groups.ts` into `bake/tile-loop.ts`. Deferred — current cohesion reads cleanly.
+
+**Verification.** `npx tsc --noEmit` clean (verified per commit via `git stash --keep-index` to exclude parallel S16 WIP on `LightPage.tsx` + `SceneController.ts`). `npm run build` green. Code-reviewer subagent confirmed S12 invariants + public API surface + consumer compatibility (`BakeController.ts`, `BakePage.tsx`). Cornell visual smoke deferred to user environment per convention.
+
+**Next sprint.** Apply the same pattern to the remaining oversized monsters: `SceneController.ts` (962), `CornellBoxExample.ts` (844), `BVHSceneBuilder.ts` (741), `LightPage.tsx` (458), `BakeController.ts` (428), `LightmapperMaterial.ts` (423). User picked one-file-at-a-time per sprint to validate the pattern before committing to a bulk split.
+
+---
 
 ## Recent: Session 16 — 2026-05-19 — Overnight polish sweep (no PT, baker focus)
 
