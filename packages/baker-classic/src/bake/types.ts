@@ -1,9 +1,7 @@
 import { Color, Texture, Vector3 } from 'three';
-import type { PackedLight } from '../lightmap/Lights';
-import type { PostProcessOptions } from '../lightmap/Refinement';
-import type { Lightmapper } from '../lightmap/Lightmapper';
-import type { AOMapper } from '../lightmap/AOMapper';
 import type { Mesh } from 'three';
+import type { AOMapper, Lightmapper, PackedLight, PostProcessOptions } from '../lightmap';
+import type { PerMeshOverride } from '../utils/Partition';
 
 // Public type surface for the classic baker. All `import type` so this file
 // strips to nothing at runtime — pure declaration aggregation, not a module.
@@ -253,4 +251,25 @@ export type BakeGroupView = {
     /** UV-space world-normal G-buffer. */
     normal: Texture;
   };
+};
+
+/**
+ * Internal — the LightmapBaker constructor's normalized options shape. Shared
+ * across bake/* helpers (groups, pipeline) so the orchestrator can pass a
+ * single typed bag instead of N positional parameters. Not exported from the
+ * public package barrel.
+ */
+export type ResolvedBakerOptions = Required<
+  Omit<
+    LightmapBakerOptions,
+    'light' | 'gi' | 'ao' | 'refinementOptions' | 'perMesh' | 'timeoutProtection'
+  >
+> & {
+  light: Required<LightOptions>;
+  gi: Required<GIOptions>;
+  ao: Required<AOOptions>;
+  refinementOptions: PostProcessOptions;
+  perMesh: Record<string, PerMeshOverride>;
+  /** Raw user override; resolved against GPU capabilities at bake start. */
+  timeoutProtection: TimeoutProtectionOptions | undefined;
 };

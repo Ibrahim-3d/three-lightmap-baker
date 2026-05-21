@@ -1,9 +1,4 @@
-import {
-  Mesh,
-  MeshStandardMaterial,
-  Texture,
-  WebGLRenderer,
-} from 'three';
+import { Mesh, MeshStandardMaterial, Texture, WebGLRenderer } from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
 import {
   generateAOMapper,
