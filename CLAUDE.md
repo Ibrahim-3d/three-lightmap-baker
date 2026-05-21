@@ -129,13 +129,25 @@ not patched.**
 
 ### Before committing — required checks
 
-1. `npx tsc --noEmit` — zero errors
-2. `npx eslint packages/ apps/` (or `src/` pre-restructure) — zero errors
-3. `npx prettier --check .` — all formatted
+**Run the same npm scripts CI runs. NOT `npx prettier`/`npx eslint`
+directly.** The repo's npm scripts pin the exact target paths
+(`packages/ apps/`) and Prettier respects nested config differently when
+invoked via the package script. CI uses `npm run format:check` — running
+`npx prettier --check .` locally can pass while CI fails on 7+ files. The
+lint error format is the same trap (lint config is wired into
+`npm run lint`, not bare `npx eslint`).
+
+1. `npm run typecheck` — zero errors
+2. `npm run lint` — zero errors. Warnings allowed; errors fail CI.
+3. `npm run format:check` — all formatted. If it fails: `npm run format`
+   to auto-fix, then re-check.
 4. `npx madge --circular packages/ apps/` — no cycles
-5. Quick scan: any new file > 300 LOC? Split it. Any new file with > 5
+5. `npm run build` — vite build green
+6. Quick scan: any new file > 300 LOC? Split it. Any new file with > 5
    project imports? Refactor it.
-6. CI must be green (see `.github/workflows/`).
+7. CI must be green (see `.github/workflows/ci.yml`).
+
+The `npm run check` script chains 1–3 in one shot.
 
 ## CI / CD Workflows
 
