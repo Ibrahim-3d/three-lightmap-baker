@@ -135,13 +135,31 @@ export function PostFXPage() {
           <BoolField value={s.bloom2Enabled} onChange={(v) => set('bloom2Enabled', v)} />
         </Row>
         <Row label="Strength">
-          <RangeField value={s.bloom2Strength} min={0} max={3} step={0.05} onChange={(v) => set('bloom2Strength', v)} />
+          <RangeField
+            value={s.bloom2Strength}
+            min={0}
+            max={3}
+            step={0.05}
+            onChange={(v) => set('bloom2Strength', v)}
+          />
         </Row>
         <Row label="Radius">
-          <RangeField value={s.bloom2Radius} min={0} max={1} step={0.01} onChange={(v) => set('bloom2Radius', v)} />
+          <RangeField
+            value={s.bloom2Radius}
+            min={0}
+            max={1}
+            step={0.01}
+            onChange={(v) => set('bloom2Radius', v)}
+          />
         </Row>
         <Row label="Threshold">
-          <RangeField value={s.bloom2Threshold} min={0} max={2} step={0.01} onChange={(v) => set('bloom2Threshold', v)} />
+          <RangeField
+            value={s.bloom2Threshold}
+            min={0}
+            max={2}
+            step={0.01}
+            onChange={(v) => set('bloom2Threshold', v)}
+          />
         </Row>
       </Section>
 
@@ -153,13 +171,25 @@ export function PostFXPage() {
           <RangeField value={s.hue} min={-1} max={1} step={0.01} onChange={(v) => set('hue', v)} />
         </Row>
         <Row label="Saturation">
-          <RangeField value={s.saturation} min={-1} max={1} step={0.01} onChange={(v) => set('saturation', v)} />
+          <RangeField
+            value={s.saturation}
+            min={-1}
+            max={1}
+            step={0.01}
+            onChange={(v) => set('saturation', v)}
+          />
         </Row>
       </Section>
 
       <Section title="Gamma">
         <Row label="Gamma" hint="< 1 = crush blacks, > 1 = lift midtones.">
-          <RangeField value={s.gamma} min={0.4} max={2.2} step={0.01} onChange={(v) => set('gamma', v)} />
+          <RangeField
+            value={s.gamma}
+            min={0.4}
+            max={2.2}
+            step={0.01}
+            onChange={(v) => set('gamma', v)}
+          />
         </Row>
       </Section>
 
@@ -174,28 +204,63 @@ export function PostFXPage() {
           />
         </Row>
         <Row label="Density">
-          <RangeField value={s.fogDensity} min={0} max={0.02} step={0.0001} onChange={(v) => set('fogDensity', v)} />
+          <RangeField
+            value={s.fogDensity}
+            min={0}
+            max={0.02}
+            step={0.0001}
+            onChange={(v) => set('fogDensity', v)}
+          />
         </Row>
       </Section>
 
       <Section title="Lens Distortion">
         <Row label="Enabled" hint="ESL chromatic-aberration barrel distortion.">
-          <BoolField value={s.lensDistortionEnabled} onChange={(v) => set('lensDistortionEnabled', v)} />
+          <BoolField
+            value={s.lensDistortionEnabled}
+            onChange={(v) => set('lensDistortionEnabled', v)}
+          />
         </Row>
         <Row label="Base IOR">
-          <RangeField value={s.baseIor} min={0.8} max={1.05} step={0.001} onChange={(v) => set('baseIor', v)} />
+          <RangeField
+            value={s.baseIor}
+            min={0.8}
+            max={1.05}
+            step={0.001}
+            onChange={(v) => set('baseIor', v)}
+          />
         </Row>
         <Row label="Band offset">
-          <RangeField value={s.bandOffset} min={0} max={0.01} step={0.0001} onChange={(v) => set('bandOffset', v)} />
+          <RangeField
+            value={s.bandOffset}
+            min={0}
+            max={0.01}
+            step={0.0001}
+            onChange={(v) => set('bandOffset', v)}
+          />
         </Row>
         <Row label="Jitter">
-          <RangeField value={s.jitterIntensity} min={0} max={10} step={0.1} onChange={(v) => set('jitterIntensity', v)} />
+          <RangeField
+            value={s.jitterIntensity}
+            min={0}
+            max={10}
+            step={0.1}
+            onChange={(v) => set('jitterIntensity', v)}
+          />
         </Row>
       </Section>
 
       <Section title="HDR Environment (ESL)">
-        <Row label="Enable HDR" hint="One-click: scene.environmentIntensity + per-material envMapIntensity → 1.">
-          <BoolField value={eslEnvEnabled.value} onChange={(v) => { eslEnvEnabled.value = v; }} />
+        <Row
+          label="Enable HDR"
+          hint="One-click: scene.environmentIntensity + per-material envMapIntensity → 1."
+        >
+          <BoolField
+            value={eslEnvEnabled.value}
+            onChange={(v) => {
+              eslEnvEnabled.value = v;
+            }}
+          />
         </Row>
       </Section>
     </div>

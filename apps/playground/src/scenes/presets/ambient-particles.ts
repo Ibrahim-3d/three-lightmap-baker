@@ -57,16 +57,14 @@ function patchAmbientParticles(shader: WebGLProgramParametersWithUniforms): void
     );
   shader.fragmentShader =
     'varying float particleDepth;\n' +
-    shader.fragmentShader
-      .replace('#include <map_fragment>', ShaderChunk.map_fragment)
-      .replace(
-        'diffuseColor *= sampledDiffuseColor;',
-        /* glsl */ `
+    shader.fragmentShader.replace('#include <map_fragment>', ShaderChunk.map_fragment).replace(
+      'diffuseColor *= sampledDiffuseColor;',
+      /* glsl */ `
         diffuseColor *= sampledDiffuseColor;
         float depthOpacity = clamp(particleDepth * particleDepth, 0., 1.);
         diffuseColor.a *= depthOpacity * depthOpacity;
       `,
-      );
+    );
 }
 
 /**

@@ -1,11 +1,7 @@
 import { Object3D, Scene, Vector3, WebGLRenderer } from 'three';
 import { BakeError, type BakeErrorPhase } from './errors';
 import { detectGPUCapabilities } from './gpu/Capabilities';
-import {
-  DEFAULT_REFINEMENT,
-  resolveTimeoutProtection,
-  validateOptions,
-} from './bake/validation';
+import { DEFAULT_REFINEMENT, resolveTimeoutProtection, validateOptions } from './bake/validation';
 import { LightmapBakeResult } from './bake/result';
 import { collectBakeMeshes, runBakePipeline } from './bake/pipeline';
 import type { BakeHooks, LightmapBakerOptions, ResolvedBakerOptions } from './bake/types';

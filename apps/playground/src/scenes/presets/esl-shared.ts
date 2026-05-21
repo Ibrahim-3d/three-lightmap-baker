@@ -111,14 +111,10 @@ export function applyMeshTweaks(root: Object3D, tweaks: EslMeshTweak[]): number 
 
 /**
  * Normalise all standard-material params on a freshly-loaded GLB so they fit
- * Three's vanilla PBR path (no ESL shader patch). Strips GLB-baked
- * `envMapIntensity` (ESL ships up to 7.77), forces sane defaults, clamps
- * roughness. Run after `applyMeshTweaks` so explicit tweaks win.
- */
-/**
- * Clamp GLB-shipped PBR params to PBR-legal range. ESL ships values >1 on
- * some materials (gym floor R=2.26); their shader patch absorbs that via
- * `roughnessPower`, but vanilla Three breaks. Cheap safety pass.
+ * Three's vanilla PBR path (no ESL shader patch). Clamps roughness/metalness
+ * (gym ships R=2.26 → undefined behaviour in IBL), forces `envMapIntensity`
+ * to 0 so a leaked HDR probe can't blow out the scene. Also enables shadow
+ * casting + receiving on every mesh for real-time preview occlusion.
  */
 export function normalisePBRMaterials(root: Object3D): void {
   root.traverse((obj) => {
@@ -283,10 +279,12 @@ export function logFirstMaterial(root: Object3D, tag: string): void {
   const r = (n: number | undefined): string => (n === undefined ? '?' : n.toFixed(2));
   const uv = first.geometry.attributes.uv;
   const uv2 = first.geometry.attributes.uv2;
-  let uvMin = Infinity, uvMax = -Infinity;
+  let uvMin = Infinity,
+    uvMax = -Infinity;
   if (uv) {
     for (let i = 0; i < uv.count; i++) {
-      const x = uv.getX(i), y = uv.getY(i);
+      const x = uv.getX(i),
+        y = uv.getY(i);
       if (x < uvMin) uvMin = x;
       if (y < uvMin) uvMin = y;
       if (x > uvMax) uvMax = x;

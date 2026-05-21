@@ -7,13 +7,7 @@
  * deferred to post-fx task #4; here we land only geometry, spawn camera,
  * per-mesh PBR tweaks, and box-projected envmap metadata.
  */
-import {
-  Color,
-  Mesh,
-  type MeshStandardMaterial,
-  Object3D,
-  Vector2,
-} from 'three';
+import { Color, Mesh, type MeshStandardMaterial, Object3D, Vector2 } from 'three';
 import { sceneRegistry, type SceneBuildResult } from 'shared';
 import { createAmbientDust } from './ambient-particles';
 import {
