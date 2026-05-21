@@ -9,7 +9,7 @@ import {
   partitionByDensity,
   partitionByResolution,
 } from '../utils';
-import { BakeError, type BakeErrorPhase } from '../errors';
+import type { BakeErrorPhase } from '../errors';
 import {
   LightmapBakeResult,
   runGroupBake,
