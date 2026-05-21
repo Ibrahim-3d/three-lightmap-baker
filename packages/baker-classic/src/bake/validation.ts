@@ -8,10 +8,8 @@ import type { LightmapBakerOptions, TimeoutProtectionOptions } from './types';
 // no class fields — all inputs come through parameters so this file is unit-
 // testable in isolation.
 
-export const toLinearColor = (
-  c: Color | string | number | undefined,
-  fallback: number,
-): Color => new Color(c ?? fallback).convertSRGBToLinear();
+export const toLinearColor = (c: Color | string | number | undefined, fallback: number): Color =>
+  new Color(c ?? fallback).convertSRGBToLinear();
 
 export const isPowerOfTwo = (n: number): boolean => n > 0 && (n & (n - 1)) === 0;
 
