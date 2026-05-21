@@ -81,20 +81,7 @@ export type {
  */
 
 export class LightmapBaker {
-  private opts: Required<
-    Omit<
-      LightmapBakerOptions,
-      'light' | 'gi' | 'ao' | 'refinementOptions' | 'perMesh' | 'timeoutProtection'
-    >
-  > & {
-    light: Required<LightOptions>;
-    gi: Required<GIOptions>;
-    ao: Required<AOOptions>;
-    refinementOptions: PostProcessOptions;
-    perMesh: Record<string, PerMeshOverride>;
-    /** Raw user override; resolved against GPU capabilities at bake start. */
-    timeoutProtection: TimeoutProtectionOptions | undefined;
-  };
+  private opts: ResolvedBakerOptions;
 
   constructor(
     public readonly renderer: WebGLRenderer,
@@ -259,109 +246,33 @@ export class LightmapBaker {
     // (They're kept separate so callers know to handle them differently.)
     void excluded; // intentionally unused beyond BVH; suppress lint
 
+    const ctx: GroupBakeContext = {
+      renderer: this.renderer,
+      opts: this.opts,
+      bvh,
+      sceneLights,
+      skyColor,
+      matTex,
+      tp,
+      ctxState,
+    };
     for (let gi = 0; gi < groupKeys.length; gi++) {
       const key = groupKeys[gi]!;
       const res = groupResolution(key);
       const internalRes = res * this.opts.superSample;
       const groupMeshes = groups.get(key)!;
 
-      hooks.onProgress?.('bake', gi / groupKeys.length);
-      checkAbort('bake');
-
-      const atlas = renderAtlas(this.renderer, groupMeshes, internalRes, true);
-
-      const raycastOpts: RaycastOptions = buildRaycastOpts(
-        this.opts,
-        internalRes,
-        sceneLights,
-        skyColor,
-        matTex,
-        tp,
-      );
-      const aoOpts: AORaycastOptions = buildAORaycastOpts(this.opts, internalRes, tp);
-
-      const lightmapper = generateLightmapper(
-        this.renderer,
-        atlas.positionTexture,
-        atlas.normalTexture,
-        bvh,
-        raycastOpts,
-      );
-      const aoMapper = generateAOMapper(
-        this.renderer,
-        atlas.positionTexture,
-        atlas.normalTexture,
-        bvh,
-        aoOpts,
-      );
-
-      // Composite is created BEFORE the mappers loop so its texture exists
-      // during accumulation — callers can mount `composite.texture` on
-      // materials immediately and watch it fade in via per-RAF refreshes
-      // inside runMappersWithTimeoutProtection. Phase-2 onFrame hook.
-      const composite = runComposite(
-        this.renderer,
-        {
-          direct: lightmapper.textures.direct,
-          indirect: lightmapper.textures.indirect,
-          ao: aoMapper.texture,
-        },
-        internalRes,
-        {
-          directIntensity: 1.0,
-          giIntensity: this.opts.gi.intensity,
-          aoEnabled: this.opts.ao.enabled,
-          aoIntensity: this.opts.ao.intensity,
-          aoExponent: this.opts.ao.exponent,
-        },
-      );
-
-      await runMappersWithTimeoutProtection(
-        lightmapper,
-        aoMapper,
-        composite,
-        this.opts.samples,
-        hooks,
-        ctxState,
-        tp,
+      const { group, finalTex } = await runGroupBake(
+        ctx,
         gi,
         groupKeys.length,
-        (p) => hooks.onProgress?.('bake', (gi + p) / groupKeys.length),
+        groupMeshes,
+        res,
+        internalRes,
+        hooks,
+        checkAbort,
       );
-
-      let refinement: PostProcessResult | null = null;
-      if (this.opts.denoise || this.opts.refinementOptions.dilationIterations > 0) {
-        refinement = await runPostProcess(
-          this.renderer,
-          composite.texture,
-          atlas.positionTexture,
-          internalRes,
-          this.opts.refinementOptions,
-        );
-      }
-
-      // Final texture chosen by user options (refinement output, or raw composite).
-      // Still at INTERNAL resolution at this point. If superSample > 1, run a
-      // bilinear passthrough into a target-res RT — the result is what mesh.lightMap
-      // binds to. Hardware bilinear (source LinearFilter) does the anti-aliasing.
-      const finalInternalTex = refinement?.texture ?? composite.texture;
-      const downscale =
-        this.opts.superSample > 1 ? createDownscale(this.renderer, finalInternalTex, res) : null;
-      const finalTex = downscale?.texture ?? finalInternalTex;
-
-      groupResults.push({
-        lightmapper,
-        aoMapper,
-        composite,
-        refinement,
-        atlasDispose: atlas.dispose,
-        resolution: res,
-        internalResolution: internalRes,
-        downscale,
-        meshes: groupMeshes,
-        positionTex: atlas.positionTexture,
-        normalTex: atlas.normalTexture,
-      });
+      groupResults.push(group);
 
       for (const m of groupMeshes) {
         meshLightmaps.set(m, finalTex);
@@ -632,4 +543,3 @@ function runMappersWithTimeoutProtection(
     requestAnimationFrame(tick);
   });
 }
-

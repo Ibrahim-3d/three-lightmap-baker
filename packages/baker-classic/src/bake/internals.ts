@@ -1,9 +1,11 @@
 import type { Mesh, Texture } from 'three';
-import type { Lightmapper } from '../lightmap/Lightmapper';
-import type { AOMapper } from '../lightmap/AOMapper';
-import type { CompositeResult } from '../lightmap/Composite';
-import type { PostProcessResult } from '../lightmap/Refinement';
-import type { DownscaleResult } from '../lightmap/Downscale';
+import type {
+  AOMapper,
+  CompositeResult,
+  DownscaleResult,
+  Lightmapper,
+  PostProcessResult,
+} from '../lightmap';
 
 // Internal mutable state shared across the split bake helpers. Not exported
 // from the public barrel. All `import type` — strips to nothing at runtime.
