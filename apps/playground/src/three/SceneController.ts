@@ -8,6 +8,7 @@ import {
   DoubleSide,
   Euler,
   GridHelper,
+  type Light,
   LineBasicMaterial,
   LinearToneMapping,
   Mesh,
@@ -44,7 +45,13 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader';
 import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader';
 import { Diagnostics } from 'baker-classic';
-import { createAsset, type AssetSpec, postFXSettings, sceneRegistry } from 'shared';
+import {
+  createAsset,
+  type AssetSpec,
+  postFXSettings,
+  sceneRegistry,
+  wrapAsBakerLight,
+} from 'shared';
 import type { SceneObj } from './types';
 
 // Classic Cornell box dims: 10×10×10 unit room centered at (0, 5, 0)
@@ -85,7 +92,15 @@ export type SceneControllerHooks = {
   onTransformChange?: (obj: Object3D, before: TransformSnap, after: TransformSnap) => void;
 };
 
-/** Built-in id for the moveable scene light. Lights become uuid-keyed in T-D7. */
+/**
+ * Built-in id for the moveable scene light.
+ *
+ * @deprecated The scene's default area light is now a regular asset-library
+ * light group (with `userData.bakerLightType = 'area'`) and is keyed by its
+ * own uuid like every other light. This constant is kept for type-only
+ * backward compatibility while consumers migrate; new code should look up the
+ * light by traversing scene children for `userData.bakerLightType` instead.
+ */
 export const LIGHT_DUMMY_ID = 'light:dummy';
 
 /**
@@ -209,26 +224,34 @@ export class SceneController {
     // using it is rendered. Safe to call multiple times — LUT is cached.
     RectAreaLightUniformsLib.init();
 
-    // Light dummy — baker reads .position to fire direct-light rays toward it.
-    // (Bake sampling is still point-style; the area light is for the preview.)
+    // Default scene area light. Wrapped as a regular baker-style light group
+    // (`userData.bakerLightType = 'area'`) so it's selectable, deletable, and
+    // editable in real time through the same SceneLightPage path as any
+    // dragged-in asset-library light. Hidden automatically when a preset
+    // brings its own lights (see `loadPresetById`).
     this.lightDummy = new Object3D();
+    this.lightDummy.name = 'Default Area Light';
+    this.lightDummy.userData.bakerLightType = 'area';
     this.lightDummy.position.set(0, ROOM - 0.001, 0);
     this.scene.add(this.lightDummy);
 
-    // Visible footprint disc — still used by `modes.ts` to flash the bake
-    // marker. Same dimensions as the area light below so the outline matches.
+    // Bake-marker disc — still used by `modes.ts` to flash a white pulse
+    // during bake. Tagged `lightmapIgnore` so it doesn't bake into the atlas.
     this.lightMarker = new Mesh(
       new PlaneGeometry(2.5, 2.5),
       new MeshBasicMaterial({ color: 0xffffff, side: DoubleSide }),
     );
     this.lightMarker.rotation.x = Math.PI / 2;
+    this.lightMarker.userData.lightmapIgnore = true;
+    this.lightMarker.userData.lightGizmo = true;
     this.lightDummy.add(this.lightMarker);
 
-    // Visual-only area light: emits along its local -Z. Rotate so -Z faces
-    // world -Y (downward). Tagged `lightmapIgnore` so the baker skips it.
-    this.visualLight = new RectAreaLight(0xffffff, 80, 2.5, 2.5);
+    // Area light: emits along its local -Z. Rotate so -Z faces world -Y
+    // (downward — i.e. ceiling-mounted by default). This is now the real
+    // bake-side light (no `lightmapIgnore`); `collectLightsFromScene` packs it
+    // alongside any asset-library lights so the editor and the bake agree.
+    this.visualLight = new RectAreaLight(0xffffff, 5, 2.5, 2.5);
     this.visualLight.rotation.x = -Math.PI / 2;
-    this.visualLight.userData.lightmapIgnore = true;
     this.lightDummy.add(this.visualLight);
 
     // Thin rectangle outline that traces the emitter — gives the "real area
@@ -240,6 +263,10 @@ export class SceneController {
       c.userData.lightmapIgnore = true;
     });
     this.visualLight.add(areaHelper);
+    // Expose the helper through the same `lightHelper` userData convention
+    // asset-library light groups use, so any framework code that calls
+    // `helper.update()` on lights generically works for the default light too.
+    this.lightDummy.userData.lightHelper = areaHelper;
 
     this.lightTransformController = new TransformControls(this.camera, this.renderer.domElement);
     this.lightTransformController.addEventListener('dragging-changed', (event) => {
@@ -270,8 +297,10 @@ export class SceneController {
         }
       }
     });
-    this.lightTransformController.attach(this.lightDummy);
+    // Gizmo starts detached. Selection drives attachment via attachGizmoTo.
     this.scene.add(this.lightTransformController);
+    this.lightTransformController.visible = false;
+    this.lightTransformController.enabled = false;
 
     // Viewport click → raycast pick → notify orchestrator. We track pointerdown
     // coords and only fire a pick on pointerup at (roughly) the same coords, so
@@ -328,10 +357,10 @@ export class SceneController {
   /** Resolve a tree-node id back to its Object3D. */
   lookupObject(id: string | null): Object3D | null {
     if (!id) return null;
-    if (id === LIGHT_DUMMY_ID) return this.lightDummy;
     const mesh = this.meshes.find((m) => m.uuid === id);
     if (mesh) return mesh;
-    // Asset-library light groups live as direct scene children.
+    // All lights (default area + asset-library) live as direct scene children
+    // with `userData.bakerLightType` set.
     return this.scene.children.find((o) => o.uuid === id && o.userData?.bakerLightType) ?? null;
   }
 
@@ -354,9 +383,7 @@ export class SceneController {
   /** Build a flat tree snapshot for the Outliner. Rebuilt by the orchestrator
    *  on every scene mutation (rebuild / GLB import). */
   buildSceneTree(): { id: string; name: string; kind: 'mesh' | 'light'; visible: boolean }[] {
-    const tree: { id: string; name: string; kind: 'mesh' | 'light'; visible: boolean }[] = [
-      { id: LIGHT_DUMMY_ID, name: 'Scene Light', kind: 'light', visible: this.lightDummy.visible },
-    ];
+    const tree: { id: string; name: string; kind: 'mesh' | 'light'; visible: boolean }[] = [];
     for (const m of this.meshes) {
       tree.push({
         id: m.uuid,
@@ -365,8 +392,8 @@ export class SceneController {
         visible: m.visible,
       });
     }
-    // Asset-library lights (Point / Spot / Sun / Area) — top-level scene
-    // children carrying `userData.bakerLightType`.
+    // All lights (default area + asset-library Point / Spot / Sun / Area) —
+    // top-level scene children carrying `userData.bakerLightType`.
     for (const child of this.scene.children) {
       if (!child.userData?.bakerLightType) continue;
       tree.push({
@@ -869,7 +896,7 @@ export class SceneController {
    * No-ops (returns null) for the built-in light dummy and unknown ids.
    */
   detachNode(id: string): { node: Object3D; parent: Object3D } | null {
-    if (!id || id === LIGHT_DUMMY_ID) return null;
+    if (!id) return null;
 
     const meshIdx = this.meshes.findIndex((m) => m.uuid === id);
     if (meshIdx !== -1) {
@@ -883,9 +910,19 @@ export class SceneController {
       return { node: mesh, parent };
     }
 
+    // Any direct scene child carrying `bakerLightType` is fair game to delete
+    // — including the default area light. The user can drag a fresh one in
+    // from the asset library if they want it back.
     const target = this.scene.children.find((o) => o.uuid === id);
-    if (target && target !== this.lightDummy) {
+    if (target?.userData?.bakerLightType) {
       this.scene.remove(target);
+      // If we just removed what the gizmo was attached to, detach so the
+      // transform widget doesn't dangle on a freed object.
+      if (this.lightTransformController.object === target) {
+        this.lightTransformController.detach();
+        this.lightTransformController.visible = false;
+        this.lightTransformController.enabled = false;
+      }
       this.hooks.onSceneChanged(this.meshes);
       this.hooks.onStaleChange?.();
       return { node: target, parent: this.scene };
@@ -953,6 +990,13 @@ export class SceneController {
 
     const result = await preset.build(this.cornellRoot);
 
+    // Hoist any raw THREE.Light objects the preset added directly under
+    // `cornellRoot` into proper baker-style scene-children (uuid-keyed groups
+    // with `userData.bakerLightType`). This makes them selectable / editable
+    // through the same path as asset-library lights. Done before the mesh
+    // walk so the wrappers don't accidentally show up as "meshes".
+    this.hoistRawLights(this.cornellRoot);
+
     // Walk newly-added meshes (scoped to cornellRoot — preset content all lives
     // there by contract). Skip lightmap-ignored meshes (mirror/glass/emissive
     // markers); the lightDummy is parented to `scene`, not cornellRoot, so its
@@ -963,6 +1007,14 @@ export class SceneController {
       if (m.userData.lightmapIgnore === true) return;
       this.meshes.push(m as SceneObj);
     });
+
+    // Hide the default area light when the preset brought its own lighting —
+    // avoids "stuffing an area light into every demo" (e.g. the three.js
+    // point-lights port should bake from the point lights only).
+    const presetHasLights = this.scene.children.some(
+      (c) => c !== this.lightDummy && c.userData?.bakerLightType,
+    );
+    this.lightDummy.visible = !presetHasLights;
 
     // Apply hints.
     if (result.background !== undefined) this.scene.background = new Color(result.background);
@@ -975,5 +1027,29 @@ export class SceneController {
 
     this.hooks.installDummyLightmaps(this.meshes);
     this.hooks.onSceneChanged(this.meshes);
+  }
+
+  /**
+   * Walk a freshly-built preset root, find raw THREE.Light nodes that aren't
+   * already inside a baker-style group, and wrap each in one. The wrapper is
+   * promoted to a direct scene child so it appears in the Outliner and is
+   * pickable / deletable like asset-library lights.
+   */
+  private hoistRawLights(root: Object3D): void {
+    const orphans: { light: Light; ancestor: Object3D | null }[] = [];
+    root.traverse((obj) => {
+      if (!(obj as Light).isLight) return;
+      // Skip if already inside a baker group.
+      let p: Object3D | null = obj.parent;
+      while (p) {
+        if (p.userData?.bakerLightType) return;
+        p = p.parent;
+      }
+      orphans.push({ light: obj as Light, ancestor: obj.parent });
+    });
+    for (const { light } of orphans) {
+      const group = wrapAsBakerLight(light);
+      this.scene.add(group);
+    }
   }
 }

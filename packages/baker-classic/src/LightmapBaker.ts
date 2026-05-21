@@ -18,7 +18,7 @@ import { generateLightmapper, Lightmapper, RaycastOptions } from './lightmap/Lig
 import { generateAOMapper, AOMapper, AORaycastOptions } from './lightmap/AOMapper';
 import { runComposite, CompositeResult } from './lightmap/Composite';
 import { runPostProcess, PostProcessOptions, PostProcessResult } from './lightmap/Refinement';
-import { createDownscale, DownscaleResult } from './lightmap/Downscale';
+import { createDownscale } from './lightmap/Downscale';
 import { mergeGeometry, extractPerTriangleMaterials } from './utils/GeometryUtils';
 import { buildMaterialTextures } from './utils/MaterialTextures';
 import { exportLightmap, ExportFormat } from './utils/exportLightmap';

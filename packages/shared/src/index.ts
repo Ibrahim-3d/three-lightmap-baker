@@ -24,7 +24,7 @@ export type {
 } from './registries/scene-registry';
 
 // Asset catalog (primitives + lights) used by the shell's asset library.
-export { primitiveCatalog, createAsset } from './assets/primitives';
+export { primitiveCatalog, createAsset, wrapAsBakerLight } from './assets/primitives';
 export type { AssetSpec, AssetCategory, PrimitiveDef, LightDef } from './assets/primitives';
 
 // Signals — UI state shared across packages.

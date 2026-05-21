@@ -236,7 +236,9 @@ export class CornellBoxExample implements BakerOrchestrator {
     this.bakeStartTime = performance.now();
     this.bakeBatchHistory = [];
 
-    this.sceneController.syncVisualLight(this.options.lightColor, this.options.lightIntensity);
+    // Note: the default area light is now a regular asset-library light edited
+    // directly through SceneLightPage (no options-mirror), so we no longer
+    // overwrite its color/intensity from `options.lightColor` at bake time.
 
     try {
       await this.bakeController.runBake(

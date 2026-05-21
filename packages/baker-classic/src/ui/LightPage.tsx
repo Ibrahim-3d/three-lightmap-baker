@@ -11,7 +11,6 @@ import {
 import {
   BoolField,
   bumpObject,
-  bumpOptions,
   ColorField,
   markStale,
   NumberField,
@@ -24,16 +23,12 @@ import {
 } from 'shared';
 import { getBakerOrchestrator } from './orchestrator';
 
-const LIGHT_DUMMY_ID = 'light:dummy';
-
 /**
- * Light tab. Two distinct modes:
- *   1. `lightDummy` selected → edit the Cornell demo's single-light setup via
- *      `options.light*` (legacy path; baker uses options for that light).
- *   2. Asset-library light group selected (`userData.bakerLightType`) → edit
- *      that light's THREE properties (color, intensity, type-specific params).
- *      No options-mirror; the baker walks the scene and reads each Light
- *      directly via `collectLightsFromScene`.
+ * Light tab. Every light — including the scene's default area light — is now
+ * an asset-library-style group (with `userData.bakerLightType`). Editing
+ * mutates the THREE Light directly so the viewport preview updates in real
+ * time. The baker walks the scene and reads each Light via
+ * `collectLightsFromScene`; there is no options-mirror.
  */
 export function LightPage() {
   void optionsTick.value;
@@ -41,8 +36,6 @@ export function LightPage() {
   const id = selectedId.value;
   const app = getBakerOrchestrator();
   if (!app) return null;
-
-  if (id === LIGHT_DUMMY_ID) return <CornellLightPage />;
 
   const obj = app.lookupObject(id);
   const lightType = obj?.userData?.bakerLightType as string | undefined;
@@ -295,164 +288,4 @@ function radToDeg(r: number): number {
 }
 function degToRad(d: number): number {
   return (d * Math.PI) / 180;
-}
-
-/** Original Cornell single-light editor (untouched legacy behaviour). */
-function CornellLightPage() {
-  const app = getBakerOrchestrator();
-  if (!app) return null;
-  const o = app.options;
-
-  return (
-    <div class="text-[12px]">
-      <Section title="Primary (Area)">
-        <Row label="Enabled">
-          <BoolField
-            value={o.directLightEnabled}
-            onChange={(v) => {
-              o.directLightEnabled = v;
-              bumpOptions();
-              markStale();
-            }}
-          />
-        </Row>
-        <Row label="Color">
-          <ColorField
-            value={o.lightColor}
-            onChange={(v) => {
-              o.lightColor = v;
-              bumpOptions();
-              markStale();
-            }}
-          />
-        </Row>
-        <Row label="Intensity">
-          <RangeField
-            value={o.lightIntensity}
-            min={0}
-            max={15}
-            step={0.1}
-            onChange={(v) => {
-              o.lightIntensity = v;
-              bumpOptions();
-              markStale();
-            }}
-          />
-        </Row>
-        <Row label="Source size" hint="Radius of the disc-shaped emitter. Larger = softer shadows.">
-          <RangeField
-            value={o.lightSize}
-            min={0.1}
-            max={5}
-            step={0.1}
-            onChange={(v) => {
-              o.lightSize = v;
-              bumpOptions();
-              markStale();
-            }}
-          />
-        </Row>
-      </Section>
-
-      <Section title="Global Illumination">
-        <Row label="Indirect on">
-          <BoolField
-            value={o.indirectLightEnabled}
-            onChange={(v) => {
-              o.indirectLightEnabled = v;
-              bumpOptions();
-              markStale();
-            }}
-          />
-        </Row>
-        <Row label="Bounce power">
-          <RangeField
-            value={o.giIntensity}
-            min={0}
-            max={4}
-            step={0.05}
-            onChange={(v) => {
-              o.giIntensity = v;
-              bumpOptions();
-            }}
-          />
-        </Row>
-      </Section>
-
-      <Section title="Secondary (Directional / Sun)">
-        <Row label="Enabled">
-          <BoolField
-            value={o.secondaryLightEnabled}
-            onChange={(v) => {
-              o.secondaryLightEnabled = v;
-              bumpOptions();
-              markStale();
-            }}
-          />
-        </Row>
-        <Row label="Color">
-          <ColorField
-            value={o.secondaryColor}
-            onChange={(v) => {
-              o.secondaryColor = v;
-              bumpOptions();
-              markStale();
-            }}
-          />
-        </Row>
-        <Row label="Intensity">
-          <RangeField
-            value={o.secondaryIntensity}
-            min={0}
-            max={5}
-            step={0.1}
-            onChange={(v) => {
-              o.secondaryIntensity = v;
-              bumpOptions();
-              markStale();
-            }}
-          />
-        </Row>
-        <Row label="Dir X">
-          <NumberField
-            value={o.secondaryDirX}
-            min={-1}
-            max={1}
-            step={0.05}
-            onChange={(v) => {
-              o.secondaryDirX = v;
-              bumpOptions();
-              markStale();
-            }}
-          />
-        </Row>
-        <Row label="Dir Y">
-          <NumberField
-            value={o.secondaryDirY}
-            min={-1}
-            max={1}
-            step={0.05}
-            onChange={(v) => {
-              o.secondaryDirY = v;
-              bumpOptions();
-              markStale();
-            }}
-          />
-        </Row>
-        <Row label="Dir Z">
-          <NumberField
-            value={o.secondaryDirZ}
-            min={-1}
-            max={1}
-            step={0.05}
-            onChange={(v) => {
-              o.secondaryDirZ = v;
-              bumpOptions();
-              markStale();
-            }}
-          />
-        </Row>
-      </Section>
-    </div>
-  );
 }
