@@ -7,6 +7,15 @@ Pass 2: Ray tracing from texel world positions via BVH
 
 These passes are SEPARATE. Never combine UV-space rasterization and ray tracing into a single shader. The prior codebase attempted this and produced 12 integration bugs. The two-pass architecture exists to prevent that class of bug from recurring.
 
+## Contributor License Agreement (CLA)
+
+All contributions require signing the CLA at [`/CLA.md`](./CLA.md) via the hosted
+CLA Assistant app. The bot will comment on new pull requests with a signing link.
+PRs cannot be merged until the CLA is signed.
+
+Maintainers: enable the CLA Assistant app for this repo and point it at the
+current CLA text.
+
 ## Shader Rules
 
 - All shaders MUST be GLSL 3.0 ES (`#version 300 es`)

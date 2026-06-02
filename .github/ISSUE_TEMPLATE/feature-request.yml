@@ -1,0 +1,38 @@
+name: Feature request
+description: Suggest a new feature or enhancement.
+labels: ["enhancement"]
+body:
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: One-line description of the feature.
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What problem does this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the solution or behavior you want.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What is in scope vs out of scope?
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks or trade-offs

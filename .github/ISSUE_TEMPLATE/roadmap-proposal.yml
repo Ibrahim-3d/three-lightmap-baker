@@ -1,0 +1,39 @@
+name: Roadmap proposal
+description: Propose a roadmap item or milestone.
+labels: ["roadmap"]
+body:
+  - type: input
+    id: title
+    attributes:
+      label: Proposal title
+      description: Short title for the roadmap item.
+    validations:
+      required: true
+  - type: textarea
+    id: rationale
+    attributes:
+      label: Rationale
+      description: Why this belongs on the roadmap.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and deliverables
+      description: What would be delivered if this is accepted?
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: Related work, prerequisites, or blocking tasks.
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks and unknowns
+  - type: textarea
+    id: success
+    attributes:
+      label: Success criteria
+      description: How we know this is done.

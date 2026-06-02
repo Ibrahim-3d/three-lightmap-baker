@@ -42,6 +42,7 @@ This repo fixes that.
 
 ## Why This Exists
 
+I'm an interior designer and 3D artist building [Atelier](https://github.com/user/atelier) — a browser-native walkthrough platform where designers furnish a room, bake the lighting, and hand their client a URL.
 
 That workflow needs lightmap baking that runs in the browser. Not "export to Blender, bake for 40 minutes, re-import" — actual in-app baking where the designer clicks a button and sees the result in seconds.
 

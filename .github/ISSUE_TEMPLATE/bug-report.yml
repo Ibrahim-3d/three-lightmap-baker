@@ -1,0 +1,54 @@
+name: Bug report
+description: Report a reproducible issue in the baker or demo.
+labels: ["bug"]
+body:
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: Short, specific description of the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps that consistently reproduce the issue.
+      placeholder: |
+        1. …
+        2. …
+        3. …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Commit / branch
+      description: Git commit, branch, or tag.
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, browser, GPU, and driver if known.
+      placeholder: |
+        OS:
+        Browser:
+        GPU:
+        Driver:
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Paste logs or attach screenshots.
