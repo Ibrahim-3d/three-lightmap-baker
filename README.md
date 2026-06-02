@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Three.js-r1XX-black?logo=threedotjs" alt="Three.js" />
+  <img src="https://img.shields.io/badge/Three.js-r161-black?logo=threedotjs" alt="Three.js" />
   <img src="https://img.shields.io/badge/TypeScript-strict-blue?logo=typescript" alt="TypeScript" />
   <img src="https://img.shields.io/badge/License-MIT-green" alt="MIT License" />
   <img src="https://img.shields.io/badge/GI_Bounces-1--4-orange" alt="GI Bounces" />
@@ -29,11 +29,11 @@
 
 ## The Problem
 
-Every Three.js developer who's tried to add realistic lighting to a 3D scene has hit the same wall. You search "three.js lightmap baking" and you find:
+Three.js developers looking for real lightmap baking hit the same dead ends:
 
 - **`@react-three/lightmap`** — abandoned in 2022. Broken on R3F 9. Uses a hemicube method from 2016 that produces ambient-ish blobs, not real GI. The maintainers (pmndrs) walked away.
 - **`mem1b/lightbaking`** — last updated when Three.js still used `geometry.faces`. Ancient API. Won't run.
-- **`three-gpu-pathtracer`** — excellent library, but it's a screen-space renderer. It path-traces what the camera sees. It doesn't output lightmap textures. Issue #5 ("Add lightmap baking") has been open since **2021**.
+- **`three-gpu-pathtracer`** — great screen-space renderer, but no lightmap output. Issue #5 ("Add lightmap baking") has been open since **2021**.
 - **Stack Overflow answers** — "just bake in Blender and export." Which is fine until your scene is procedural, user-generated, or assembled at runtime. Then you're stuck.
 
 The result: in 2026, the Three.js ecosystem has **zero maintained lightmap bakers with global illumination.**
@@ -42,19 +42,18 @@ This repo fixes that.
 
 ## Why This Exists
 
-I'm an interior designer and 3D artist building [Atelier](https://github.com/user/atelier) — a browser-native walkthrough platform where designers furnish a room, bake the lighting, and hand their client a URL. No Unreal. No Unity. No desktop apps.
 
 That workflow needs lightmap baking that runs in the browser. Not "export to Blender, bake for 40 minutes, re-import" — actual in-app baking where the designer clicks a button and sees the result in seconds.
 
-I looked for a library. There wasn't one. Every repo was 2+ years abandoned with half the TODO list unfinished. The most complete one ([lucas-jones/three-lightmap-baker](https://github.com/lucas-jones/three-lightmap-baker)) had the right architecture but stopped before implementing bounce lighting — which means no color bleeding, no indirect illumination, no GI. Just direct shadows and AO.
+I looked for a library. There wasn't one. The most complete option ([lucas-jones/three-lightmap-baker](https://github.com/lucas-jones/three-lightmap-baker)) had the right architecture but stopped before bounce lighting — no color bleeding, no indirect illumination, no GI.
 
-So I'm building it. This fork takes lucas-jones's proven two-pass architecture, adds multi-bounce path-traced GI, and ships a maintained, documented, npm-installable package that actually works.
+So I'm building it. This fork keeps the proven two-pass architecture, adds multi-bounce path-traced GI, and focuses on a maintained, documented library.
 
 ### The Agentic AI Angle
 
-Every AI coding agent (Claude Code, Cursor, Devin, Copilot Workspace) can now build and manipulate 3D scenes programmatically. What they can't do is bake lighting without spawning Blender as a subprocess and writing a Python script to drive it.
+Every AI coding agent (Claude Code, Cursor, Devin, Copilot Workspace) can build and manipulate 3D scenes programmatically. What they can't do is bake lighting without spawning Blender and writing a Python script to drive it.
 
-A JavaScript-native lightmap baker that runs in Node.js or the browser is infrastructure for the agentic wave. An AI agent that assembles a room from a furniture catalog needs to light that room without opening a DCC tool. This library is that missing piece.
+A JavaScript-native lightmap baker that runs in Node.js or the browser is infrastructure for the agentic wave. An AI agent that assembles a room from a furniture catalog needs to light that room without opening a DCC tool.
 
 If you're building anything where 3D scenes are constructed programmatically — architectural configurators, AI interior design, procedural environments, digital twins — and you need those scenes to look lit, you're the target user.
 
@@ -77,12 +76,7 @@ If you're building anything where 3D scenes are constructed programmatically —
 
 ### Coming Next
 
-- **Multiple light types** — point, directional, spot, rect area (with next-event estimation for low-noise direct lighting)
-- **Separate AO map** — grayscale ambient occlusion as its own texture
-- **Light probe export** — spherical harmonics probes for dynamic objects that don't have lightmaps
-- **GLB round-trip** — import model → bake → export lit model as GLB with embedded lightmaps
-- **Lightmap downscaling** — supersample at high res, downscale for delivery
-- **WebGL timeout protection** — adaptive batching prevents GPU driver crashes on weak hardware
+Planned work is tracked in the [Roadmap](#roadmap).
 
 ---
 
@@ -94,10 +88,10 @@ git clone https://github.com/user/three-lightmap-baker.git
 cd three-lightmap-baker
 
 # Install
-yarn          # or npm install
+npm install
 
 # Run the Cornell Box demo
-yarn dev      # opens http://localhost:5173
+npm run start # opens http://localhost:5173
 ```
 
 Click **Bake** and watch the lightmap converge. Color bleeding should be visible on the sphere within seconds.
@@ -107,6 +101,8 @@ Click **Bake** and watch the lightmap converge. Color bleeding should be visible
 ```bash
 npm install three-lightmap-baker
 ```
+
+If you're working in this repo, the classic baker lives in `packages/baker-classic/`.
 
 ```typescript
 import { LightmapBaker } from 'three-lightmap-baker';
@@ -208,7 +204,6 @@ The two-pass approach treats the renderer normally. Pass 1 uses the GPU for what
 | [mem1b/lightbaking](https://github.com/mem1b/lightbaking) | ~2016 | ✅ Has bounces | Dead, ancient Three.js API |
 | [three-gpu-pathtracer #5](https://github.com/gkjohnson/three-gpu-pathtracer/issues/5) | Issue open since 2021 | n/a | Feature request, never implemented |
 | PlayCanvas lightmapper | Active | ❌ Direct + AO only | Proprietary engine, not usable with Three.js |
-| Shapespark | Active | ✅ Full path tracing | Proprietary, closed source, $19-249/mo |
 
 ---
 
@@ -274,7 +269,7 @@ Releases all GPU resources (textures, render targets).
 
 ## Requirements
 
-- **Three.js** r152+ (check `peerDependencies` for exact range)
+- **Three.js** r161 (see `package.json`)
 - **WebGL 2** with `EXT_color_buffer_float` (required for HDR lightmap accumulation)
 - **GPU**: any discrete GPU from the last 5 years. Intel/AMD integrated GPUs work but bake slower — the library auto-detects and warns.
 
@@ -294,14 +289,22 @@ Built on top of:
 
 ## Contributing
 
-This is actively developed as part of [Atelier](https://github.com/user/atelier), a browser-native interior design platform. Contributions welcome — especially:
+This is actively developed. Contributions welcome — especially:
 
 - **Test scenes** — complex interiors, outdoor scenes, edge cases
 - **Performance benchmarks** — bake times across GPU generations
 - **Bug reports** — screenshots + GPU info + sample count + resolution
 - **Light type implementations** — spot lights, IES profiles, textured area lights
 
-Open an issue before starting a PR so we can coordinate.
+Open an issue before starting a PR so we can coordinate. All contributions
+require signing the [CLA](./CLA.md) via CLA Assistant.
+
+---
+
+## Roadmap
+
+See [`docs/ROADMAP.md`](./docs/ROADMAP.md) for current milestones and
+priorities.
 
 ---
 
