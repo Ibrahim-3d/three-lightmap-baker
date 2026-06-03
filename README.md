@@ -62,6 +62,18 @@ If you're building anything where 3D scenes are constructed programmatically —
 
 ---
 
+## Familiar Workflow (Unity & Unreal Style)
+
+If you've used Unity's **Progressive Lightmapper** or Unreal's **Lightmass**, you'll feel at home. This baker implements the same industry-standard concepts directly in the browser:
+
+- **Direct & Indirect (GI):** Separate accumulation of direct light and multi-bounce global illumination.
+- **Bake Presets:** Toggle between high-speed Draft bakes and high-fidelity Production bakes.
+- **Dilation & Padding:** Automatic edge-bleeding prevention to eliminate black seams at UV island borders.
+- **Denoising:** Integrated bilateral noise reduction for clean soft shadows and smooth gradients.
+- **Texel Density:** Visualized via checkerboard overlays to ensure consistent lightmap resolution across the scene.
+
+---
+
 ## Features
 
 ### Shipping Now
