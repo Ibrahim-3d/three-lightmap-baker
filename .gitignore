@@ -45,6 +45,7 @@ yarn-error.log*
 
 # Project specific
 SUB-REPOS-FOR-REFERNCE/
-.claude/worktrees/
+.claude/
+CLAUDE.md
 temp/
 tmp/
