@@ -21,7 +21,9 @@ menuRegistry.register('File', {
   label: 'Open Gallery…',
   action: () => {
     // Full reload to the gallery — drops orchestrator + renderer cleanly.
-    window.location.href = '/';
+    const url = new URL(window.location.href);
+    url.search = '';
+    window.location.href = url.toString();
   },
 });
 

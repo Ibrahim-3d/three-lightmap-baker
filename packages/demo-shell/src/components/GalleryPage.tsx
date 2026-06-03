@@ -19,7 +19,9 @@ const GRADIENT: Record<string, string> = {
 const FALLBACK = 'linear-gradient(135deg,#0a0a12 0%,#181828 100%)';
 
 function openScene(id: string): void {
-  window.location.href = `/?scene=${encodeURIComponent(id)}`;
+  const url = new URL(window.location.href);
+  url.searchParams.set('scene', id);
+  window.location.href = url.toString();
 }
 
 function computeCols(n: number, vw: number, vh: number): number {
