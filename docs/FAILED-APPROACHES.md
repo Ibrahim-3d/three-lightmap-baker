@@ -23,7 +23,7 @@ Documenting what didn't work and why. This prevents future sessions from re-atte
 
 **What we tried:** Evaluated using the existing R3F lightmap package.
 
-**Why it failed:** Dead since 2022, pinned to R3F v8, uses hemicube method (32×32 framebuffer per texel averaged to one color). Quality ceiling too low for Atelier — no path tracing, no importance sampling, no proper BRDF.
+**Why it failed:** Dead since 2022, pinned to R3F v8, uses hemicube method (32×32 framebuffer per texel averaged to one color). Quality ceiling too low — no path tracing, no importance sampling, no proper BRDF.
 
 ## F-003: Using `texture2D` in GLSL 3.0
 

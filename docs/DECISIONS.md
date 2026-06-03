@@ -33,7 +33,7 @@ Every non-trivial technical decision is recorded here. Format:
 - **Alternatives considered:**
   - Continue debugging from-scratch build: rejected after 4 hours of debugging with 4 wrong diagnoses
   - Use pmndrs/react-three-lightmap: rejected — dead since 2022, broken on R3F 9, hemicube quality ceiling
-  - Blender bake pipeline: rejected — requires DCC round-trip, breaks Atelier's "no install" value prop
+  - Blender bake pipeline: rejected — requires DCC round-trip, breaks the "no install" value prop
 - **Consequences:** Inherit lucas-jones's xatlas integration (working), scene BVH construction (working), UV-space rasterization (working). Need to add: bounce lighting, material textures, denoising, API surface, multiple light types, light probes.
 
 ## D-003: GLSL 3.0 with MRT
@@ -46,18 +46,6 @@ Every non-trivial technical decision is recorded here. Format:
   - Two separate passes for position and normal: rejected — doubles vertex processing cost for no benefit
   - GLSL 1.0 with gl_FragData: rejected — deprecated, less portable
 - **Consequences:** Requires WebGL2 (no WebGL1 fallback). This is acceptable — our target hardware (RTX 3060+ / M2 Pro+) all support WebGL2.
-
-## D-004: Private until Atelier ships, open-source after validation
-
-- **Date:** 2026-04-26
-- **Status:** accepted
-- **Context:** This baker is the first browser-native lightmap baker with GI for Three.js. Open-sourcing it would benefit the community but could also benefit competitors (Pascal, Shapespark's web tools).
-- **Decision:** Keep private during Atelier development. Open-source after Atelier has 50-100 paying customers.
-- **Alternatives considered:**
-  - Immediate open source (MIT): rejected — burns the GitHub launch moment before Atelier exists to convert attention into signups
-  - Permanent proprietary: rejected — open-source after validation provides developer relations value and community maintenance
-  - Published demo without source: acceptable intermediate step for portfolio purposes
-- **Consequences:** No community contributions during development. All maintenance is solo. But competitive advantage preserved during the critical 0→1 phase.
 
 ## D-005: Russian Roulette starts at bounce 2, not bounce 0
 
@@ -203,6 +191,11 @@ Every non-trivial technical decision is recorded here. Format:
 - **Status:** accepted
 - **Context:** 7E adds a "Texel Density" debug visualization. The Layer registry was originally designed for swapping the `lightMap` texture only; texel density needs to draw a checker pattern *instead of* the mesh's normal shading.
 - **Decision:** Extend the layer system with a "swap material" path. `applyRenderMode` special-cases the `texelDensity` layer ID, swaps each mesh's material to a shared `TexelDensityMaterial` instance, and caches the original material in a `WeakMap<Mesh, Material>` so it can be restored on switch-away.
+- **Alternatives considered:**
+  - Bake a density texture and mount as `lightMap`: rejected — derivative-based density (`dFdx`/`dFdy`) is screen-space; baking it offline gives a flat-color density per mesh rather than a per-pixel ratio against the actual rendered density.
+  - Separate "viz scene" rendered to a different RT: rejected — overkill; reusing the main scene + swapping materials is cheaper.
+- **Consequences:** The Layer registry now has two "kinds" of layers (lightmap-mounting and material-swapping). Future swap-style layers (e.g. wireframe, normals viz) follow the same pattern. WeakMap usage means cached originals are GC'd if a mesh is removed from the scene.
+n:** Extend the layer system with a "swap material" path. `applyRenderMode` special-cases the `texelDensity` layer ID, swaps each mesh's material to a shared `TexelDensityMaterial` instance, and caches the original material in a `WeakMap<Mesh, Material>` so it can be restored on switch-away.
 - **Alternatives considered:**
   - Bake a density texture and mount as `lightMap`: rejected — derivative-based density (`dFdx`/`dFdy`) is screen-space; baking it offline gives a flat-color density per mesh rather than a per-pixel ratio against the actual rendered density.
   - Separate "viz scene" rendered to a different RT: rejected — overkill; reusing the main scene + swapping materials is cheaper.

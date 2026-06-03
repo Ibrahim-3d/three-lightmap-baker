@@ -1,5 +1,5 @@
 /**
- * PTRenderer — erichlof-style real-time path tracer for the Atelier viewport.
+ * PTRenderer — erichlof-style real-time path tracer for the viewport.
  *
  * 3-pass ping-pong (identical to erichlof's InitCommon.js):
  *   Pass 1: PT shader  → pathTracingRT   (1 sample, reads prev frame)

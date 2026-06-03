@@ -42,4 +42,4 @@ Dynamic objects automatically receive SH lighting via Three.js's probe system.
 
 ## Dependencies
 - Task 04 (same ray tracing infrastructure)
-- This is a v2 feature for Atelier — can be deferred if time is tight
+- This is a v2 feature — can be deferred if time is tight
