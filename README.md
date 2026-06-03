@@ -9,6 +9,10 @@
 </p>
 
 <p align="center">
+  <a href="https://Ibrahim-3d.github.io/three-lightmap-baker/"><strong>Live Demo 🚀</strong></a>
+</p>
+
+<p align="center">
   <a href="#quick-start">Quick Start</a> •
   <a href="#why-this-exists">Why This Exists</a> •
   <a href="#features">Features</a> •
