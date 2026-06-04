@@ -1,4 +1,4 @@
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -24,7 +24,7 @@ const requireLocal = createRequire(import.meta.url);
 const cjsLocal = requireLocal('three-lightmap-baker');
 assertExports('local CJS', cjsLocal);
 
-const packOutput = execSync('npm pack', { cwd: repoRoot, encoding: 'utf8' });
+const packOutput = execFileSync('npm', ['pack'], { cwd: repoRoot, encoding: 'utf8' });
 const packLines = packOutput
   .trim()
   .split('\n')
@@ -43,18 +43,26 @@ const tarballPath = path.join(repoRoot, tarballName);
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tlb-pack-'));
 
 try {
-  execSync('npm init -y', { cwd: tempDir, stdio: 'ignore' });
-  execSync(`npm install ${tarballPath}`, { cwd: tempDir, stdio: 'ignore' });
+  execFileSync('npm', ['init', '-y'], { cwd: tempDir, stdio: 'ignore' });
+  execFileSync('npm', ['install', tarballPath], { cwd: tempDir, stdio: 'ignore' });
 
-  execSync(
-    'node --input-type=module -e "import(\'three-lightmap-baker\').then((m)=>{if(typeof m.LightmapBaker!==\'function\') throw new Error(\'missing LightmapBaker\'); if(typeof m.loadXAtlasThree!==\'function\') throw new Error(\'missing loadXAtlasThree\');})"',
-    { cwd: tempDir, stdio: 'ignore' },
+  const esmCheck = path.join(tempDir, 'esm-check.mjs');
+  const cjsCheck = path.join(tempDir, 'cjs-check.cjs');
+  fs.writeFileSync(
+    esmCheck,
+    "import { LightmapBaker, loadXAtlasThree } from 'three-lightmap-baker';\n" +
+      "if (typeof LightmapBaker !== 'function') throw new Error('missing LightmapBaker');\n" +
+      "if (typeof loadXAtlasThree !== 'function') throw new Error('missing loadXAtlasThree');\n",
+  );
+  fs.writeFileSync(
+    cjsCheck,
+    "const { LightmapBaker, loadXAtlasThree } = require('three-lightmap-baker');\n" +
+      "if (typeof LightmapBaker !== 'function') throw new Error('missing LightmapBaker');\n" +
+      "if (typeof loadXAtlasThree !== 'function') throw new Error('missing loadXAtlasThree');\n",
   );
 
-  execSync(
-    "node -e \"const m=require('three-lightmap-baker'); if(typeof m.LightmapBaker!=='function') throw new Error('missing LightmapBaker'); if(typeof m.loadXAtlasThree!=='function') throw new Error('missing loadXAtlasThree');\"",
-    { cwd: tempDir, stdio: 'ignore' },
-  );
+  execFileSync('node', [esmCheck], { cwd: tempDir, stdio: 'ignore' });
+  execFileSync('node', [cjsCheck], { cwd: tempDir, stdio: 'ignore' });
 } finally {
   fs.rmSync(tempDir, { recursive: true, force: true });
   if (fs.existsSync(tarballPath)) fs.unlinkSync(tarballPath);
