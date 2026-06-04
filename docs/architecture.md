@@ -47,6 +47,15 @@ docs/                               Product docs, status, roadmap
 3. **GPU queue drain**
    - After the per-group loop, `LightmapBaker.bake()` must explicitly call `gl.finish()` (see D-014) to drain queued work.
    - Skipping this causes the first post-bake scene render to trigger the drain and can TDR on NVIDIA D3D11.
+4. **WebGL context-loss handling**
+   - `LightmapBaker.bake()` installs a `webglcontextlost` listener before the pipeline starts and removes it in `finally`.
+   - Progressive passes must check the shared context-loss state before scheduling more GPU work so a lost context cancels the bake instead of leaking render targets or leaving callbacks alive.
+5. **Resource lifecycle ownership**
+   - `LightmapBakeResult` owns generated textures, render targets, atlas internals, AO/composite outputs, and the shared BVH view returned from the bake.
+   - Callers may apply the textures to scene materials, but cleanup still flows through `result.dispose()`. New passes must either attach disposable resources to the result/group views or dispose them before returning.
+6. **Public material/light extraction boundary**
+   - Per-triangle albedo/emissive data must be extracted from mesh materials before shader texture packing, but after BVH index reorder as noted above.
+   - Do not move material extraction into shader setup or UI code; bake correctness depends on the extraction order being deterministic and testable.
 
 ## Public API shape
 

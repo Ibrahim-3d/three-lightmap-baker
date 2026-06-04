@@ -7,6 +7,19 @@ import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '..');
+const tscBin = process.platform === 'win32'
+  ? path.join(repoRoot, 'node_modules', '.bin', 'tsc.cmd')
+  : path.join(repoRoot, 'node_modules', '.bin', 'tsc');
+const runNpm = (args, options = {}) =>
+  execFileSync('npm', args, {
+    ...options,
+    shell: process.platform === 'win32',
+  });
+const runBin = (bin, args, options = {}) =>
+  execFileSync(bin, args, {
+    ...options,
+    shell: process.platform === 'win32',
+  });
 
 const assertExports = (label, mod) => {
   if (typeof mod?.LightmapBaker !== 'function') {
@@ -24,7 +37,7 @@ const requireLocal = createRequire(import.meta.url);
 const cjsLocal = requireLocal('three-lightmap-baker');
 assertExports('local CJS', cjsLocal);
 
-const packOutput = execFileSync('npm', ['pack'], { cwd: repoRoot, encoding: 'utf8' });
+const packOutput = runNpm(['pack'], { cwd: repoRoot, encoding: 'utf8' });
 const packLines = packOutput
   .trim()
   .split('\n')
@@ -43,11 +56,13 @@ const tarballPath = path.join(repoRoot, tarballName);
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tlb-pack-'));
 
 try {
-  execFileSync('npm', ['init', '-y'], { cwd: tempDir, stdio: 'ignore' });
-  execFileSync('npm', ['install', tarballPath], { cwd: tempDir, stdio: 'ignore' });
+  runNpm(['init', '-y'], { cwd: tempDir, stdio: 'ignore' });
+  runNpm(['install', tarballPath], { cwd: tempDir, stdio: 'ignore' });
 
   const esmCheck = path.join(tempDir, 'esm-check.mjs');
   const cjsCheck = path.join(tempDir, 'cjs-check.cjs');
+  const typesCheck = path.join(tempDir, 'types-check.mts');
+  const tsconfig = path.join(tempDir, 'tsconfig.json');
   fs.writeFileSync(
     esmCheck,
     "import { LightmapBaker, loadXAtlasThree } from 'three-lightmap-baker';\n" +
@@ -63,9 +78,36 @@ try {
 
   execFileSync('node', [esmCheck], { cwd: tempDir, stdio: 'ignore' });
   execFileSync('node', [cjsCheck], { cwd: tempDir, stdio: 'ignore' });
+
+  fs.writeFileSync(
+    typesCheck,
+    "import { LightmapBaker, type LightmapBakerOptions } from 'three-lightmap-baker';\n" +
+      "const opts: LightmapBakerOptions = { samples: 4, bounces: 1, resolution: 64 };\n" +
+      "const baker = new LightmapBaker(opts);\n" +
+      "baker.setRenderer;\n",
+  );
+  fs.writeFileSync(
+    tsconfig,
+    JSON.stringify(
+      {
+        compilerOptions: {
+          strict: true,
+          module: 'ESNext',
+          moduleResolution: 'node',
+          target: 'ES2020',
+          skipLibCheck: false,
+          noEmit: true,
+        },
+        include: ['types-check.mts'],
+      },
+      null,
+      2,
+    ),
+  );
+  runBin(tscBin, ['-p', tsconfig], { cwd: tempDir, stdio: 'inherit' });
 } finally {
   fs.rmSync(tempDir, { recursive: true, force: true });
   if (fs.existsSync(tarballPath)) fs.unlinkSync(tarballPath);
 }
 
-console.log('[smoke] exports resolve via ESM/CJS and tarball install');
+console.log('[smoke] exports resolve via ESM/CJS, tarball install, and TypeScript declarations');

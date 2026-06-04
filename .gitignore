@@ -12,6 +12,7 @@ test-results/
 # Build outputs
 dist/
 build/
+*.tgz
 
 # IDEs and Editors
 .vscode/

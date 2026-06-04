@@ -33,14 +33,14 @@
 
 ## The Problem
 
-Three.js developers looking for real lightmap baking hit the same dead ends:
+Three.js developers looking for real lightmap baking run into the same gaps:
 
-- **`@react-three/lightmap`** — abandoned in 2022. Broken on R3F 9. Uses a hemicube method from 2016 that produces ambient-ish blobs, not real GI. The maintainers (pmndrs) walked away.
-- **`mem1b/lightbaking`** — last updated when Three.js still used `geometry.faces`. Ancient API. Won't run.
-- **`three-gpu-pathtracer`** — great screen-space renderer, but no lightmap output. Issue #5 ("Add lightmap baking") has been open since **2021**.
+- **`@react-three/lightmap`** — built around an older hemicube workflow and no longer tracks modern R3F releases.
+- **`mem1b/lightbaking`** — targets pre-BufferGeometry-era Three.js APIs, so it is not a drop-in option for current projects.
+- **`three-gpu-pathtracer`** — excellent screen-space path tracing, but it does not publish baked lightmap atlases. Its lightmap-baking request has been open since **2021**.
 - **Stack Overflow answers** — "just bake in Blender and export." Which is fine until your scene is procedural, user-generated, or assembled at runtime. Then you're stuck.
 
-The result: in 2026, the Three.js ecosystem has **zero maintained lightmap bakers with global illumination.**
+The result: in 2026, Three.js still lacks a maintained, browser-first lightmap baker focused on path-traced global illumination.
 
 This repo fixes that.
 
@@ -113,8 +113,16 @@ Click **Bake** and watch the lightmap converge. Color bleeding should be visible
 
 ### Use as a Library
 
+The npm package name is reserved for release, but it is **not published yet**.
+
 ```bash
+# After the first npm release:
 npm install three-lightmap-baker
+
+# Until then, install from a generated tarball:
+npm run build:package
+npm pack
+npm install ./three-lightmap-baker-1.0.0.tgz
 ```
 
 If you're working in this repo, the classic baker lives in `packages/baker-classic/`.
@@ -123,10 +131,34 @@ If you're working in this repo, the classic baker lives in `packages/baker-class
 import { LightmapBaker } from 'three-lightmap-baker';
 import * as THREE from 'three';
 
-// Set up renderer + scene
 const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(512, 512);
+document.body.appendChild(renderer.domElement);
+
 const scene = new THREE.Scene();
-// ... add meshes, materials, lights ...
+scene.background = new THREE.Color(0x20262f);
+
+const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
+camera.position.set(2.5, 2, 3);
+camera.lookAt(0, 0.5, 0);
+
+const mesh = new THREE.Mesh(
+  new THREE.BoxGeometry(1, 1, 1),
+  new THREE.MeshStandardMaterial({ color: 0xced4da, roughness: 0.6 }),
+);
+mesh.position.y = 0.5;
+scene.add(mesh);
+
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(4, 4),
+  new THREE.MeshStandardMaterial({ color: 0x5c677d, roughness: 0.9 }),
+);
+ground.rotation.x = -Math.PI / 2;
+scene.add(ground);
+
+const light = new THREE.DirectionalLight(0xffffff, 2.5);
+light.position.set(2, 4, 1);
+scene.add(light);
 
 // Bake (clean constructor style)
 const baker = new LightmapBaker({
@@ -145,6 +177,7 @@ const result = await baker.bake(scene, {
 
 // Apply baked lightmaps to scene materials
 result.apply();
+renderer.render(scene, camera);
 
 // Export lightmaps as PNG files
 await result.export('lightmaps/', { format: 'png' });
@@ -218,16 +251,16 @@ The two-pass approach treats the renderer normally. Pass 1 uses the GPU for what
 
 ---
 
-## The Landscape (Why Every Other Option Is Dead)
+## The Landscape
 
 | Project | Last Updated | GI Bounces | Status |
 |---|---|---|---|
 | **This repo** | **Active** | **✅ 1-4 bounces** | **✅ Maintained** |
 | [lucas-jones/three-lightmap-baker](https://github.com/lucas-jones/three-lightmap-baker) | 2023 | ❌ Direct only | Archived (this fork continues it) |
-| [@react-three/lightmap](https://github.com/pmndrs/react-three-lightmap) | 2022 | ❌ Hemicube (no real GI) | Dead, broken on R3F 9 |
-| [mem1b/lightbaking](https://github.com/mem1b/lightbaking) | ~2016 | ✅ Has bounces | Dead, ancient Three.js API |
-| [three-gpu-pathtracer #5](https://github.com/gkjohnson/three-gpu-pathtracer/issues/5) | Issue open since 2021 | n/a | Feature request, never implemented |
-| PlayCanvas lightmapper | Active | ❌ Direct + AO only | Proprietary engine, not usable with Three.js |
+| [@react-three/lightmap](https://github.com/pmndrs/react-three-lightmap) | 2022-era package | ❌ Hemicube workflow | Not current with modern R3F |
+| [mem1b/lightbaking](https://github.com/mem1b/lightbaking) | Older Three.js era | ✅ Has bounces | Uses legacy Three.js APIs |
+| [three-gpu-pathtracer #5](https://github.com/gkjohnson/three-gpu-pathtracer/issues/5) | Issue open since 2021 | n/a | Renderer, not a lightmap exporter |
+| PlayCanvas lightmapper | Active | ❌ Direct + AO focused | Engine-integrated, not a Three.js package |
 
 ---
 
