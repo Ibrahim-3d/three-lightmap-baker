@@ -8,10 +8,10 @@ const r = (p) => path.resolve(rootDir, p);
 export default defineConfig({
   build: {
     outDir: r('dist/package'),
-    emptyOutDir: false,
+    emptyOutDir: true,
     lib: {
       entry: r('packages/baker-classic/src/index.ts'),
-      fileName: 'index',
+      fileName: (format) => (format === 'es' ? 'index.js' : 'index.cjs'),
       formats: ['es', 'cjs'],
     },
     rollupOptions: {

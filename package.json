@@ -24,7 +24,7 @@
 	"scripts": {
 		"start": "vite --mode dev --host",
 		"build:demo": "vite build",
-		"build:package": "vite build --config vite.lib.config.js && tsc -p tsconfig.lib.json",
+		"build:package": "rm -rf dist/package && vite build --config vite.lib.config.js && tsc -p tsconfig.lib.json",
 		"build": "npm run build:demo && npm run build:package",
 		"lint": "eslint packages/ apps/",
 		"lint:fix": "eslint packages/ apps/ --fix",

@@ -139,7 +139,7 @@ const baker = new LightmapBaker({
 
 const result = await baker.bake(scene, {
   onProgress: (phase, percent) => {
-    console.log(`${phase}: ${Math.round(percent * 100)}%`);
+    console.log(`${phase}: ${(percent * 100).toFixed(0)}%`);
   },
 });
 

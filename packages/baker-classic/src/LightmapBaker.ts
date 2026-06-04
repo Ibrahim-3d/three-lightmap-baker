@@ -67,8 +67,14 @@ export class LightmapBaker {
     rendererOrOptions: WebGLRenderer | LightmapBakerInitOptions = {},
     maybeOptions: LightmapBakerOptions = {},
   ) {
+    // We intentionally rely on `isWebGLRenderer === true` (Three.js runtime tag)
+    // and a minimal shape check as a fallback for compatibility across renderer
+    // wrappers that preserve the same API surface.
     const usesRendererArg = (v: unknown): v is WebGLRenderer =>
-      !!v && typeof v === 'object' && 'isWebGLRenderer' in v;
+      !!v &&
+      typeof v === 'object' &&
+      (('isWebGLRenderer' in v && (v as { isWebGLRenderer?: boolean }).isWebGLRenderer === true) ||
+        ('getContext' in v && 'domElement' in v));
 
     const rawOptions: LightmapBakerInitOptions = usesRendererArg(rendererOrOptions)
       ? { ...maybeOptions, renderer: rendererOrOptions }
@@ -143,7 +149,7 @@ export class LightmapBaker {
     const renderer = this._renderer;
     if (!renderer)
       throw new BakeError(
-        'renderer is required: pass `new LightmapBaker(renderer, opts)` or `new LightmapBaker({ renderer, ...opts })`',
+        'renderer is required: use `new LightmapBaker(renderer, opts)`, `new LightmapBaker({ renderer, ...opts })`, or `baker.setRenderer(renderer)`',
         'validation',
       );
 
