@@ -35,6 +35,19 @@ docs/                               Product docs, status, roadmap
 7. **Result assembly**
    - Stable `LightmapBakeResult` with `apply/export/dispose`, AO refresh/rebake hooks, and group internals.
 
+## Critical invariants (do not regress)
+
+1. **BVH reorder + material extraction order**
+   - `MeshBVH` reorders the merged **index buffer** in place during construction.
+   - `extractPerTriangleMaterials()` MUST run **after** `new MeshBVH(merged)` so triangle indices match `faceIndices.w` in shaders.
+   - Mesh identity is recovered via the per-vertex `meshIndex` attribute written by `mergeGeometry`, so the `meshes[]` order passed to both `mergeGeometry` and `extractPerTriangleMaterials` must stay stable.
+2. **Shader variant pinning (USE_LIGHTMAP)**
+   - At scene init, install a shared 1×1 dummy `lightMap` on every `MeshStandardMaterial` with `lightMapIntensity = 0`.
+   - This forces the `USE_LIGHTMAP` shader variant to compile **before** any heavy GPU work; post-bake swaps the texture without setting `needsUpdate`, avoiding an expensive recompile/TDR.
+3. **GPU queue drain**
+   - After the per-group loop, `LightmapBaker.bake()` must explicitly call `gl.finish()` (see D-014) to drain queued work.
+   - Skipping this causes the first post-bake scene render to trigger the drain and can TDR on NVIDIA D3D11.
+
 ## Public API shape
 
 `packages/baker-classic/src/LightmapBaker.ts` supports:
