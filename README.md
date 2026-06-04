@@ -99,7 +99,7 @@ Planned work is tracked in the [Roadmap](#roadmap).
 
 ```bash
 # Clone
-git clone https://github.com/user/three-lightmap-baker.git
+git clone https://github.com/Ibrahim-3d/three-lightmap-baker.git
 cd three-lightmap-baker
 
 # Install
@@ -123,12 +123,14 @@ If you're working in this repo, the classic baker lives in `packages/baker-class
 import { LightmapBaker } from 'three-lightmap-baker';
 import * as THREE from 'three';
 
-// Set up your scene as normal
+// Set up renderer + scene
+const renderer = new THREE.WebGLRenderer({ antialias: true });
 const scene = new THREE.Scene();
 // ... add meshes, materials, lights ...
 
-// Bake
+// Bake (clean constructor style)
 const baker = new LightmapBaker({
+  renderer,
   samples: 64,
   bounces: 2,
   resolution: 512,
@@ -137,7 +139,7 @@ const baker = new LightmapBaker({
 
 const result = await baker.bake(scene, {
   onProgress: (phase, percent) => {
-    console.log(`${phase}: ${percent}%`);
+    console.log(`${phase}: ${Math.round(percent * 100)}%`);
   },
 });
 
@@ -149,6 +151,13 @@ await result.export('lightmaps/', { format: 'png' });
 
 // Clean up GPU resources when done
 result.dispose();
+```
+
+Renderer-explicit style is also supported:
+
+```typescript
+const baker = new LightmapBaker(renderer, { samples: 64, bounces: 2, resolution: 512 });
+const result = await baker.bake(scene);
 ```
 
 ---
@@ -238,7 +247,9 @@ The two-pass approach treats the renderer normally. Pass 1 uses the GPU for what
 ### `LightmapBaker`
 
 ```typescript
-const baker = new LightmapBaker(options?: BakeOptions);
+const baker = new LightmapBaker(renderer, options?: BakeOptions);
+// or:
+const baker = new LightmapBaker({ renderer, ...options });
 ```
 
 | Option | Type | Default | Description |
@@ -263,10 +274,9 @@ Returns a `BakeResult`:
 | Property | Type | Description |
 |---|---|---|
 | `lightmaps` | `Map<Mesh, Texture>` | Per-mesh lightmap textures |
-| `aoMaps` | `Map<Mesh, Texture>` | Per-mesh ambient occlusion (if enabled) |
-| `probes` | `LightProbe[]` | SH light probes (if configured) |
-| `duration` | `number` | Bake time in milliseconds |
-| `stats` | `object` | Mesh count, texel count, rays traced |
+| `groups` | `BakeGroupView[]` | Per-atlas internals (direct/indirect/ao/composite/position/normal) |
+| `bvh` | `MeshBVH` | Shared BVH built for the bake |
+| `stats` | `object` | Mesh count, texel count, rays traced, and per-phase durations |
 
 ### `result.apply()`
 
@@ -280,12 +290,27 @@ Exports lightmap textures as PNG (LDR) or EXR (HDR).
 
 Releases all GPU resources (textures, render targets).
 
+### `result.refreshAO()` and `result.rebakeAO()`
+
+- `refreshAO({ intensity, exponent, enabled })` applies AO look changes instantly.
+- `rebakeAO({ samples, distance, targetSamples })` recomputes AO rays without re-running the full GI bake.
+
+---
+
+## Headless / Automation Status
+
+- **Browser + injected renderer:** implemented now.
+- **Node.js true headless baking:** not implemented yet.
+- Current pipeline depends on WebGL renderer/context, RAF-driven progressive passes, and browser-side texture export/download paths.
+- Planned direction: keep renderer-injected API stable, then add optional adapter layers for offscreen/headless contexts.
+
 ---
 
 ## Requirements
 
 - **Three.js** r161 (see `package.json`)
 - **WebGL 2** with `EXT_color_buffer_float` (required for HDR lightmap accumulation)
+- **Browser/renderer context required** — this release is WebGL-first (Node headless adapter is planned, not shipped)
 - **GPU**: any discrete GPU from the last 5 years. Intel/AMD integrated GPUs work but bake slower — the library auto-detects and warns.
 
 ---
