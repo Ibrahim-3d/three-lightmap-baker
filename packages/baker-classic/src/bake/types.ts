@@ -90,10 +90,10 @@ export type LightmapBakerOptions = {
   refinementOptions?: Partial<PostProcessOptions>;
   /** Light source. Required for any direct lighting; see LightOptions defaults below. */
   light?: LightOptions;
-  /** Indirect / GI controls. */
-  gi?: GIOptions;
-  /** Ambient occlusion controls. */
-  ao?: AOOptions;
+  /** Indirect / GI controls. Pass `false` to disable GI quickly. */
+  gi?: GIOptions | boolean;
+  /** Ambient occlusion controls. Pass `false` to disable AO quickly. */
+  ao?: AOOptions | boolean;
   /** UV2 filtering at view time. Default 'linear'. */
   filtering?: 'linear' | 'nearest';
   /**

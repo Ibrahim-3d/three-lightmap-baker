@@ -39,7 +39,10 @@ export function validateOptions(opts: LightmapBakerOptions): void {
   if (!Number.isFinite(casts) || casts < 1 || casts > 256)
     throw new BakeError(`castsPerFrame must be 1-256, got ${casts}`, 'validation');
 
-  const aoSamples = opts.ao?.samples;
+  const aoOptions = typeof opts.ao === 'boolean' ? undefined : opts.ao;
+  const giOptions = typeof opts.gi === 'boolean' ? undefined : opts.gi;
+
+  const aoSamples = aoOptions?.samples;
   if (aoSamples !== undefined && (!Number.isFinite(aoSamples) || aoSamples < 0 || aoSamples > 64))
     throw new BakeError(`ao.samples must be 0-64, got ${aoSamples}`, 'validation');
 
@@ -67,13 +70,16 @@ export function validateOptions(opts: LightmapBakerOptions): void {
   if (opts.light?.size !== undefined && opts.light.size < 0)
     throw new BakeError(`light.size must be >= 0, got ${opts.light.size}`, 'validation');
 
-  if (opts.gi?.intensity !== undefined && opts.gi.intensity < 0)
-    throw new BakeError(`gi.intensity must be >= 0, got ${opts.gi.intensity}`, 'validation');
-  if (opts.gi?.skyIntensity !== undefined && opts.gi.skyIntensity < 0)
-    throw new BakeError(`gi.skyIntensity must be >= 0, got ${opts.gi.skyIntensity}`, 'validation');
+  if (giOptions?.intensity !== undefined && giOptions.intensity < 0)
+    throw new BakeError(`gi.intensity must be >= 0, got ${giOptions.intensity}`, 'validation');
+  if (giOptions?.skyIntensity !== undefined && giOptions.skyIntensity < 0)
+    throw new BakeError(
+      `gi.skyIntensity must be >= 0, got ${giOptions.skyIntensity}`,
+      'validation',
+    );
 
-  if (opts.ao?.distance !== undefined && opts.ao.distance < 0)
-    throw new BakeError(`ao.distance must be >= 0, got ${opts.ao.distance}`, 'validation');
+  if (aoOptions?.distance !== undefined && aoOptions.distance < 0)
+    throw new BakeError(`ao.distance must be >= 0, got ${aoOptions.distance}`, 'validation');
 
   // Validate top-level density (Phase 1 - density-aware multi-atlas).
   if (opts.texelsPerMeter !== undefined) {

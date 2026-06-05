@@ -7,9 +7,10 @@ import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '..');
-const tscBin = process.platform === 'win32'
-  ? path.join(repoRoot, 'node_modules', '.bin', 'tsc.cmd')
-  : path.join(repoRoot, 'node_modules', '.bin', 'tsc');
+const tscBin =
+  process.platform === 'win32'
+    ? path.join(repoRoot, 'node_modules', '.bin', 'tsc.cmd')
+    : path.join(repoRoot, 'node_modules', '.bin', 'tsc');
 const runNpm = (args, options = {}) =>
   execFileSync('npm', args, {
     ...options,
@@ -61,7 +62,7 @@ try {
 
   const esmCheck = path.join(tempDir, 'esm-check.mjs');
   const cjsCheck = path.join(tempDir, 'cjs-check.cjs');
-  const typesCheck = path.join(tempDir, 'types-check.mts');
+  const typesCheck = path.join(tempDir, 'types-check.ts');
   const tsconfig = path.join(tempDir, 'tsconfig.json');
   fs.writeFileSync(
     esmCheck,
@@ -82,9 +83,9 @@ try {
   fs.writeFileSync(
     typesCheck,
     "import { LightmapBaker, type LightmapBakerOptions } from 'three-lightmap-baker';\n" +
-      "const opts: LightmapBakerOptions = { samples: 4, bounces: 1, resolution: 64 };\n" +
-      "const baker = new LightmapBaker(opts);\n" +
-      "baker.setRenderer;\n",
+      'const opts: LightmapBakerOptions = { samples: 4, bounces: 1, resolution: 64 };\n' +
+      'const baker = new LightmapBaker(opts);\n' +
+      'baker.setRenderer;\n',
   );
   fs.writeFileSync(
     tsconfig,
@@ -98,7 +99,7 @@ try {
           skipLibCheck: false,
           noEmit: true,
         },
-        include: ['types-check.mts'],
+        include: ['types-check.ts'],
       },
       null,
       2,
@@ -110,4 +111,4 @@ try {
   if (fs.existsSync(tarballPath)) fs.unlinkSync(tarballPath);
 }
 
-console.log('[smoke] exports resolve via ESM/CJS, tarball install, and TypeScript declarations');
+console.log('[baker] exports resolve via ESM/CJS, tarball install, and TypeScript declarations');

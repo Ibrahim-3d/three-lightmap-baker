@@ -39,6 +39,47 @@ export type LightmapBakerInitOptions = LightmapBakerOptions & {
   renderer?: WebGLRenderer;
 };
 
+function resolveGIOptions(gi: LightmapBakerInitOptions['gi']): ResolvedBakerOptions['gi'] {
+  if (typeof gi === 'boolean') {
+    return {
+      enabled: gi,
+      intensity: 1.0,
+      skyColor: 0xffffff,
+      skyIntensity: 0.0,
+    };
+  }
+
+  return {
+    enabled: gi?.enabled ?? true,
+    intensity: gi?.intensity ?? 1.0,
+    skyColor: gi?.skyColor ?? 0xffffff,
+    skyIntensity: gi?.skyIntensity ?? 0.0,
+  };
+}
+
+function resolveAOOptions(
+  ao: LightmapBakerInitOptions['ao'],
+  castsPerFrame: number | undefined,
+): ResolvedBakerOptions['ao'] {
+  if (typeof ao === 'boolean') {
+    return {
+      enabled: ao,
+      distance: 0.5,
+      intensity: 1.0,
+      exponent: 1.5,
+      samples: castsPerFrame ?? 5,
+    };
+  }
+
+  return {
+    enabled: ao?.enabled ?? true,
+    distance: ao?.distance ?? 0.5,
+    intensity: ao?.intensity ?? 1.0,
+    exponent: ao?.exponent ?? 1.5,
+    samples: ao?.samples ?? castsPerFrame ?? 5,
+  };
+}
+
 /**
  * One-call lightmap baker - wraps the lib primitives behind the Task 06 spec API.
  *
@@ -78,7 +119,7 @@ export class LightmapBaker {
 
     const rawOptions: LightmapBakerInitOptions = usesRendererArg(rendererOrOptions)
       ? { ...maybeOptions, renderer: rendererOrOptions }
-      : rendererOrOptions;
+      : { ...rendererOrOptions, ...maybeOptions };
 
     validateOptions(rawOptions);
     this._renderer = rawOptions.renderer ?? null;
@@ -100,19 +141,8 @@ export class LightmapBaker {
         size: rawOptions.light?.size ?? 1.0,
         enabled: rawOptions.light?.enabled ?? true,
       },
-      gi: {
-        enabled: rawOptions.gi?.enabled ?? true,
-        intensity: rawOptions.gi?.intensity ?? 1.0,
-        skyColor: rawOptions.gi?.skyColor ?? 0xffffff,
-        skyIntensity: rawOptions.gi?.skyIntensity ?? 0.0,
-      },
-      ao: {
-        enabled: rawOptions.ao?.enabled ?? true,
-        distance: rawOptions.ao?.distance ?? 0.5,
-        intensity: rawOptions.ao?.intensity ?? 1.0,
-        exponent: rawOptions.ao?.exponent ?? 1.5,
-        samples: rawOptions.ao?.samples ?? rawOptions.castsPerFrame ?? 5,
-      },
+      gi: resolveGIOptions(rawOptions.gi),
+      ao: resolveAOOptions(rawOptions.ao, rawOptions.castsPerFrame),
       refinementOptions: {
         ...DEFAULT_REFINEMENT,
         ...(rawOptions.refinementOptions ?? {}),

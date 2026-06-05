@@ -26,23 +26,29 @@ const light = new THREE.DirectionalLight(0xffffff, 2.5);
 light.position.set(2, 4, 1);
 scene.add(light);
 
-// Clean constructor style.
-const baker = new LightmapBaker({
-  renderer,
-  resolution: 512,
-  samples: 64,
-  bounces: 2,
-  denoise: true,
-});
+async function run(): Promise<void> {
+  // Clean constructor style.
+  const baker = new LightmapBaker({
+    renderer,
+    resolution: 512,
+    samples: 64,
+    bounces: 2,
+    denoise: true,
+  });
 
-const result = await baker.bake(scene, {
-  onProgress: (phase, percent) => {
-    console.log(`[example] ${phase}: ${(percent * 100).toFixed(0)}%`);
-  },
-});
-result.apply();
+  const result = await baker.bake(scene, {
+    onProgress: (phase, percent) => {
+      console.log(`[baker] ${phase}: ${(percent * 100).toFixed(0)}%`);
+    },
+  });
+  result.apply();
 
-// Explicit renderer-injected style remains supported.
-const explicit = new LightmapBaker(renderer, { resolution: 256, samples: 16, bounces: 1 });
-const quick = await explicit.bake(scene);
-quick.dispose();
+  // Explicit renderer-injected style remains supported.
+  const explicit = new LightmapBaker(renderer, { resolution: 256, samples: 16, bounces: 1 });
+  const quick = await explicit.bake(scene);
+  quick.dispose();
+}
+
+void run().catch((error) => {
+  console.error('[baker] minimal browser example failed:', error);
+});

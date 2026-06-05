@@ -2,8 +2,8 @@
   <img src="screenshots/after-production-baked-combined.png" alt="Cornell advanced scene with path-traced global illumination baked in-browser" width="720" />
 </p>
 
-| Solid viewport before bake | Preview bake | Production bake |
-| --- | --- | --- |
+| Solid viewport before bake                                                                                          | Preview bake                                                                                                                    | Production bake                                                                                                                       |
+| ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | <img src="screenshots/before-solid-viewport.png" alt="Cornell advanced scene before lightmap baking" width="260" /> | <img src="screenshots/after-preview-baked-combined.png" alt="Cornell advanced scene after Preview lightmap bake" width="260" /> | <img src="screenshots/after-production-baked-combined.png" alt="Cornell advanced scene after Production lightmap bake" width="260" /> |
 
 > Important GPU note: this baker is GPU-bound. Chrome and Edge must have **Use graphics acceleration when available** enabled, and `chrome://gpu` should report WebGL/WebGL2 as hardware accelerated. Launch capture uses installed Chrome and, on Windows, prefers ANGLE D3D11 because that is the backend that selected the NVIDIA RTX GPU in testing. The app reports the renderer it actually received, and launch automation can reject captures from the wrong GPU with `BAKER_EXPECT_GPU="RTX 3050" npm run capture:launch`.
@@ -180,7 +180,7 @@ const baker = new LightmapBaker({
 
 const result = await baker.bake(scene, {
   onProgress: (phase, percent) => {
-    console.log(`${phase}: ${(percent * 100).toFixed(0)}%`);
+    console.log(`[baker] ${phase}: ${(percent * 100).toFixed(0)}%`);
   },
 });
 
@@ -302,12 +302,12 @@ On Windows the helper tries ANGLE backends in this order when `BAKER_EXPECT_GPU`
 $env:BAKER_CAPTURE_ANGLE="d3d11,d3d11on12,gl"; $env:BAKER_EXPECT_GPU="RTX 3050"; npm run capture:launch
 ```
 
-| Device | Scene | Preset | Resolution | Samples | Bounces | Denoise | Bake Time |
-| ------ | ----: | -----: | ---------: | ------: | ------: | ------: | --------: |
-| RTX 3050 Ti Laptop GPU | cornell.advanced | Draft | 256px | 4 x 32 frames (128 spp) | 2 | Off | 4.63s |
-| RTX 3050 Ti Laptop GPU | cornell.advanced | Preview | 512px | 5 x 96 frames (480 spp) | 2 | Off | 5.05s |
-| RTX 3050 Ti Laptop GPU | cornell.advanced | Production | 1024px | 6 x 256 frames (1536 spp) | 2 | Off | 36.48s |
-| RTX 3050 Ti Laptop GPU | cornell.advanced | Final | 2048px | 8 x 512 frames (4096 spp) | 2 | Off | 408.7s |
+| Device                 |            Scene |     Preset | Resolution |                   Samples | Bounces | Denoise | Bake Time |
+| ---------------------- | ---------------: | ---------: | ---------: | ------------------------: | ------: | ------: | --------: |
+| RTX 3050 Ti Laptop GPU | cornell.advanced |      Draft |      256px |   4 x 32 frames (128 spp) |       2 |     Off |     4.63s |
+| RTX 3050 Ti Laptop GPU | cornell.advanced |    Preview |      512px |   5 x 96 frames (480 spp) |       2 |     Off |     5.05s |
+| RTX 3050 Ti Laptop GPU | cornell.advanced | Production |     1024px | 6 x 256 frames (1536 spp) |       2 |     Off |    36.48s |
+| RTX 3050 Ti Laptop GPU | cornell.advanced |      Final |     2048px | 8 x 512 frames (4096 spp) |       2 |     Off |    408.7s |
 
 The script captures one solid 3D before image, then Preview and Production baked images. Use the Production image as the main after asset and keep the Preview image for visual preset comparison.
 
@@ -400,12 +400,12 @@ The two-pass approach treats the renderer normally. Pass 1 uses the GPU for what
 
 Measured on the `cornell.advanced` scene only:
 
-| Preset         | Samples | Bounces | Resolution | Measured Time (RTX 3050 Ti) |
-| -------------- | ------- | ------- | ---------- | --------------------------- |
-| **Draft**      | 4 x 32 frames (128 spp) | 2 | 256px | 4.63s |
-| **Preview**    | 5 x 96 frames (480 spp) | 2 | 512px | 5.05s |
-| **Production** | 6 x 256 frames (1536 spp) | 2 | 1024px | 36.48s |
-| **Final**      | 8 x 512 frames (4096 spp) | 2 | 2048px | 408.7s |
+| Preset         | Samples                   | Bounces | Resolution | Measured Time (RTX 3050 Ti) |
+| -------------- | ------------------------- | ------- | ---------- | --------------------------- |
+| **Draft**      | 4 x 32 frames (128 spp)   | 2       | 256px      | 4.63s                       |
+| **Preview**    | 5 x 96 frames (480 spp)   | 2       | 512px      | 5.05s                       |
+| **Production** | 6 x 256 frames (1536 spp) | 2       | 1024px     | 36.48s                      |
+| **Final**      | 8 x 512 frames (4096 spp) | 2       | 2048px     | 408.7s                      |
 
 ---
 
