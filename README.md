@@ -292,7 +292,7 @@ On Windows PowerShell:
 $env:BAKER_EXPECT_GPU="RTX 3050"; npm run capture:launch
 ```
 
-If you want to test installed Chrome instead of Playwright's bundled Chromium, use `BAKER_CAPTURE_BROWSER_CHANNEL=chrome`.
+The capture helper uses installed Chrome by default. To intentionally use Playwright's bundled Chromium instead, set `BAKER_CAPTURE_BROWSER_CHANNEL=bundled`.
 
 | Device |         Scene | Resolution | Samples | Bounces | Denoise | Bake Time |
 | ------ | ------------: | ---------: | ------: | ------: | ------: | --------: |

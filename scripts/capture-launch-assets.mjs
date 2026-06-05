@@ -13,7 +13,9 @@ const captureResolution = Number(process.env.BAKER_CAPTURE_RESOLUTION ?? 128);
 const captureCasts = Number(process.env.BAKER_CAPTURE_CASTS ?? 2);
 const captureFrames = Number(process.env.BAKER_CAPTURE_FRAMES ?? 8);
 const expectedGpu = process.env.BAKER_EXPECT_GPU?.trim();
-const browserChannel = process.env.BAKER_CAPTURE_BROWSER_CHANNEL?.trim();
+const requestedBrowserChannel = process.env.BAKER_CAPTURE_BROWSER_CHANNEL?.trim();
+const browserChannel =
+  requestedBrowserChannel === 'bundled' ? undefined : requestedBrowserChannel || 'chrome';
 const url = `${baseUrl}?test=1&scene=${encodeURIComponent(scene)}`;
 const chromeArgs = [
   '--enable-gpu',
@@ -121,7 +123,7 @@ async function main() {
         [
           `Expected GPU containing "${expectedGpu}", but Chromium reported: ${gpu.renderer}`,
           'The Chromium flags request hardware acceleration, but the browser cannot force OS/driver GPU assignment.',
-          'Use BAKER_CAPTURE_BROWSER_CHANNEL=chrome to test installed Chrome, or change OS/driver routing before publishing benchmark numbers.',
+          `Browser channel: ${browserChannel || 'playwright bundled chromium'}. Change OS/driver routing before publishing benchmark numbers, or set BAKER_CAPTURE_BROWSER_CHANNEL=bundled only for non-launch smoke tests.`,
         ].join('\n'),
       );
     }
@@ -184,7 +186,7 @@ async function main() {
       },
       chromeArgs,
       expectedGpu: expectedGpu || null,
-      browserChannel: browserChannel || null,
+      browserChannel: browserChannel || 'playwright bundled chromium',
       outputs: {
         before: 'before-albedo-unlit.png',
         after: 'after-baked-combined.png',

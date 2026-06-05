@@ -64,10 +64,11 @@ For benchmark automation, enforce the expected renderer:
 BAKER_EXPECT_GPU="RTX 3050" npm run capture:launch
 ```
 
-For installed Chrome instead of Playwright's bundled Chromium:
+The capture helper uses installed Chrome by default. To intentionally use
+Playwright's bundled Chromium instead:
 
 ```text
-BAKER_CAPTURE_BROWSER_CHANNEL=chrome npm run capture:launch
+BAKER_CAPTURE_BROWSER_CHANNEL=bundled npm run capture:launch
 ```
 
 References:
