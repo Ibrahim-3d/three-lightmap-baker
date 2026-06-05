@@ -24,7 +24,7 @@ import {
 } from '.';
 
 // Top-level bake orchestrator. Spans more responsibility than typical
-// CLAUDE.md `< 5 project imports` heuristic permits — that's intentional for
+// CLAUDE.md `< 5 project imports` heuristic permits - that's intentional for
 // a hub file. Each phase delegates to a peer module: partition + UV unwrap +
 // BVH/materials, light gather, the per-group loop (delegated to `runGroupBake`
 // in `./groups`), GPU drain, and final stats / result construction. Adding any
@@ -34,13 +34,13 @@ import {
 //   - `gl.finish()` drain between the per-group loop and result construction
 //     (NVIDIA D3D11 TDR prevention).
 //   - Context-loss guard installation and teardown happen in the facade
-//     (`LightmapBaker.bake`) — not here — so the `try/finally` cannot be
+//     (`LightmapBaker.bake`) - not here - so the `try/finally` cannot be
 //     accidentally broken by a future split.
 
 /**
  * Walks the scene; returns Meshes with a `MeshStandardMaterial`-like material
  * (Standard or Physical). Excludes:
- *  - Helpers/gizmos (TransformControls etc. use `MeshBasicMaterial` — `lightMap`
+ *  - Helpers/gizmos (TransformControls etc. use `MeshBasicMaterial` - `lightMap`
  *    alone is too loose since Basic also exposes that property)
  *  - Anything marked `userData.lightmapIgnore = true` (explicit opt-out)
  *  - Invisible objects (`visible === false`)
@@ -80,7 +80,7 @@ export type BakePipelineArgs = {
 export async function runBakePipeline(args: BakePipelineArgs): Promise<LightmapBakeResult> {
   const { renderer, opts, scene, allMeshes, hooks, t0, tp, ctxState, checkAbort } = args;
 
-  // Partition meshes — density mode if `texelsPerMeter` is set (groups keyed
+  // Partition meshes - density mode if `texelsPerMeter` is set (groups keyed
   // by atlas index, all sharing `resolution`), else resolution mode (groups
   // keyed by resolution, one mesh per `perMesh.resolution` override). The
   // two strategies are orthogonal; validateOptions surfaces a DEV warning
@@ -106,7 +106,7 @@ export async function runBakePipeline(args: BakePipelineArgs): Promise<LightmapB
   checkAbort('unwrap');
   const tUV1 = performance.now();
 
-  // --- 2. Geometry: BVH + per-tri materials (SHARED — includes excluded meshes) ---
+  // --- 2. Geometry: BVH + per-tri materials (SHARED - includes excluded meshes) ---
   const tG0 = performance.now();
   hooks.onProgress?.('geometry', 0);
 
@@ -122,7 +122,7 @@ export async function runBakePipeline(args: BakePipelineArgs): Promise<LightmapB
   const tG1 = performance.now();
 
   // --- 3. Build shared light list ---
-  // Every light — including the scene's default area light — now lives in
+  // Every light - including the scene's default area light - now lives in
   // the scene as a real THREE.Light, so `collectLightsFromScene` is the
   // single source of truth. If the user deleted every light, the bake will
   // be lit by sky GI alone.
@@ -182,12 +182,12 @@ export async function runBakePipeline(args: BakePipelineArgs): Promise<LightmapB
   // GPU command-queue drain. The bake submits work asynchronously; by the time
   // JS reaches here, the GPU is typically seconds behind processing queued
   // tile/composite draws. If we return without draining, the FIRST post-bake
-  // `renderer.render(scene)` triggers an implicit drain — and on some drivers
+  // `renderer.render(scene)` triggers an implicit drain - and on some drivers
   // (NVIDIA D3D11 reproduced) that drain piles up enough pressure to TDR /
   // drop the WebGL context. Force the drain HERE, where we can isolate it
   // from scene rendering and any caller observation.
   // Cost: blocks JS for the queue length (~3s observed at 1024² Production).
-  // That cost was happening anyway — this just makes it explicit.
+  // That cost was happening anyway - this just makes it explicit.
   const tDrain0 = performance.now();
   renderer.getContext().finish();
   const tDrain1 = performance.now();

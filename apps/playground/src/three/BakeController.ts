@@ -29,10 +29,10 @@ import type { PerMeshMap } from './types';
  * library's `LightmapBakeResult`.
  *
  * Demo-OWNED (disposed in `disposeAllGroups`):
- *   - `composite` — view-time composite created here via `runComposite()`
- *   - `refinement` — lazy dilation/denoise RT created by `runRefinement()`
+ *   - `composite` - view-time composite created here via `runComposite()`
+ *   - `refinement` - lazy dilation/denoise RT created by `runRefinement()`
  *
- * Library-OWNED (freed by `LightmapBakeResult.dispose()` — do NOT dispose here):
+ * Library-OWNED (freed by `LightmapBakeResult.dispose()` - do NOT dispose here):
  *   - `lightmapper`, `aoMapper`, `positionTexture`, `normalTexture`,
  *     BVH, per-tri material textures, atlas RT.
  */
@@ -42,7 +42,7 @@ export type BakeGroup = {
   positionTexture: Texture;
   normalTexture: Texture;
   lightmapper: Lightmapper;
-  /** Standalone AO bake — independent ray budget; AO-only re-bake on slider change. */
+  /** Standalone AO bake - independent ray budget; AO-only re-bake on slider change. */
   aoMapper: AOMapper;
   composite: CompositeResult;
   refinement: RefinementResult | null;
@@ -103,7 +103,7 @@ export type BakeTickResult = {
  *
  * The orchestrator's RAF drives the bake forward by calling `tick()` every
  * frame; this controller knows nothing about timing, FPS, or the DOM. Likewise
- * it does NOT mount textures onto materials — that lives in `modes.ts`
+ * it does NOT mount textures onto materials - that lives in `modes.ts`
  * (`RenderModeRunner.apply`).
  */
 export class BakeController {
@@ -111,12 +111,12 @@ export class BakeController {
   meshToGroup: Map<Mesh, BakeGroup> = new Map();
   bakeResult: LightmapBakeResult | null = null;
 
-  /** Set true on the RAF immediately after `runBake` returns — orchestrator instruments that frame. */
+  /** Set true on the RAF immediately after `runBake` returns - orchestrator instruments that frame. */
   firstPostBakeRender = false;
 
   diag: Diagnostics;
 
-  /** Progress reporter used during bake — orchestrator sets this once at startup. */
+  /** Progress reporter used during bake - orchestrator sets this once at startup. */
   onProgress: ((info: BakeFrameInfo) => void) | null = null;
 
   private dummyLightmap: Texture | null = null;
@@ -128,7 +128,7 @@ export class BakeController {
     this.diag = new Diagnostics(renderer);
   }
 
-  /** 1×1 white texture reused across meshes — placeholder lightmap that pins the
+  /** 1×1 white texture reused across meshes - placeholder lightmap that pins the
    *  USE_LIGHTMAP shader variant so the first post-bake render needs zero new
    *  programs (NVIDIA D3D11 TDR mitigation, see Session 12 in progress.md). */
   getDummyLightmap(): Texture {
@@ -191,7 +191,7 @@ export class BakeController {
 
     const bakeMeshes = meshes.filter((m) => !(options.perMesh[m.uuid]?.exclude === true));
     if (!bakeMeshes.length) {
-      console.warn('[baker] all meshes excluded — nothing to bake');
+      console.warn('[baker] all meshes excluded - nothing to bake');
       return;
     }
 
@@ -366,7 +366,7 @@ export class BakeController {
   }
 
   /**
-   * AO-only re-bake — delegates to LightmapBakeResult.rebakeAO and re-binds
+   * AO-only re-bake - delegates to LightmapBakeResult.rebakeAO and re-binds
    * each demo group's view-time composite to the freshly-built AO texture.
    */
   async runAOOnly(opts: {

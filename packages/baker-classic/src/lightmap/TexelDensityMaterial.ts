@@ -1,22 +1,22 @@
 import { GLSL3, ShaderMaterial } from 'three';
 
 /**
- * TexelDensityMaterial — Unity/Unreal-style "Lightmap Density" debug visualization.
+ * TexelDensityMaterial - Unity/Unreal-style "Lightmap Density" debug visualization.
  *
  * Each mesh wears a checker pattern in UV2 space; checker color encodes how this
  * mesh's actual texel density compares to a target density (texels per world meter).
  *
- *   Red    = density too low  (< 0.5× target — undersampled, will look blocky)
+ *   Red    = density too low  (< 0.5× target - undersampled, will look blocky)
  *   Yellow = slightly low     (0.5..0.8×)
  *   Green  = ideal            (0.8..1.2×)
  *   Cyan   = slightly high    (1.2..1.5×)
- *   Blue   = too high         (> 1.5× — wasted lightmap area on this mesh)
+ *   Blue   = too high         (> 1.5× - wasted lightmap area on this mesh)
  *
  * Computed via dFdx/dFdy of UV2 vs the lightmap resolution to derive
  * texels-per-world-unit, then divided by the user's target.
  *
  * Derived from the user-supplied spec in Task 07E. Material is shared
- * across meshes — uniforms are global. Per-mesh density (Task 07F) will
+ * across meshes - uniforms are global. Per-mesh density (Task 07F) will
  * clone this material per-mesh once meshes hold their own resolution.
  */
 export type TexelDensityMaterialOptions = {
@@ -100,10 +100,10 @@ export class TexelDensityMaterial extends ShaderMaterial {
                     else if (ratio < 1.5) c = vec3(0.0, 1.0, 1.0);
                     else                  c = vec3(0.0, 0.0, 1.0);
 
-                    // Checker in WORLD space — one square = CHECKER_TEXELS target
+                    // Checker in WORLD space - one square = CHECKER_TEXELS target
                     // texels wide. Decoupled from the actual texel size so the
                     // pattern stays readable as density slides up. Triplanar
-                    // XOR sum covers all axes — squares stay UNIFORMLY square
+                    // XOR sum covers all axes - squares stay UNIFORMLY square
                     // across the scene if density is on-target.
                     const float CHECKER_TEXELS = 4.0;
                     float worldPerSquare = CHECKER_TEXELS / max(uTexelsPerMeter, 1e-6);

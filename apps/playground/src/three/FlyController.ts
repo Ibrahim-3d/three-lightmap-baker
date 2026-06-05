@@ -18,17 +18,17 @@ const DT_CLAMP = 0.1;
 /**
  * Unreal/Unity-style scene-viewport fly controls. Activates while the user
  * holds the right mouse button on the renderer canvas:
- *   - WASD     — strafe along camera forward/right
- *   - Q / E    — move down / up (world-Y)
- *   - Shift    — speed boost (×3)
- *   - Mouse    — yaw + pitch (clamped to avoid gimbal flip)
- *   - Wheel    — multiplies `flySpeed` signal so the slider stays in sync
+ *   - WASD     - strafe along camera forward/right
+ *   - Q / E    - move down / up (world-Y)
+ *   - Shift    - speed boost (×3)
+ *   - Mouse    - yaw + pitch (clamped to avoid gimbal flip)
+ *   - Wheel    - multiplies `flySpeed` signal so the slider stays in sync
  *
  * RMB-held activation avoids stealing the W/E/R gizmo hotkeys. While fly is
  * active, OrbitControls is disabled; on release we re-seat the orbit target
  * in front of the camera so subsequent orbit feels natural.
  *
- * We use `setPointerCapture` instead of Pointer Lock — cursor stays visible
+ * We use `setPointerCapture` instead of Pointer Lock - cursor stays visible
  * but pointer-move events keep firing even if the cursor leaves the canvas.
  */
 export class FlyController {
@@ -98,7 +98,7 @@ export class FlyController {
       try {
         this.renderer.domElement.releasePointerCapture(this.capturedPointer);
       } catch {
-        // Already released — ignore.
+        // Already released - ignore.
       }
       this.capturedPointer = null;
     }

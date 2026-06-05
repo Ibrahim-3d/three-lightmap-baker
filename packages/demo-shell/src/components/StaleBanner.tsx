@@ -21,8 +21,8 @@ export function StaleBanner() {
 
   const label =
     dirtyCount > 0
-      ? `${dirtyCount} object${dirtyCount === 1 ? '' : 's'} need rebuild — Re-bake (B)`
-      : 'Scene changed — Re-bake (B)';
+      ? `${dirtyCount} object${dirtyCount === 1 ? '' : 's'} need rebuild - Re-bake (B)`
+      : 'Scene changed - Re-bake (B)';
 
   return (
     <button

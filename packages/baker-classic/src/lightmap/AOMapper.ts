@@ -55,7 +55,7 @@ export type AOMapper = {
  *
  * Caller orchestrates `render()` each frame alongside the bounce mapper's
  * render(). When AO sliders change, dispose this and create a fresh one with
- * new opts — the bounce mapper stays alive untouched.
+ * new opts - the bounce mapper stays alive untouched.
  */
 export const generateAOMapper = (
   renderer: WebGLRenderer,
@@ -75,7 +75,7 @@ export const generateAOMapper = (
     sampleIndex: 0,
   });
 
-  // FloatType — see Lightmapper.ts comment. HalfFloat triggers ANGLE D3D11
+  // FloatType - see Lightmapper.ts comment. HalfFloat triggers ANGLE D3D11
   // slow path when downstream shader samples with LinearFilter (extension
   // OES_texture_half_float_linear reports false on tested NVIDIA path).
   const renderTarget = new WebGLRenderTarget(options.resolution, options.resolution, {
@@ -104,7 +104,7 @@ export const generateAOMapper = (
   const target = options.targetSamples | 0;
   const resolution = options.resolution;
 
-  // Tiling state — mirrors Lightmapper.ts. See that file for design notes.
+  // Tiling state - mirrors Lightmapper.ts. See that file for design notes.
   let tileSize = Math.max(1, Math.min(resolution, options.tileSize ?? resolution));
   let pendingTileSize: number | null = null;
   let nextTileIndex = 0;

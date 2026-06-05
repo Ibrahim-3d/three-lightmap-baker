@@ -1,5 +1,5 @@
 /**
- * Diagnostics — graphics-engineer-grade instrumentation for the bake pipeline.
+ * Diagnostics - graphics-engineer-grade instrumentation for the bake pipeline.
  *
  * Goal: when the bake crashes (CONTEXT_LOST) but the symptoms don't match
  * obvious causes (memory, mipmap, filter), surface enough numbers to pinpoint
@@ -149,7 +149,7 @@ export class Diagnostics {
 
   /**
    * Wrap any GL operation, force a sync via gl.finish(), report duration and
-   * any error. Slow — use only at boundaries, not hot loops.
+   * any error. Slow - use only at boundaries, not hot loops.
    */
   measure<T>(label: string, fn: () => T): T {
     const gl = this.renderer.getContext();

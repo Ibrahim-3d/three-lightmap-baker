@@ -6,11 +6,11 @@ import { binPackMeshes } from './Packing';
  *
  * Two orthogonal strategies:
  *
- *  1. Resolution mode — meshes share atlases keyed by `resolution`.
+ *  1. Resolution mode - meshes share atlases keyed by `resolution`.
  *     A mesh with `perMesh[uuid].resolution = 2048` lands in its own 2048²
  *     atlas group; meshes without an override go into the `globalRes` group.
  *
- *  2. Density mode — meshes are bin-packed by world-space surface area.
+ *  2. Density mode - meshes are bin-packed by world-space surface area.
  *     Triggered when the bake call passes `texelsPerMeter`. All packed
  *     atlases share `atlasResolution`; per-mesh `density` weights atlas
  *     demand. Meshes that can't fit one atlas at target density auto-spawn
@@ -28,7 +28,7 @@ export type PerMeshOverride = {
 };
 
 export type Partition = {
-  /** Meshes skipped entirely — no UV unwrap, no lightmap. */
+  /** Meshes skipped entirely - no UV unwrap, no lightmap. */
   excluded: Mesh[];
   /** Group key → meshes. Key semantics depend on mode (resolution vs atlasIdx). */
   groups: Map<number, Mesh[]>;
@@ -69,7 +69,7 @@ export function partitionByResolution(
 
 /**
  * Density-keyed partition via bin-packing. Group keys are atlas indices
- * (0, 1, 2, …) — all atlases share `atlasResolution`. The number of groups
+ * (0, 1, 2, …) - all atlases share `atlasResolution`. The number of groups
  * is determined by the packer based on world-space surface area + density.
  *
  * Per-mesh `resolution` overrides are IGNORED in this mode (they're
@@ -107,7 +107,7 @@ export function partitionByDensity(
     perMeshScale,
   });
 
-  // Group meshes by atlas index — preserves input order within each group.
+  // Group meshes by atlas index - preserves input order within each group.
   for (let i = 0; i < eligible.length; i++) {
     const a = assignments[i]!;
     if (!groups.has(a.atlasIdx)) groups.set(a.atlasIdx, []);

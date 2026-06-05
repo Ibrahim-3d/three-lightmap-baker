@@ -4,6 +4,8 @@
 
 > Launch asset placeholder: replace this static screenshot with a short GIF/video showing a flat Three.js interior scene, the Bake action, visible GI/color bleeding, the lightmap atlas, and the baked result applied back to the scene.
 
+> Important GPU note: this baker is GPU-bound. In Chrome or Edge, enable **Use graphics acceleration when available**, restart the browser, and verify `chrome://gpu` reports WebGL/WebGL2 as hardware accelerated. On laptops or dual-GPU desktops, force Chrome onto the high-performance GPU in the OS or driver control panel. For automation and Playwright captures, launch Chromium with `--enable-gpu --enable-webgl --ignore-gpu-blocklist --enable-gpu-rasterization --force_high_performance_gpu`. Chromium uses `--force_high_performance_gpu` in GPU test configurations for dual-GPU machines, but OS/driver settings still decide whether the discrete GPU is actually available.
+
 <h1 align="center">🔆 Three Lightmap Baker</h1>
 
 <p align="center">
@@ -40,10 +42,10 @@
 
 Three.js developers looking for real lightmap baking run into the same gaps:
 
-- **`@react-three/lightmap`** — built around an older hemicube workflow and no longer tracks modern R3F releases.
-- **`mem1b/lightbaking`** — targets pre-BufferGeometry-era Three.js APIs, so it is not a drop-in option for current projects.
-- **`three-gpu-pathtracer`** — excellent screen-space path tracing, but it does not publish baked lightmap atlases. Its lightmap-baking request has been open since **2021**.
-- **Stack Overflow answers** — "just bake in Blender and export." Which is fine until your scene is procedural, user-generated, or assembled at runtime. Then you're stuck.
+- **`@react-three/lightmap`** - built around an older hemicube workflow and no longer tracks modern R3F releases.
+- **`mem1b/lightbaking`** - targets pre-BufferGeometry-era Three.js APIs, so it is not a drop-in option for current projects.
+- **`three-gpu-pathtracer`** - excellent screen-space path tracing, but it does not publish baked lightmap atlases. Its lightmap-baking request has been open since **2021**.
+- **Stack Overflow answers** - "just bake in Blender and export." Which is fine until your scene is procedural, user-generated, or assembled at runtime. Then you're stuck.
 
 The result: in 2026, Three.js still lacks a maintained, browser-first lightmap baker focused on path-traced global illumination.
 
@@ -51,9 +53,9 @@ This repo fixes that.
 
 ## Why This Exists
 
-The Three.js ecosystem needs lightmap baking that runs in the browser. Not "export to Blender, bake for 40 minutes, re-import" — actual in-app baking where the user clicks a button and sees the result in seconds.
+The Three.js ecosystem needs lightmap baking that runs in the browser. Not "export to Blender, bake for 40 minutes, re-import" - actual in-app baking where the user clicks a button and sees the result in seconds.
 
-I looked for a library. There wasn't one. The most complete option ([lucas-jones/three-lightmap-baker](https://github.com/lucas-jones/three-lightmap-baker)) had the right architecture but stopped before bounce lighting — no color bleeding, no indirect illumination, no GI.
+I looked for a library. There wasn't one. The most complete option ([lucas-jones/three-lightmap-baker](https://github.com/lucas-jones/three-lightmap-baker)) had the right architecture but stopped before bounce lighting - no color bleeding, no indirect illumination, no GI.
 
 So I'm building it. This fork keeps the proven two-pass architecture, adds multi-bounce path-traced GI, and focuses on a maintained, documented library.
 
@@ -63,7 +65,7 @@ Every AI coding agent (Claude Code, Cursor, Devin, Copilot Workspace) can build 
 
 A JavaScript-native lightmap baker that runs in Node.js or the browser is infrastructure for the agentic wave. An AI agent that assembles a room from a furniture catalog needs to light that room without opening a DCC tool.
 
-If you're building anything where 3D scenes are constructed programmatically — architectural configurators, AI interior design, procedural environments, digital twins — and you need those scenes to look lit, you're the target user.
+If you're building anything where 3D scenes are constructed programmatically - architectural configurators, AI interior design, procedural environments, digital twins - and you need those scenes to look lit, you're the target user.
 
 ---
 
@@ -83,16 +85,16 @@ If you've used Unity's **Progressive Lightmapper** or Unreal's **Lightmass**, yo
 
 ### Shipping Now
 
-- **Path-traced global illumination** — real bounce lighting, not screen-space hacks. Red walls bleed red light onto white surfaces. The Cornell Box test passes.
-- **Auto UV2 unwrapping** — drop in any geometry, xatlas generates non-overlapping lightmap UVs automatically. No Blender unwrap step.
-- **GPU-accelerated BVH ray tracing** — powered by [three-mesh-bvh](https://github.com/gkjohnson/three-mesh-bvh). Millions of rays per second in WebGL.
-- **Multi-bounce** — 1-4 configurable bounce depth. Each bounce adds indirect illumination. Energy-conserving (albedo < 1 guarantees convergence).
-- **Per-triangle material data** — albedo and emissive packed into DataTextures, indexed by BVH triangle. Materials are respected during bounces — a red wall reflects red light because the bounce ray reads the wall's albedo.
-- **Progressive rendering** — watch the lightmap converge in real-time. Stop early if quality is acceptable.
-- **Bake presets** — Draft (2-5s), Preview (10-30s), Production (1-5min), Final (5-15min).
-- **Gap flood / edge dilation** — prevents black seams at UV island borders.
-- **Bilateral denoiser** — smooths noise while preserving shadow edges, guided by world-position and normal textures.
-- **TypeScript** — strict mode, fully typed API.
+- **Path-traced global illumination** - real bounce lighting, not screen-space hacks. Red walls bleed red light onto white surfaces. The Cornell Box test passes.
+- **Auto UV2 unwrapping** - drop in any geometry, xatlas generates non-overlapping lightmap UVs automatically. No Blender unwrap step.
+- **GPU-accelerated BVH ray tracing** - powered by [three-mesh-bvh](https://github.com/gkjohnson/three-mesh-bvh). Millions of rays per second in WebGL.
+- **Multi-bounce** - 1-4 configurable bounce depth. Each bounce adds indirect illumination. Energy-conserving (albedo < 1 guarantees convergence).
+- **Per-triangle material data** - albedo and emissive packed into DataTextures, indexed by BVH triangle. Materials are respected during bounces - a red wall reflects red light because the bounce ray reads the wall's albedo.
+- **Progressive rendering** - watch the lightmap converge in real-time. Stop early if quality is acceptable.
+- **Bake presets** - Draft (2-5s), Preview (10-30s), Production (1-5min), Final (5-15min).
+- **Gap flood / edge dilation** - prevents black seams at UV island borders.
+- **Bilateral denoiser** - smooths noise while preserving shadow edges, guided by world-position and normal textures.
+- **TypeScript** - strict mode, fully typed API.
 
 ### Coming Next
 
@@ -270,6 +272,14 @@ This section is intentionally a checklist until the final visual asset is captur
 
 Benchmark numbers should be published only after the same scene and settings are tested across machines. Use this format for the first public table:
 
+Run the local capture and benchmark helper with:
+
+```bash
+npm run capture:launch
+```
+
+It writes `launch-artifacts/before-albedo-unlit.png`, `launch-artifacts/after-baked-combined.png`, `launch-artifacts/benchmark.json`, and `launch-artifacts/benchmark.md`. The output directory is ignored by git so you can rerun it on the real launch machine and copy only the numbers/assets you want to publish.
+
 | Device | Scene | Resolution | Samples | Bounces | Denoise | Bake Time |
 |---|---:|---:|---:|---:|---:|---:|
 | TBD | Cornell Box | 512 | 64 | 2 | On | TBD |
@@ -297,7 +307,7 @@ The goal is not to replace offline production renderers. The goal is browser-nat
 
 Two-pass architecture. No vertex shader hacks. No fighting the Three.js renderer.
 
-### Pass 1 — UV-Space Rasterization
+### Pass 1 - UV-Space Rasterization
 
 Each mesh's geometry is rendered with `gl_Position = uv2 * 2.0 - 1.0`, projecting triangles into their lightmap UV layout. Two textures are generated:
 
@@ -309,10 +319,10 @@ Each mesh's geometry is rendered with `gl_Position = uv2 * 2.0 - 1.0`, projectin
 These textures are a 2D lookup table: for any texel coordinate, you can read the corresponding world position and surface normal.
 
 <p align="center">
-  <em>Position map (left) and normal map (right) for a Cornell Box — each texel encodes a world-space coordinate.</em>
+  <em>Position map (left) and normal map (right) for a Cornell Box - each texel encodes a world-space coordinate.</em>
 </p>
 
-### Pass 2 — Path-Traced Ray Tracing
+### Pass 2 - Path-Traced Ray Tracing
 
 For each texel in the position/normal maps:
 
@@ -339,11 +349,11 @@ For each sample:
 Divide accumulated radiance by sample count → final lightmap
 ```
 
-The BVH acceleration structure (from [three-mesh-bvh](https://github.com/gkjohnson/three-mesh-bvh)) makes this fast — millions of ray queries per second on a mid-range GPU.
+The BVH acceleration structure (from [three-mesh-bvh](https://github.com/gkjohnson/three-mesh-bvh)) makes this fast - millions of ray queries per second on a mid-range GPU.
 
 ### Why Two Passes?
 
-The naive approach (what I tried first and burned 4 hours debugging) is to do everything in a single shader: override `gl_Position` to UV space AND trace rays in the same fragment shader. This fights Three.js at every level — `modelMatrix` propagation breaks, render target state leaks between frames, `matrixWorldNeedsUpdate` doesn't fire. 12 integration bugs later, it still didn't work.
+The naive approach (what I tried first and burned 4 hours debugging) is to do everything in a single shader: override `gl_Position` to UV space AND trace rays in the same fragment shader. This fights Three.js at every level - `modelMatrix` propagation breaks, render target state leaks between frames, `matrixWorldNeedsUpdate` doesn't fire. 12 integration bugs later, it still didn't work.
 
 The two-pass approach treats the renderer normally. Pass 1 uses the GPU for what it's good at (rasterization). Pass 2 uses the BVH for what it's good at (ray queries). No renderer hacks. No matrix bugs. It just works.
 
@@ -430,12 +440,14 @@ Releases all GPU resources (textures, render targets).
 
 ## Known Limitations
 
+- Verified against the current codebase: these are real current limits, not marketing disclaimers.
 - Browser/WebGL renderer required. True Node.js headless baking is planned but not shipped.
 - Requires WebGL 2 and `EXT_color_buffer_float` for HDR accumulation targets.
 - `result.export()` triggers browser downloads; it does not write directly to arbitrary filesystem paths.
 - Large atlases, high sample counts, and many bounces can still hit browser/GPU timeout behavior on weaker hardware.
 - Light/material coverage is focused on `MeshStandardMaterial`-style surfaces, emissive contribution, direct light collection, AO, and GI bounces. Advanced production lighting such as IES profiles, textured area lights, and full material parity remain roadmap items.
 - Auto UV2 unwrapping is designed to remove the Blender unwrap step, but pathological geometry can still need cleanup or manual UVs.
+- Playwright or other automated browser captures must launch Chromium with hardware acceleration and high-performance GPU flags. Otherwise numbers can accidentally measure SwiftShader, integrated GPU fallback, or blocklisted GPU behavior.
 - The current public package is prepared for npm release but is not published until the first release is cut.
 
 ---
@@ -453,8 +465,8 @@ Releases all GPU resources (textures, render targets).
 
 - **Three.js** r161 (see `package.json`)
 - **WebGL 2** with `EXT_color_buffer_float` (required for HDR lightmap accumulation)
-- **Browser/renderer context required** — this release is WebGL-first (Node headless adapter is planned, not shipped)
-- **GPU**: any discrete GPU from the last 5 years. Intel/AMD integrated GPUs work but bake slower — the library auto-detects and warns.
+- **Browser/renderer context required** - this release is WebGL-first (Node headless adapter is planned, not shipped)
+- **GPU**: any discrete GPU from the last 5 years. Intel/AMD integrated GPUs work but bake slower - the library auto-detects and warns.
 
 ---
 
@@ -463,21 +475,21 @@ Releases all GPU resources (textures, render targets).
 This repo is a fork of [lucas-jones/three-lightmap-baker](https://github.com/lucas-jones/three-lightmap-baker), which established the two-pass architecture and proved it works. The bounce lighting, material system, denoiser, and API are new.
 
 Built on top of:
-- [three-mesh-bvh](https://github.com/gkjohnson/three-mesh-bvh) by Garrett Johnson — GPU-accelerated BVH that makes browser ray tracing possible
-- [three-gpu-pathtracer](https://github.com/gkjohnson/three-gpu-pathtracer) by Garrett Johnson — reference implementation for path tracing in Three.js
-- [xatlas-three](https://github.com/repalash/xatlas-three/) — browser-native UV unwrapping via xatlas WASM
-- The original [iq/Jaume Sanchez hemicube GI demo](http://www.iquilezles.org/www/articles/simplegi/simplegi.htm) — proof that browser GI is possible, even on a phone
+- [three-mesh-bvh](https://github.com/gkjohnson/three-mesh-bvh) by Garrett Johnson - GPU-accelerated BVH that makes browser ray tracing possible
+- [three-gpu-pathtracer](https://github.com/gkjohnson/three-gpu-pathtracer) by Garrett Johnson - reference implementation for path tracing in Three.js
+- [xatlas-three](https://github.com/repalash/xatlas-three/) - browser-native UV unwrapping via xatlas WASM
+- The original [iq/Jaume Sanchez hemicube GI demo](http://www.iquilezles.org/www/articles/simplegi/simplegi.htm) - proof that browser GI is possible, even on a phone
 
 ---
 
 ## Contributing
 
-This is actively developed. Contributions welcome — especially:
+This is actively developed. Contributions welcome - especially:
 
-- **Test scenes** — complex interiors, outdoor scenes, edge cases
-- **Performance benchmarks** — bake times across GPU generations
-- **Bug reports** — screenshots + GPU info + sample count + resolution
-- **Light type implementations** — spot lights, IES profiles, textured area lights
+- **Test scenes** - complex interiors, outdoor scenes, edge cases
+- **Performance benchmarks** - bake times across GPU generations
+- **Bug reports** - screenshots + GPU info + sample count + resolution
+- **Light type implementations** - spot lights, IES profiles, textured area lights
 
 Open an issue before starting a PR so we can coordinate. All contributions
 require signing the [CLA](./CLA.md) via CLA Assistant.
@@ -493,7 +505,7 @@ priorities.
 
 ## License
 
-MIT — same as the original lucas-jones repo.
+MIT - same as the original lucas-jones repo.
 
 ---
 

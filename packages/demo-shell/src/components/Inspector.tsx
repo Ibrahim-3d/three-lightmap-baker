@@ -5,7 +5,7 @@ import { Splitter } from './Splitter';
 
 /**
  * Built-in generic tabs always present. Renderer-specific tabs (Lightmap,
- * Bake, Light, World — whatever the renderer registers) append after these.
+ * Bake, Light, World - whatever the renderer registers) append after these.
  */
 const BUILTIN_TABS: ReadonlyArray<PanelDescriptor> = [
   { id: 'object', label: 'Object', component: ObjectPage },

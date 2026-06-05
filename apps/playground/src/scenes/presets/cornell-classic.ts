@@ -65,7 +65,7 @@ function build(parent: Object3D): SceneBuildResult {
 
 sceneRegistry.register({
   id: 'cornell.classic',
-  label: 'Cornell — Classic',
+  label: 'Cornell - Classic',
   category: 'cornell',
   description: 'Classic Cornell Box: 5 walls + tall block + short block. No extras.',
   build,

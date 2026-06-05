@@ -9,9 +9,9 @@ Documenting what didn't work and why. This prevents future sessions from re-atte
 **What we tried:** Override gl_Position to rasterize in UV2 space, trace BVH rays in the same fragment shader, accumulate into HDR float render targets.
 
 **Why it failed:**
-1. `matrixWorldNeedsUpdate` — Three.js skips matrixWorld computation when matrixAutoUpdate=false and matrixWorldNeedsUpdate=false (default). Every mesh baked from identity transform. All 6 meshes produced identical lightmaps (confirmed via diagnostic: all meanR=0.149533).
+1. `matrixWorldNeedsUpdate` - Three.js skips matrixWorld computation when matrixAutoUpdate=false and matrixWorldNeedsUpdate=false (default). Every mesh baked from identity transform. All 6 meshes produced identical lightmaps (confirmed via diagnostic: all meanR=0.149533).
 2. R3F's render loop resets setRenderTarget(null) between frames, corrupting accumulation across yield points.
-3. xatlas-web vertex reindexing produced broken topology — the struct layout was different from what we assumed.
+3. xatlas-web vertex reindexing produced broken topology - the struct layout was different from what we assumed.
 4. DoubleSide rendering in UV space double-counts fragments with additive blending.
 5. UV0→UV2 passthrough creates overlapping UV space for BoxGeometry (6 faces share [0,1]²) and SphereGeometry (longitude wrap).
 
@@ -23,7 +23,7 @@ Documenting what didn't work and why. This prevents future sessions from re-atte
 
 **What we tried:** Evaluated using the existing R3F lightmap package.
 
-**Why it failed:** Dead since 2022, pinned to R3F v8, uses hemicube method (32×32 framebuffer per texel averaged to one color). Quality ceiling too low — no path tracing, no importance sampling, no proper BRDF.
+**Why it failed:** Dead since 2022, pinned to R3F v8, uses hemicube method (32×32 framebuffer per texel averaged to one color). Quality ceiling too low - no path tracing, no importance sampling, no proper BRDF.
 
 ## F-003: Using `texture2D` in GLSL 3.0
 
@@ -34,17 +34,17 @@ Documenting what didn't work and why. This prevents future sessions from re-atte
 ## F-004: `renderer.compile(scene, camera)` upfront to seed all shader variants
 
 **What we tried (S12, 2026-05-06):** Investigating post-bake context loss on
-NVIDIA D3D11 — the first `renderer.render` after assigning `lightMap` for the
+NVIDIA D3D11 - the first `renderer.render` after assigning `lightMap` for the
 first time on `MeshStandardMaterial` triggered a ~2 s program compile and
 exceeded the Windows TDR watchdog. Tried calling
 `renderer.compile(scene, camera)` once at scene init with the materials
 preconfigured for every variant we'd need post-bake (USE_LIGHTMAP, etc.).
 
-**Why it failed:** Made the problem WORSE — first post-bake render time went
+**Why it failed:** Made the problem WORSE - first post-bake render time went
 from 2.2 s to 14 s. NVIDIA's D3D11 driver with parallel-shader-compile
 DEFERS the actual GPU compile when given a batch of programs upfront, so the
 five variants we requested all sat queued. The first real draw then waited
-on ALL of them simultaneously — the watchdog window was now occupied by 5×
+on ALL of them simultaneously - the watchdog window was now occupied by 5×
 work instead of 1×.
 
 **Lesson:** `renderer.compile` is not a magic warm-up button. On
@@ -58,7 +58,7 @@ frame BEFORE the GPU is busy with anything else. See D-016.
 with `LinearMipMapLinearFilter` + `generateMipmaps:true` (so the lightmap
 could sample at any LOD when used as `MeshStandardMaterial.lightMap`). Bake
 completion mounted the composite as `lightMap`; the next scene render did a
-lazy regeneration of the full mipmap chain — ~21 MB of GPU work for a 1024²
+lazy regeneration of the full mipmap chain - ~21 MB of GPU work for a 1024²
 Float RT.
 
 **Why it failed:** Layered onto the program compile (F-004 / D-016) and the

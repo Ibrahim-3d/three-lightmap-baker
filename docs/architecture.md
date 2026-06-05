@@ -1,4 +1,4 @@
-# Architecture — Three Lightmap Baker
+# Architecture - Three Lightmap Baker
 
 Current as of 2026-06-04.
 

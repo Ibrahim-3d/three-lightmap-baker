@@ -4,7 +4,7 @@ import { canRedo, canUndo, commandHistory, menuRegistry } from 'shared';
 /**
  * Edit menu. Undo / Redo wired to the shared `commandHistory`. Producers
  * (transform, add, remove) push commands; this menu just invokes the stack.
- * Disabled state is reactive — re-registers the items when `canUndo`/`canRedo`
+ * Disabled state is reactive - re-registers the items when `canUndo`/`canRedo`
  * flip so the dropdown reflects the current stack.
  */
 

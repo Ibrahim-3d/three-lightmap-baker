@@ -14,10 +14,10 @@ import {
 import { EXRExporter } from 'three/examples/jsm/exporters/EXRExporter.js';
 
 /**
- * Lightmap exporters — render a Texture into a fresh float RT, then encode/dump.
+ * Lightmap exporters - render a Texture into a fresh float RT, then encode/dump.
  *
  * Three formats per Task 06 spec:
- *   - PNG  : LDR, Reinhard tonemap + sRGB encode. "Preview" only — not round-trippable.
+ *   - PNG  : LDR, Reinhard tonemap + sRGB encode. "Preview" only - not round-trippable.
  *   - EXR  : HDR, linear, FloatType. Production / DCC pipeline.
  *   - bin  : raw Float32 RGBA dump. Programmatic / scientific use.
  *
@@ -29,10 +29,10 @@ import { EXRExporter } from 'three/examples/jsm/exporters/EXRExporter.js';
 const _quad = new Mesh(new PlaneGeometry(2, 2));
 const _cam = new OrthographicCamera();
 /*
- * Export Passthrough — GLSL3 fragment shader.
+ * Export Passthrough - GLSL3 fragment shader.
  *
  * Input  : `map` (any FloatType source texture).
- * Output : `fragColor` — straight texel copy.
+ * Output : `fragColor` - straight texel copy.
  *
  * Used to materialize any chain-of-RT lightmap into a fresh FloatType RT before
  * encoding to PNG/EXR/raw. NDC pass-through vertex avoids the default
@@ -127,7 +127,7 @@ export async function exportPNG(
     for (let x = 0; x < resolution; x++) {
       const si = srcRow + x * 4;
       const di = dstRow + x * 4;
-      // Reinhard tonemap, then sRGB encode (2.2 approximation — cheap and good enough for preview).
+      // Reinhard tonemap, then sRGB encode (2.2 approximation - cheap and good enough for preview).
       // SAFETY: si is bounded by srcRow + (resolution-1)*4 < float.length.
       const r = Math.max(float[si] ?? 0, 0);
       const g = Math.max(float[si + 1] ?? 0, 0);
@@ -190,7 +190,7 @@ export function exportRaw(
 
 export type ExportFormat = 'png' | 'exr' | 'bin';
 
-/** Dispatch by format. Filename should be the base — extension is enforced per format. */
+/** Dispatch by format. Filename should be the base - extension is enforced per format. */
 export async function exportLightmap(
   renderer: WebGLRenderer,
   source: Texture,

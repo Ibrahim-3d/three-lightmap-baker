@@ -4,7 +4,7 @@ import type { SceneController, TransformSnap } from './SceneController';
 
 /**
  * Concrete undo/redo commands for the playground. Commands are pushed to the
- * shared `commandHistory` AFTER the effect has been applied — they describe
+ * shared `commandHistory` AFTER the effect has been applied - they describe
  * how to revert (`undo`) and re-apply (`redo`) it.
  *
  * Add/Remove commands retain their Object3D across undo cycles. Dispose is
@@ -56,7 +56,7 @@ export class AddCommand implements Command {
   }
   dispose(): void {
     // Only dispose if still detached. If the node is live in the scene we
-    // must leave it alone — eviction can happen mid-edit.
+    // must leave it alone - eviction can happen mid-edit.
     if (!this.node.parent) this.scene.disposeDetachedNode(this.node);
   }
 }

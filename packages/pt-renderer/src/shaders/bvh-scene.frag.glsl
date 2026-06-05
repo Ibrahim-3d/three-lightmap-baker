@@ -10,7 +10,7 @@ out highp vec4 pc_fragColor;
 uniform sampler2D tTriangleTexture;
 uniform sampler2D tAABBTexture;
 
-// ── Albedo array — single sampler2DArray binding holding all unique scene
+// ── Albedo array - single sampler2DArray binding holding all unique scene
 // albedo maps as layers. Layer 0 is a white fallback (used when a material
 // has no map). Triangle data stores the layer index per face; values < 0
 // signal "skip texture sampling, use vertex color only". This replaces the
@@ -24,7 +24,7 @@ vec3 sampleAlbedo(int layer, vec2 uv) {
     return texture(tAlbedoArray, vec3(uv, float(layer))).rgb;
 }
 
-// ── Scene lights — packed into a DataTexture, 4 RGBA texels per light ─────────
+// ── Scene lights - packed into a DataTexture, 4 RGBA texels per light ─────────
 //
 // Layout (each light at offset i*4 in a 64x1 RGBA32F texture):
 //   texel i*4+0 : pos.xyz,   type     (0=directional, 1=point, 2=spot, 3=rectarea)
@@ -78,7 +78,7 @@ vec3 F_Schlick(float cosTheta, vec3 F0) {
 #include <pathtracing_boundingbox_intersect>
 #include <pathtracing_bvhTriangle_intersect>
 
-// ── BVH node lookup — reads 2 RGBA texels per node from tAABBTexture ─────────
+// ── BVH node lookup - reads 2 RGBA texels per node from tAABBTexture ─────────
 // texel[i*2+0]: aabbMin.xyz, aabbMax.x
 // texel[i*2+1]: aabbMax.yz,  primitiveCount, leafOrChild_ID
 void GetBoxNodeData(const in float i, inout vec4 boxNodeData0, inout vec4 boxNodeData1) {
@@ -185,7 +185,7 @@ vec3 GetSkyColor(vec3 dir) {
 }
 
 
-// ── NEE — Next Event Estimation ───────────────────────────────────────────────
+// ── NEE - Next Event Estimation ───────────────────────────────────────────────
 vec3 SetupNEE(vec3 x, vec3 nl, out float toLightDist, out float cosNL) {
     toLightDist = INFINITY; cosNL = 0.0;
     if (uNumPTLights < 1) return vec3(0.0);
@@ -260,7 +260,7 @@ vec3 CalculateRadiance(out vec3 objectNormal, out vec3 objectColor,
     // 2 = shading normal nl (after flip)
     // 3 = albedo / material color
     // 4 = material type (LIGHT=white, DIFF/PBR=green, REFR=cyan)
-    // 5 = direct cosine lighting (nl · toLight) — no shadows
+    // 5 = direct cosine lighting (nl · toLight) - no shadows
     #if DEBUG_VIS > 0
     {
         float t = SceneIntersect();
@@ -396,7 +396,7 @@ vec3 CalculateRadiance(out vec3 objectNormal, out vec3 objectColor,
                 //
                 // CRITICAL: when the NEE branch is chosen but NEE fails
                 // (cosNL ≤ 0 or shadowed), we MUST terminate the path with
-                // zero contribution — NOT fall through to hemisphere bounce.
+                // zero contribution - NOT fall through to hemisphere bounce.
                 // Falling through would double-count the indirect bounce on
                 // back-facing surfaces (bottom of sphere / shadow side),
                 // producing the classic "lower hemisphere too bright with

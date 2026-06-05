@@ -126,7 +126,7 @@ export function WorldPage() {
       <Section title="Sky / Environment  (baker + PT)">
         <Row
           label="Color"
-          hint="Ambient sky tint — GI miss-hit fill in bake and sky color in path tracer."
+          hint="Ambient sky tint - GI miss-hit fill in bake and sky color in path tracer."
         >
           <ColorField
             value={o.skyColor}
@@ -156,7 +156,7 @@ export function WorldPage() {
         </Row>
       </Section>
 
-      <Section title="Bake — Direct &amp; Indirect (master)">
+      <Section title="Bake - Direct &amp; Indirect (master)">
         <Row label="Direct on" hint="Master switch for all scene direct lights at bake time.">
           <BoolField
             value={o.directLightEnabled}
@@ -191,7 +191,7 @@ export function WorldPage() {
         </Row>
       </Section>
 
-      <Section title="Bake — Secondary Sun (legacy)">
+      <Section title="Bake - Secondary Sun (legacy)">
         <Row
           label="Enabled"
           hint="Bake-only directional sun in addition to scene lights. For a viewport-visible sun, drag in a Sun light from the asset library instead."
@@ -308,7 +308,7 @@ export function WorldPage() {
       </Section>
 
       {isPT && (
-        <Section title="Path Tracer — Depth of Field">
+        <Section title="Path Tracer - Depth of Field">
           <Row label="Aperture" hint="0 = pinhole (sharp everywhere); increase for lens blur.">
             <RangeField
               value={pt.aperture}
@@ -350,7 +350,7 @@ export function WorldPage() {
 
       <Section title="Light Probes (SH)">
         <Row label="Probes">
-          <span class="text-[11px] text-text-2 italic">Task 11 — Spherical Harmonics</span>
+          <span class="text-[11px] text-text-2 italic">Task 11 - Spherical Harmonics</span>
         </Row>
       </Section>
     </div>

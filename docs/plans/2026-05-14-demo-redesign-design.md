@@ -1,4 +1,4 @@
-# Demo Redesign — DCC-Editor Showcase
+# Demo Redesign - DCC-Editor Showcase
 
 **Status:** Approved 2026-05-14. Roadmap T-D1 … T-D13 in `.claude/` task tracker.
 **Owner:** Demo track. Library (`src/lib/`) untouched.
@@ -11,7 +11,7 @@ Replace the current single-file tweakpane demo (`src/demo/CornellBoxExample.ts`,
 - looks and feels like a real DCC tool (dark theme, dense panels, dock-style layout)
 - exposes the library's full capability via friendly UI, not developer chrome
 - ships a library of preset scenes (Cornell variants + ports of three.js MIT
-  examples) that double as side-by-side proof — "same scene, with our baker"
+  examples) that double as side-by-side proof - "same scene, with our baker"
 - supports add/remove/edit of meshes and lights with a transform gizmo
 - handles the bake lifecycle (stale → re-bake) without surprising the user
 - is built so future tracks (R3F wrapper, SH probes, save/load, undo/redo, HDRI
@@ -23,11 +23,11 @@ illumination. In the browser. No Blender. No Unity. No round-trips."*
 ## 2. Non-goals
 
 - Save/load arbitrary user projects (showcase, not editor)
-- Multi-object selection (deliberately deferred — single-select keeps inspector simple)
+- Multi-object selection (deliberately deferred - single-select keeps inspector simple)
 - Marquee / box-select in viewport
 - Auto re-bake on edit (manual re-bake via banner only)
 - Mobile / touch support (desktop-only splash)
-- Library API changes (zero — demo is a pure consumer)
+- Library API changes (zero - demo is a pure consumer)
 
 ## 3. Library impact
 
@@ -60,19 +60,19 @@ awkward surfaces calling `bake()` from reactive Preact, we fix it lib-side
 ```
 
 **Panels:**
-- *Topbar* — logo + 5 menus (data-driven `menuRegistry`) + right-side scene
+- *Topbar* - logo + 5 menus (data-driven `menuRegistry`) + right-side scene
   picker dropdown + Compare ⇄ split-screen toggle + settings cog.
-- *Outliner* — left, tree of Lights + Meshes; collapsible groups; click
+- *Outliner* - left, tree of Lights + Meshes; collapsible groups; click
   selects; row affordances (visible toggle, lock placeholder).
-- *Asset Library* — below Outliner; Primitives + Lights categories; HTML5
+- *Asset Library* - below Outliner; Primitives + Lights categories; HTML5
   drag source.
-- *Viewport* — center; THREE canvas; overlays: render-mode dropdown (top-left,
+- *Viewport* - center; THREE canvas; overlays: render-mode dropdown (top-left,
   data-driven `renderModeRegistry`), stats + ⓘ Diagnostics (top-right), stale
   banner (bottom-center, amber).
-- *Inspector* — right; tabbed (Object · Material · Lightmap · Bake · Light ·
+- *Inspector* - right; tabbed (Object · Material · Lightmap · Bake · Light ·
   World); pages chosen by lookup over `selectedNode.type` × `inspectorTab`;
   registered via `inspectorRegistry`.
-- *Status bar* — bottom; Bake button (binds `BakeController.runBake()`),
+- *Status bar* - bottom; Bake button (binds `BakeController.runBake()`),
   progress bar (bound to `bakeProgress` signal), log popover (200-entry ring).
 
 **Theme tokens** in `app/theme.css` via Tailwind v4 `@theme`:
@@ -133,7 +133,7 @@ src/demo/
 
 Library at `src/lib/` is **not** edited.
 
-### 5.2 State model — `@preact/signals`
+### 5.2 State model - `@preact/signals`
 
 ```ts
 // state/signals.ts (atoms)
@@ -193,7 +193,7 @@ cancel(): void                      // future
 
 Reserved future slots wired now, contents added later:
 - `File → Import HDRI`
-- `Render → Probes ▸` (Task 11 — SH light probes)
+- `Render → Probes ▸` (Task 11 - SH light probes)
 - `View → Animation Timeline`
 - `Edit → Undo/Redo` (ships disabled until command-history wired)
 - Compare ⇄ split-screen, driven by `ScenePreset.referenceUrl`
@@ -239,23 +239,23 @@ Transform gizmo: `THREE.TransformControls`, W/E/R = translate/rotate/scale
   hitPoint)`. New node auto-selected.
 - **Remove:** Delete key on selection.
 - **Stale:** Any mutation that changes baked output flips `isStale = true`.
-  Amber banner `⚠ Scene changed — Re-bake (B)` above viewport bottom; click
+  Amber banner `⚠ Scene changed - Re-bake (B)` above viewport bottom; click
   or press B → `runBake()`. Shift-click → `runAOOnly()`. Banner suppressed
   during `bakeStatus === 'baking'`.
 
 ## 6. Initial preset shortlist
 
-**Wave 1 — Cornell variants (ships in T-D10):**
-1. `cornell.classic` — port of current demo (no behavior change)
-2. `cornell.glass-mirror` — Cornell + glass sphere + chrome cube
-3. `cornell.emissive-strip` — emissive ceiling panel as sole light
+**Wave 1 - Cornell variants (ships in T-D10):**
+1. `cornell.classic` - port of current demo (no behavior change)
+2. `cornell.glass-mirror` - Cornell + glass sphere + chrome cube
+3. `cornell.emissive-strip` - emissive ceiling panel as sole light
 
-**Wave 2 — three.js example ports + iso (ships in T-D11):**
-4. `threejs.pointlights` — port of `webgl_lights_pointlights`
-5. `threejs.shadowmap` — port of `webgl_shadowmap` (knight scene)
-6. `threejs.collada-kinematics` — industrial robot
-7. `threejs.decals` — Lee Perry-Smith head, 3-point light
-8. `isometric.room` — built-in low-poly iso room (CC0 author or hand-modeled)
+**Wave 2 - three.js example ports + iso (ships in T-D11):**
+4. `threejs.pointlights` - port of `webgl_lights_pointlights`
+5. `threejs.shadowmap` - port of `webgl_shadowmap` (knight scene)
+6. `threejs.collada-kinematics` - industrial robot
+7. `threejs.decals` - Lee Perry-Smith head, 3-point light
+8. `isometric.room` - built-in low-poly iso room (CC0 author or hand-modeled)
 
 Each Wave 2 preset records source + license + author in `docs/SCENES-ATTRIBUTION.md`. `referenceUrl` opens original demo for side-by-side comparison.
 
@@ -263,11 +263,11 @@ Each Wave 2 preset records source + license + author in `docs/SCENES-ATTRIBUTION
 
 | Phase | Task | Visible change |
 |---|---|---|
-| A | T-D1 — extract controllers | none; build green; Cornell visual identical |
-| B | T-D2 — Preact + Tailwind + signals; legacy flag | default = legacy; `?legacy=0` boots Preact shell |
-| C | T-D3 → T-D9 — port panels one at a time | each PR keeps app working |
-| D | T-D12 — flip default; remove legacy | new UI is default; tweakpane removed |
-| E | T-D10, T-D11 — scene library | new presets ship incrementally |
+| A | T-D1 - extract controllers | none; build green; Cornell visual identical |
+| B | T-D2 - Preact + Tailwind + signals; legacy flag | default = legacy; `?legacy=0` boots Preact shell |
+| C | T-D3 → T-D9 - port panels one at a time | each PR keeps app working |
+| D | T-D12 - flip default; remove legacy | new UI is default; tweakpane removed |
+| E | T-D10, T-D11 - scene library | new presets ship incrementally |
 
 Each phase ships a green `npm run build`, `npx tsc --noEmit` clean, Cornell
 visual check (red/green color bleed on sphere, soft shadow, ceiling tint).

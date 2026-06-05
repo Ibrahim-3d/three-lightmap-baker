@@ -137,7 +137,7 @@ export function BakePage() {
             value={o.ambientLightEnabled}
             onChange={(v) => {
               o.ambientLightEnabled = v;
-              // View-time toggle — composite refresh, no rebake.
+              // View-time toggle - composite refresh, no rebake.
               app.refreshComposites({ aoEnabled: v });
               bumpOptions();
             }}
@@ -151,7 +151,7 @@ export function BakePage() {
             step={0.05}
             onChange={(v) => {
               o.ambientDistance = v;
-              // Bake-time option — needs an AO rebake to take effect.
+              // Bake-time option - needs an AO rebake to take effect.
               markStale();
               bumpOptions();
             }}
@@ -165,7 +165,7 @@ export function BakePage() {
             step={1}
             onChange={(v) => {
               o.aoSamples = v;
-              // Bake-time option — needs an AO rebake to take effect.
+              // Bake-time option - needs an AO rebake to take effect.
               markStale();
               bumpOptions();
             }}
@@ -179,7 +179,7 @@ export function BakePage() {
             step={0.05}
             onChange={(v) => {
               o.aoIntensity = v;
-              // View-time slider — composite refresh, no rebake.
+              // View-time slider - composite refresh, no rebake.
               app.refreshComposites({ aoIntensity: v });
               bumpOptions();
             }}
@@ -193,7 +193,7 @@ export function BakePage() {
             step={0.1}
             onChange={(v) => {
               o.aoExponent = v;
-              // View-time slider — composite refresh, no rebake.
+              // View-time slider - composite refresh, no rebake.
               app.refreshComposites({ aoExponent: v });
               bumpOptions();
             }}

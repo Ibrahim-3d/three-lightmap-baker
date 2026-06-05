@@ -24,7 +24,7 @@ import {
 import { getBakerOrchestrator } from './orchestrator';
 
 /**
- * Light tab. Every light — including the scene's default area light — is now
+ * Light tab. Every light - including the scene's default area light - is now
  * an asset-library-style group (with `userData.bakerLightType`). Editing
  * mutates the THREE Light directly so the viewport preview updates in real
  * time. The baker walks the scene and reads each Light via
@@ -70,12 +70,12 @@ function SceneLightPage({ obj, type }: { obj: Object3D; type: string }) {
   if (!light) {
     return (
       <div class="p-2 italic text-text-2 text-[12px]">
-        Group has no Light child — unsupported configuration.
+        Group has no Light child - unsupported configuration.
       </div>
     );
   }
 
-  // Field hooks (read directly from the Light each render — `objectTick` causes
+  // Field hooks (read directly from the Light each render - `objectTick` causes
   // re-render after transform/gizmo mutations).
   const colorHex = colorToHex(light.color);
   const setColor = (hex: string): void => {

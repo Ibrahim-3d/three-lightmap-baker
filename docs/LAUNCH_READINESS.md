@@ -21,9 +21,12 @@ architectural visualization. No Blender round-trip.
 
 ## Still manual before public launch
 
+- Run `npm run capture:launch` on the target machine to generate baseline
+  before/after stills and benchmark data in `launch-artifacts/`.
 - Capture a top-of-README GIF/video: flat scene, click Bake, GI appears,
   atlas shown, baked result applied.
-- Capture before/after flat vs baked GI stills.
+- Review the generated before/after stills and replace them with a stronger
+  interior scene capture if they are not launch-grade.
 - Build and record a small interior/architectural scene, not only Cornell Box.
 - Fill the benchmark table with measured hardware, scene, resolution, samples,
   bounces, denoise setting, and bake time.
@@ -31,6 +34,30 @@ architectural visualization. No Blender round-trip.
   release" to the normal npm install flow.
 - Share only after the visual proof is strong enough for Three.js/R3F/CGI
   communities.
+
+## GPU capture requirements
+
+Chrome or Edge must have graphics acceleration enabled. Verify `chrome://gpu`
+shows WebGL/WebGL2 as hardware accelerated before trusting screenshots or
+benchmark numbers. On dual-GPU systems, also select the high-performance GPU in
+Windows Graphics settings, NVIDIA Control Panel, AMD Software, or the
+equivalent OS/driver panel.
+
+Automation must launch Chromium with:
+
+```text
+--enable-gpu --enable-webgl --ignore-gpu-blocklist --enable-gpu-rasterization --force_high_performance_gpu
+```
+
+`--force_high_performance_gpu` is a Chromium switch used by upstream GPU test
+configs for dual-GPU machines, but it is not a substitute for OS/driver GPU
+assignment.
+
+References:
+
+- Chromium command-line switch guidance: https://www.chromium.org/developers/how-tos/run-chromium-with-flags
+- Chromium GPU testing docs using `--force_high_performance_gpu`: https://chromium.googlesource.com/chromium/src/+/refs/heads/main/docs/gpu/gpu_testing.md
+- Chromium GPU process source checks `kForceHighPerformanceGPU`: https://chromium.googlesource.com/chromium/src/+/master/content/browser/gpu/gpu_process_host.cc
 
 ## GitHub metadata
 

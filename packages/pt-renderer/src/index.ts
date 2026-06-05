@@ -1,5 +1,5 @@
 /**
- * pt-renderer — real-time BVH path tracer.
+ * pt-renderer - real-time BVH path tracer.
  *
  * Public surface intentionally small. Consumers:
  *   - `apps/playground`   → PTController wires this into the DCC shell

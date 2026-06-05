@@ -31,7 +31,7 @@ export const buildMaterialTextures = (perTri: PerTriangleMaterials): MaterialTex
   const side = Math.max(1, Math.ceil(Math.sqrt(N)));
   const texelCount = side * side;
 
-  // RGBA padded — alpha unused. Trailing texels (texelCount > N) stay zeroed.
+  // RGBA padded - alpha unused. Trailing texels (texelCount > N) stay zeroed.
   const albedoData = new Float32Array(texelCount * 4);
   const emissiveData = new Float32Array(texelCount * 4);
 

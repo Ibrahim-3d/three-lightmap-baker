@@ -47,7 +47,7 @@ menuRegistry.register('Help', {
   separatorBefore: true,
   action: () => {
     alert(
-      'Lightmap Studio — browser-native path-traced GI lightmap baker for Three.js.\nOpen source: github.com/lucas-jones/three-lightmap-baker',
+      'Lightmap Studio - browser-native path-traced GI lightmap baker for Three.js.\nOpen source: github.com/lucas-jones/three-lightmap-baker',
     );
   },
 });

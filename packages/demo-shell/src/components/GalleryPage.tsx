@@ -1,5 +1,5 @@
 /**
- * Gallery landing — full-viewport grid of clickable scene tiles separated by
+ * Gallery landing - full-viewport grid of clickable scene tiles separated by
  * 4px white gridlines. No text, no chrome. Click a tile to open the editor.
  */
 import { useEffect, useState } from 'preact/hooks';

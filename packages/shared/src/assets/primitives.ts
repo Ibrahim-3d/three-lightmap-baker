@@ -67,7 +67,7 @@ export type LightDef = {
   icon: 'lightbulb' | 'sun' | 'spot' | 'area';
   enabled: boolean;
   /**
-   * Factory returns the visible scene node — usually a Group bundling the
+   * Factory returns the visible scene node - usually a Group bundling the
    * actual Light + a TargetObject + a LightHelper (Blender-style gizmo).
    * Marking the group's `userData.bakerLightType` lets the inspector know
    * which type-specific fields to render.
@@ -168,7 +168,7 @@ export const primitiveCatalog: {
 /**
  * Tag all descendants of a helper subtree as bake-ignored. Helpers are visual
  * gizmos and must never contribute to lightmap energy. (The actual Light
- * inside the same Group is NOT tagged — only the helper subtree.)
+ * inside the same Group is NOT tagged - only the helper subtree.)
  */
 function markHelperLightmapIgnore(helper: Object3D): void {
   helper.userData.lightmapIgnore = true;
@@ -182,7 +182,7 @@ function gizmoLineMat(color: number): LineBasicMaterial {
   return new LineBasicMaterial({ color, toneMapped: false, fog: false });
 }
 
-/** Unit spot cone — apex at origin, opens along -Z, base radius 1 at z=-1.
+/** Unit spot cone - apex at origin, opens along -Z, base radius 1 at z=-1.
  *  Scale via `cone.scale.set(r, r, length)` to match light angle/distance. */
 function buildUnitSpotCone(color: number): LineSegments {
   const positions: number[] = [];
@@ -249,7 +249,7 @@ function makePointLight(): Object3D {
   light.name = 'PointLight';
   group.add(light);
 
-  // Bulb: solid emissive sphere — primary visible/clickable indicator at pivot.
+  // Bulb: solid emissive sphere - primary visible/clickable indicator at pivot.
   const bulb = new Mesh(
     new SphereGeometry(0.12, 16, 12),
     new MeshBasicMaterial({ color: 0xffe080, toneMapped: false }),
@@ -295,7 +295,7 @@ function makeSpotLight(): Object3D {
 
   const light = new SpotLight(0xffffff, 4.0, 0, Math.PI / 6, 0.3, 2);
   light.name = 'SpotLight';
-  // Target sits one unit along -Z (group local) — rotating the group rotates
+  // Target sits one unit along -Z (group local) - rotating the group rotates
   // the cone direction.
   const target = new Object3D();
   target.position.set(0, 0, -1);
@@ -304,7 +304,7 @@ function makeSpotLight(): Object3D {
   group.add(target);
   light.target = target;
 
-  // Unit cone — scaled per-frame to match light.angle + light.distance.
+  // Unit cone - scaled per-frame to match light.angle + light.distance.
   const cone = buildUnitSpotCone(0xffd200);
   cone.userData.lightmapIgnore = true;
   cone.userData.lightGizmo = true;
@@ -348,7 +348,7 @@ function makeSunLight(): Object3D {
   group.add(target);
   light.target = target;
 
-  // Custom sun gizmo at group origin — rays + direction arrow along -Z.
+  // Custom sun gizmo at group origin - rays + direction arrow along -Z.
   const sun = buildSunGizmo(1.2, 0xffd200);
   sun.userData.lightmapIgnore = true;
   sun.userData.lightGizmo = true;
@@ -399,7 +399,7 @@ function makeAreaLight(): Object3D {
  *
  * Preserves the light's world position by transferring it to the wrapper
  * group and zeroing the light's local position. The original light's parent
- * is left intact for any siblings (markers, etc.) — they are NOT moved here.
+ * is left intact for any siblings (markers, etc.) - they are NOT moved here.
  */
 export function wrapAsBakerLight(light: Light, displayName?: string): Object3D {
   const type = detectLightType(light);
@@ -429,7 +429,7 @@ export function wrapAsBakerLight(light: Light, displayName?: string): Object3D {
     }
   }
 
-  // Bulb marker — small emissive-style sphere tinted by the light's color
+  // Bulb marker - small emissive-style sphere tinted by the light's color
   // so the light has a visible, clickable footprint in the viewport.
   const bulbColor = (light as PointLight).color?.getHex?.() ?? 0xffffff;
   const bulb = new Mesh(
@@ -454,7 +454,7 @@ export function wrapAsBakerLight(light: Light, displayName?: string): Object3D {
   }
 
   // If `oldParent` was a sibling-marker container (typical preset pattern of
-  // "PointLight + Mesh marker next to each other"), we leave it alone — the
+  // "PointLight + Mesh marker next to each other"), we leave it alone - the
   // caller is expected to drop their hand-rolled marker if they want a clean
   // single visual. The bulb we add above is the canonical marker going forward.
 

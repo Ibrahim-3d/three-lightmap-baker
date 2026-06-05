@@ -5,7 +5,7 @@ import { render } from 'preact';
 import { loadXAtlasThree } from 'baker-classic';
 import { registerBakerClassicUI } from 'baker-classic/ui';
 // PT renderer UI hidden 2026-05-19 while focus is on baker polish.
-// Code stays in tree (packages/pt-renderer/) — flip back on by uncommenting:
+// Code stays in tree (packages/pt-renderer/) - flip back on by uncommenting:
 //   import { registerPTRendererUI } from 'pt-renderer/ui';
 //   registerPTRendererUI();
 import { App, GalleryPage, PostFXPage, showToast } from 'demo-shell';
@@ -37,7 +37,7 @@ import { AddCommand, RemoveCommand, TransformCommand } from './three/commands';
  * Playground entry. With no `?scene=` param renders the gallery landing.
  * With `?scene=<id>` boots the full editor and loads the chosen preset.
  *
- * `?legacy=1` skips Preact + bypasses gallery — escape hatch.
+ * `?legacy=1` skips Preact + bypasses gallery - escape hatch.
  * `?test=1` exposes `window.__baker` for Playwright and bypasses gallery.
  */
 function getSceneParam(): string | null {
@@ -99,7 +99,7 @@ function wireSelectionEffects(app: CornellBoxExample): void {
   });
   // Auto-switch inspector tab on selection: lights → Light; meshes → Object.
   // Read current tab via `.peek()` so this effect only re-runs on selection
-  // change, not on its own write — otherwise clicking Light/Post FX/World/Bake
+  // change, not on its own write - otherwise clicking Light/Post FX/World/Bake
   // while a mesh is selected immediately reverts the tab back to Object.
   effect(() => {
     const id = selectedId.value;
@@ -119,12 +119,12 @@ function wireSelectionEffects(app: CornellBoxExample): void {
 
 /** W/E/R = translate/rotate/scale. Escape = deselect. Delete = remove node.
  *  B = re-bake when stale. A = toggle atlas viewer. 1/3/7/0 = view orbits
- *  (front / right / top / persp — Blender numpad convention; Shift+ = back/
+ *  (front / right / top / persp - Blender numpad convention; Shift+ = back/
  *  left/bottom). */
 function wireHotkeys(app: CornellBoxExample): void {
   window.addEventListener('keydown', (e) => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-    // Undo / Redo — check BEFORE key-letter routing so 'z' doesn't fall through.
+    // Undo / Redo - check BEFORE key-letter routing so 'z' doesn't fall through.
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
       e.preventDefault();
       if (e.shiftKey) commandHistory.redo();
@@ -137,7 +137,7 @@ function wireHotkeys(app: CornellBoxExample): void {
       return;
     }
     const k = e.key.toLowerCase();
-    // Fly mode owns WASD/QE/Shift — don't let them double-fire as gizmo shortcuts.
+    // Fly mode owns WASD/QE/Shift - don't let them double-fire as gizmo shortcuts.
     if (
       flyActive.value &&
       (k === 'w' || k === 'a' || k === 's' || k === 'd' || k === 'q' || k === 'e')
@@ -151,7 +151,7 @@ function wireHotkeys(app: CornellBoxExample): void {
     else if (e.key === 'Delete' || e.key === 'Backspace') {
       const id = selectedId.value;
       if (!id) return;
-      // Undoable delete — detach (no dispose), retain on the command.
+      // Undoable delete - detach (no dispose), retain on the command.
       const detached = app.sceneController.detachNode(id);
       if (detached) {
         commandHistory.push(new RemoveCommand(app.sceneController, detached.node, detached.parent));
@@ -160,7 +160,7 @@ function wireHotkeys(app: CornellBoxExample): void {
     } else if (k === 'b') {
       if (isStale.value && bakeStatus.value !== 'baking') void app.requestBake();
     } else if (k === 'f') {
-      // Maya/Blender/Unreal "frame selected" — center selection in view.
+      // Maya/Blender/Unreal "frame selected" - center selection in view.
       const id = selectedId.value;
       const obj = id ? app.sceneController.lookupObject(id) : null;
       if (obj) app.sceneController.frameObject(obj);
@@ -232,7 +232,7 @@ void (async () => {
   const app = new CornellBoxExample();
   setOrchestrator(app);
   registerBakerClassicUI();
-  // registerPTRendererUI(); // disabled 2026-05-19 — see top-of-file note
+  // registerPTRendererUI(); // disabled 2026-05-19 - see top-of-file note
 
   // Publish app-side view-layer table to the shell so `<ViewportToggle/>` can
   // render the top-right pass picker without importing app internals.
@@ -256,7 +256,7 @@ void (async () => {
     },
     onTransformChange: (obj, before, after) => {
       // Light dummy position is queried at bake time, so its transforms don't
-      // dirty the bake — mirror the producer-side rule in SceneController.
+      // dirty the bake - mirror the producer-side rule in SceneController.
       const skipStale = obj === app.sceneController.lightDummy;
       commandHistory.push(
         new TransformCommand(obj, before, after, () => {
@@ -265,7 +265,7 @@ void (async () => {
       );
     },
     // Full scene replacement (preset load / GLB import) invalidates every
-    // retained Object3D in history — clear the stack and dispose orphans.
+    // retained Object3D in history - clear the stack and dispose orphans.
     onSceneLoad: () => {
       commandHistory.clear();
     },
@@ -284,7 +284,7 @@ void (async () => {
 
   sceneTree.value = app.getSceneTree();
   // Pre-select the default area light if the freshly-loaded preset didn't
-  // bring its own lights — gives the Lights page something to show on boot
+  // bring its own lights - gives the Lights page something to show on boot
   // without locking the selection to a magic id.
   const initialLight = app.sceneController.scene.children.find(
     (c) => c.userData?.bakerLightType && c.visible,

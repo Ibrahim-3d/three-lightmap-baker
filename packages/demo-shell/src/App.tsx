@@ -35,7 +35,7 @@ function saveLayout(): void {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(layout.value));
     } catch {
-      /* quota? incognito? — ignore */
+      /* quota? incognito? - ignore */
     }
   }, 500);
 }
@@ -64,7 +64,7 @@ export function App() {
         <div class="flex-1 flex min-h-0 relative">
           <Outliner />
           <div class="flex-1 relative pointer-events-none">
-            {/* Top-right viewport overlay row — all dropdowns share one line. */}
+            {/* Top-right viewport overlay row - all dropdowns share one line. */}
             <div class="absolute top-3 right-3 z-20 flex items-start gap-2 pointer-events-none">
               <ViewportFlySpeed />
               <ViewportOverlaysMenu />

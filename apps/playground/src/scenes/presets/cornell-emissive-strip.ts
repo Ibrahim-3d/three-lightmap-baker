@@ -61,7 +61,7 @@ function build(parent: Object3D): SceneBuildResult {
 
 sceneRegistry.register({
   id: 'cornell.emissive-strip',
-  label: 'Cornell — Emissive Strip',
+  label: 'Cornell - Emissive Strip',
   category: 'cornell',
   description: 'Cornell lit by a long emissive ceiling strip instead of a point light.',
   build,

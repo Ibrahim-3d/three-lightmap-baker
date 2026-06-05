@@ -59,7 +59,7 @@ jobs:
           set +e
           npx -y madge --circular --extensions ts,tsx packages/ apps/
           if [ $? -ne 0 ]; then
-            echo "::warning::Circular imports detected — see log above. CLAUDE.md forbids cycles; this job will flip to hard-fail once existing oversized files are split."
+            echo "::warning::Circular imports detected - see log above. CLAUDE.md forbids cycles; this job will flip to hard-fail once existing oversized files are split."
           fi
           exit 0
 

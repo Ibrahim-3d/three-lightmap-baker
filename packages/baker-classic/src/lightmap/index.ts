@@ -2,7 +2,7 @@
 // (e.g. `bake/result.ts`, `bake/groups.ts`) keep project-import counts under
 // CLAUDE.md's 5-per-file cap without flattening type/runtime co-location at
 // the call site. Add new symbols here as they ship; do NOT re-export internal
-// shaders or material-tier helpers — those stay scoped to their own files.
+// shaders or material-tier helpers - those stay scoped to their own files.
 
 export { generateAOMapper } from './AOMapper';
 export type { AOMapper, AORaycastOptions } from './AOMapper';

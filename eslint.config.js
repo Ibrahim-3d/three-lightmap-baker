@@ -19,7 +19,7 @@ export default [
       '@typescript-eslint': tseslint,
     },
     rules: {
-      // Recommended (syntactic) rules only — type-aware variants fire too
+      // Recommended (syntactic) rules only - type-aware variants fire too
       // noisily against Three.js uniform shapes; TypeScript strict mode is
       // the real safety net.
       ...tseslint.configs.recommended.rules,

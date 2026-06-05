@@ -7,7 +7,7 @@ import { ChevronDown } from './icons';
  *
  * Reads the `viewLayers` signal (populated by the app from its modes.LAYERS
  * table) and the active layer id from `renderMode`. Click → dropdown grouped
- * by `group` ('output' / 'debug'). The shell stays renderer-agnostic — it
+ * by `group` ('output' / 'debug'). The shell stays renderer-agnostic - it
  * never imports app-side enums.
  *
  * The app wires the `renderMode` signal back into the orchestrator via an
@@ -65,7 +65,7 @@ export function ViewportToggle() {
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         class="flex items-center gap-1.5 px-3 py-1 text-[11px] font-medium text-text-0 bg-bg-1/95 backdrop-blur border border-border rounded-md shadow-md hover:bg-bg-2 transition-colors"
-        title="Viewport — switch active pass / view layer"
+        title="Viewport - switch active pass / view layer"
       >
         <span class="truncate max-w-[160px]">{activeLayer.label}</span>
         <ChevronDown size={12} class="text-text-2" />

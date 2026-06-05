@@ -25,7 +25,7 @@ test.describe('scene presets', () => {
         await page.goto(TEST_URL);
         await waitReady(page);
 
-        // Probe via loadScenePreset on each expected id — succeeds (count > 0) on
+        // Probe via loadScenePreset on each expected id - succeeds (count > 0) on
         // registered presets, warns on unknown. We assert the known set works.
         const ids = await page.evaluate(async () => {
             const baker = (window as unknown as {

@@ -29,7 +29,7 @@ function build(parent: Object3D): SceneBuildResult {
   back.position.set(0, 6, -6);
   root.add(back);
 
-  // Centered subject — torus knot stands in for the original Lee Perry-Smith head.
+  // Centered subject - torus knot stands in for the original Lee Perry-Smith head.
   const subject = new Mesh(new TorusKnotGeometry(1.3, 0.42, 200, 32), mat(0xc9b290, 0.55, 0.0));
   subject.name = 'Subject';
   subject.position.set(0, 3, 0);
@@ -67,7 +67,7 @@ function build(parent: Object3D): SceneBuildResult {
 
 sceneRegistry.register({
   id: 'threejs.decals',
-  label: 'three.js — Decals (3-Point Lighting)',
+  label: 'three.js - Decals (3-Point Lighting)',
   category: 'threejs-port',
   description:
     'Port of the webgl_decals lighting setup: warm key + cool fill + rim around a centered subject.',

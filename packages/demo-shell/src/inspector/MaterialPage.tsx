@@ -18,7 +18,7 @@ import {
 /**
  * Material tab: edits the underlying `MeshStandardMaterial` fields. Color
  * changes are view-time only (don't invalidate the bake). Emissive changes
- * DO change baked irradiance — flag stale.
+ * DO change baked irradiance - flag stale.
  */
 export function MaterialPage() {
   void objectTick.value; // re-render on color/material writes

@@ -5,7 +5,7 @@ import { type Page, expect } from '@playwright/test';
  * `window.__baker` is exposed (see main.tsx).
  *
  * URLs are written relative (no leading `/`) so Playwright resolves them against
- * `baseURL` — which includes the project path `/three-lightmap-baker/`. A
+ * `baseURL` - which includes the project path `/three-lightmap-baker/`. A
  * leading slash would drop that path and navigate to `http://localhost:5173/?…`.
  */
 
@@ -35,7 +35,7 @@ export async function bakeDraft(page: Page): Promise<void> {
             };
         }).__baker;
         baker.setQuality('Draft');
-        // Don't await — setQuality already kicks off a bake.
+        // Don't await - setQuality already kicks off a bake.
     });
 }
 

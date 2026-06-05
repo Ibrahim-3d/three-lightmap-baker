@@ -27,7 +27,7 @@ test.describe('bake cycle stress', () => {
 
             // Catch CONTEXT_LOST diagnostic line.
             const lost = errors.some((e) => e.includes('CONTEXT LOST'));
-            expect(lost, `cycle ${i + 1}: webgl context lost — see ${errors.join('; ')}`).toBe(false);
+            expect(lost, `cycle ${i + 1}: webgl context lost - see ${errors.join('; ')}`).toBe(false);
 
             // Brief pause between cycles to mimic real user flow.
             await page.waitForTimeout(100);

@@ -15,10 +15,10 @@ import {
  * Camera default in `SceneController`: position (0, 5, 18), target (0, 5, 0),
  * FOV 45°. At 1280×720 viewport aspect=1.78 the 10×10 Cornell room occupies
  * roughly cols 4–11 of a 16-col grid (cols 0–3 and 12–15 are clear-color
- * background — outside the room). Pixel coords below are absolute against
+ * background - outside the room). Pixel coords below are absolute against
  * the Playwright Desktop Chrome default 1280×720 viewport.
  *
- * Wall colors are the strongest GI signal — large patches, dominant channels.
+ * Wall colors are the strongest GI signal - large patches, dominant channels.
  * Sphere/block bleed is a follow-up signal verified by relative comparison.
  */
 test.describe('cornell bake (draft)', () => {

@@ -20,7 +20,7 @@ function build(parent: Object3D): SceneBuildResult {
   floor.position.set(0, -T / 2, 0);
   root.add(floor);
 
-  // Two walls + one short partial — leaves the front-right corner open so
+  // Two walls + one short partial - leaves the front-right corner open so
   // the camera can see in.
   const wallBack = new Mesh(new BoxGeometry(FLOOR, WALL_H, T), mat(0xefe1c8));
   wallBack.name = 'Back Wall';
@@ -68,7 +68,7 @@ function build(parent: Object3D): SceneBuildResult {
 
 sceneRegistry.register({
   id: 'isometric.room',
-  label: 'Isometric — Low-Poly Room',
+  label: 'Isometric - Low-Poly Room',
   category: 'isometric',
   description: 'CC0 low-poly isometric room: floor + 2 walls + bed/table/stool. Locked iso camera.',
   source: {

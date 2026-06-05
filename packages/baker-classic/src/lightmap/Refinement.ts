@@ -123,7 +123,7 @@ export const runPostProcess = async (
 
   // Sentinel: read a 4x4 center patch and log the avg so the user can confirm
   // refinement actually changed pixel values (vs. silently passing through or clearing).
-  // One readback per refinement run — negligible cost, runs once post-bake.
+  // One readback per refinement run - negligible cost, runs once post-bake.
   if (ranAny) {
     const x = Math.max(0, Math.floor(resolution / 2) - 2);
     const buf = new Float32Array(4 * 4 * 4);
@@ -140,7 +140,7 @@ export const runPostProcess = async (
       const fmt = (n: number): string => (n / 16).toFixed(4);
       console.info(
         `[baker] refinement: dilations=${opts.dilationIterations}, denoise=${opts.denoiseEnabled ? 'on' : 'off'} ` +
-          `(sigma=${opts.denoiseSigma}, threshold=${opts.denoiseThreshold}, kSigma=${opts.denoiseKSigma}) — ` +
+          `(sigma=${opts.denoiseSigma}, threshold=${opts.denoiseThreshold}, kSigma=${opts.denoiseKSigma}) - ` +
           `center 4x4 avg rgb = (${fmt(r)}, ${fmt(g)}, ${fmt(b)})`,
       );
     }

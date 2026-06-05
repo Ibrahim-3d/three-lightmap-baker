@@ -4,9 +4,9 @@
  * fetch, DRACO setup, camera spawn conversion, and material tweaks here.
  *
  * Lightmap mode:
- *   - 'ours'   — default. Leave the GLB material alone; our baker will write
+ *   - 'ours'   - default. Leave the GLB material alone; our baker will write
  *                its own lightmap into it via the normal pipeline.
- *   - 'theirs' — copy GLB's `material.emissiveMap` into `material.lightMap`
+ *   - 'theirs' - copy GLB's `material.emissiveMap` into `material.lightMap`
  *                (ESL convention: Blender bakes land in the emissive slot)
  *                and null the emissive. Wire for future A/B compare. Read off
  *                `userData.eslLightmapMode` on the scene root.
@@ -87,7 +87,7 @@ export function eulerToTarget(
 
 /**
  * Apply ESL-style per-mesh `material.setValues({...})` tweaks by name.
- * Roughness clamped to PBR-legal [0,1] — ESL ships values >1 (gym floor=2.26)
+ * Roughness clamped to PBR-legal [0,1] - ESL ships values >1 (gym floor=2.26)
  * which their shader patch absorbs via `roughnessPower`. Without that patch
  * raw values >1 break Three's IBL path.
  */
@@ -134,7 +134,7 @@ export function normalisePBRMaterials(root: Object3D): void {
     }
     // ESL GLBs ship envMapIntensity tuned for ESL's shader patch (gym=7.77).
     // We don't have that patch, so even a faint scene.environment leaks bright
-    // ambient through. Force to 0 — user can crank in WorldPage if they want.
+    // ambient through. Force to 0 - user can crank in WorldPage if they want.
     mat.envMapIntensity = 0;
     mat.needsUpdate = true;
   });
@@ -142,7 +142,7 @@ export function normalisePBRMaterials(root: Object3D): void {
 
 /**
  * Spawn a DirectionalLight standing in for the HDR sun present in ESL's
- * Blender bake. Our baker doesn't sample HDR — only flat `skyColor` — so
+ * Blender bake. Our baker doesn't sample HDR - only flat `skyColor` - so
  * without an explicit sun light, the bake misses the sharp directional
  * contribution that gives ESL scenes their punch.
  *

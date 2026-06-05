@@ -9,7 +9,7 @@
  * userData (UI toggle land in task #5).
  *
  * Post-FX parity (bloom2, LUT, lens distortion, fog, exposure 1.81, fov 56)
- * lives in task #4 — applied at scene-pick time, not in this file.
+ * lives in task #4 - applied at scene-pick time, not in this file.
  */
 import { Object3D } from 'three';
 import { sceneRegistry, type SceneBuildResult } from 'shared';
@@ -121,7 +121,7 @@ async function build(parent: Object3D): Promise<SceneBuildResult> {
 
 sceneRegistry.register({
   id: 'esl.gym',
-  label: 'ESL — Gym',
+  label: 'ESL - Gym',
   category: 'esl',
   description:
     'Port of enhance-shader-lighting Gym demo. ~5.5 MB GLB. Default lightmap mode = ours (re-bake). Post-FX parity wired via task #4.',

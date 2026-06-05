@@ -28,7 +28,7 @@ export type AtlasViewerOptions = {
  * 2D corner-overlay atlas viewer.
  *
  * Renders a single Texture as a square viewport on top of the main canvas using
- * scissor+viewport — no second WebGL context, no readback, real-time follow as
+ * scissor+viewport - no second WebGL context, no readback, real-time follow as
  * the bake progresses. Vertex shader is NDC pass-through (matches Composite/
  * Refinement) so it bypasses the camera entirely.
  *
@@ -83,7 +83,7 @@ export class AtlasViewer {
                 out vec2 vUv;
                 void main() {
                     vUv = uv;
-                    // NDC pass-through — bypass camera matrices to dodge the
+                    // NDC pass-through - bypass camera matrices to dodge the
                     // default-near-plane clipping that bit DenoiseMaterial.
                     gl_Position = vec4(position, 1.0);
                 }

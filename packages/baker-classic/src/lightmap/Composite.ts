@@ -21,7 +21,7 @@ export type CompositeOverrides = Partial<{
 }>;
 
 export type CompositeResult = {
-  /** Combined (direct*directIntensity + indirect*giIntensity)*remappedAO — linear float RT texture. */
+  /** Combined (direct*directIntensity + indirect*giIntensity)*remappedAO - linear float RT texture. */
   texture: Texture;
   /** Re-render the composite, optionally overriding any uniform / swapping aoTex. */
   refresh: (overrides?: CompositeOverrides) => void;
@@ -52,12 +52,12 @@ export const runComposite = (
     aoExponent: number;
   },
 ): CompositeResult => {
-  // HalfFloat (not Float) — composite RT is sampled by MeshStandardMaterial as
+  // HalfFloat (not Float) - composite RT is sampled by MeshStandardMaterial as
   // mat.lightMap during normal scene render. FloatType requires
   // OES_texture_float_linear which is absent on many iGPUs → fallback path
   // triggers driver TDR / context loss on first post-bake frame.
   // HalfFloat + LinearFilter is universally supported in WebGL2 and holds
-  // ~65k dynamic range — plenty for HDR composite output.
+  // ~65k dynamic range - plenty for HDR composite output.
   // No mipmaps: composite refresh runs per-RAF during bake; chain regen on
   // 1024² is wasted GPU.
   const rt = new WebGLRenderTarget(resolution, resolution, {

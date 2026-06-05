@@ -1,5 +1,5 @@
 /**
- * PTController — scene-agnostic path-traced viewport controller.
+ * PTController - scene-agnostic path-traced viewport controller.
  *
  * Syncs THREE.js lights into a DataTexture each frame so changes to
  * intensity/color/position are immediately reflected. Supports up to 16
@@ -46,7 +46,7 @@ const LIGHT_TEX_WIDTH = MAX_PT_LIGHTS * TEXELS_PER_LIGHT; // 64
 
 const LIGHT_TYPE_NAMES = ['directional', 'point', 'spot', 'rectarea'] as const;
 
-/** Safe read from Float32Array — returns 0 for out-of-bounds. */
+/** Safe read from Float32Array - returns 0 for out-of-bounds. */
 const f = (arr: Float32Array, i: number): number => arr[i] ?? 0;
 
 /**
@@ -100,7 +100,7 @@ export class PTController {
   private lastMs = 0;
   private _lightsDumped = false;
 
-  // Reusable scratch vectors — avoids GC pressure in render loop.
+  // Reusable scratch vectors - avoids GC pressure in render loop.
   private readonly _lightPos = new Vector3();
   private readonly _lightTgt = new Vector3();
   private readonly _lightDir = new Vector3();
@@ -170,7 +170,7 @@ export class PTController {
 
     const u = this.pt.uniforms;
     if (!u['tTriangleTexture'] || !u['tAABBTexture']) {
-      console.warn('[PTController] setScene before init() — skipping');
+      console.warn('[PTController] setScene before init() - skipping');
       return;
     }
     u['tTriangleTexture'].value = newData.triangleTexture;
@@ -268,7 +268,7 @@ export class PTController {
    * Marks texture.needsUpdate = true when count > 0.
    *
    * NOTE: lightmapIgnore is NOT checked here. That flag tells the classic baker
-   * "don't bake a lightmap onto this object" — it says nothing about whether
+   * "don't bake a lightmap onto this object" - it says nothing about whether
    * the PT renderer should use the light. The PT renderer needs ALL scene
    * lights for correct illumination.
    */

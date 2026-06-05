@@ -1,7 +1,7 @@
 import { ptSettings, RangeField, Row, Section } from 'shared';
 
 /**
- * Inspector tab — "Path Tracer" settings.
+ * Inspector tab - "Path Tracer" settings.
  * Registered by `registerPTRendererUI()` at boot.
  * Shows live PT controls: light scale, DOF, accumulation reset trigger.
  */

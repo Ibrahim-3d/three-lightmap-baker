@@ -70,7 +70,7 @@ export interface BakerOrchestrator extends Orchestrator {
   exportSceneGLB(): Promise<void>;
   /**
    * View-time refresh of every group's composite RT with new intensity
-   * uniforms. Cheap — no rebake. Used by per-layer intensity sliders.
+   * uniforms. Cheap - no rebake. Used by per-layer intensity sliders.
    */
   refreshComposites(overrides: {
     directIntensity?: number;

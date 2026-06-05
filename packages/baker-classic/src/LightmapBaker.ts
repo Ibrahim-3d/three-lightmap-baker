@@ -12,7 +12,7 @@ import type { ContextLossState } from './bake/internals';
 // off `./LightmapBaker` unchanged.
 export { LightmapBakeResult } from './bake/result';
 
-// Public type surface — re-exported through `./index.ts`. Definitions live
+// Public type surface - re-exported through `./index.ts`. Definitions live
 // in `./bake/types` to keep this file under the 300-LOC modularity cap.
 export type {
   BakePhase,
@@ -40,7 +40,7 @@ export type LightmapBakerInitOptions = LightmapBakerOptions & {
 };
 
 /**
- * One-call lightmap baker — wraps the lib primitives behind the Task 06 spec API.
+ * One-call lightmap baker - wraps the lib primitives behind the Task 06 spec API.
  *
  * Spec deviations (intentional, documented in JSDoc per call site):
  *
@@ -133,14 +133,14 @@ export class LightmapBaker {
 
   /**
    * Bake the scene. Returns a `LightmapBakeResult` that owns the GPU
-   * resources — call `result.dispose()` when done.
+   * resources - call `result.dispose()` when done.
    *
    * This method owns three concerns the pipeline can't:
    *   1. Mesh collection + EXT validation (must fail fast before pipeline setup).
    *   2. GPU-capabilities-driven timeout-protection resolution (caller's
    *      `opts.timeoutProtection` overrides device-detected defaults).
    *   3. Context-loss guard install + teardown (must release the listener even
-   *      if the pipeline throws — `try/finally` is the only safe shape).
+   *      if the pipeline throws - `try/finally` is the only safe shape).
    *
    * Everything else (partition → unwrap → BVH → lights → groups → drain →
    * stats → result) lives in `bake/pipeline.ts::runBakePipeline`.
@@ -179,7 +179,7 @@ export class LightmapBaker {
     const onLost = (e: Event): void => {
       e.preventDefault(); // Tells the browser we'll attempt recovery (we don't, but it's harmless).
       ctxState.lost = true;
-      console.error('[baker] webglcontextlost during bake — cancelling');
+      console.error('[baker] webglcontextlost during bake - cancelling');
     };
     canvas.addEventListener('webglcontextlost', onLost as EventListener, false);
     const releaseContextGuard = (): void => {

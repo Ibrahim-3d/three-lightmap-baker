@@ -11,7 +11,7 @@ import { registerBakerMenus } from './menus';
  * inspector tabs (Lightmap, Bake, Light, World) plus the Render menu items
  * + Export Lightmap PNG into the shell's registries.
  *
- * Idempotent — the underlying registries replace by `id`.
+ * Idempotent - the underlying registries replace by `id`.
  */
 export function registerBakerClassicUI(): void {
   panelRegistry.register({ id: 'lightmap', label: 'Lightmap', component: LightmapPage });

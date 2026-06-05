@@ -20,7 +20,7 @@ menuRegistry.register('File', {
   id: 'file.gallery',
   label: 'Open Gallery…',
   action: () => {
-    // Full reload to the gallery — drops orchestrator + renderer cleanly.
+    // Full reload to the gallery - drops orchestrator + renderer cleanly.
     const url = new URL(window.location.href);
     url.search = '';
     window.location.href = url.toString();

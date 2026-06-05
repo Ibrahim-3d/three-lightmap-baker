@@ -6,20 +6,20 @@ demo with simplified geometry (no external GLB/HDRI/animation loads).
 
 | Preset id | Source | URL | License | Author |
 |---|---|---|---|---|
-| `cornell.classic` | three-lightmap-baker (built-in) | — | CC0 | three-lightmap-baker |
-| `cornell.advanced` | three-lightmap-baker (built-in) | — | CC0 | three-lightmap-baker |
-| `cornell.glass-mirror` | three-lightmap-baker (built-in) | — | CC0 | three-lightmap-baker |
-| `cornell.emissive-strip` | three-lightmap-baker (built-in) | — | CC0 | three-lightmap-baker |
+| `cornell.classic` | three-lightmap-baker (built-in) | - | CC0 | three-lightmap-baker |
+| `cornell.advanced` | three-lightmap-baker (built-in) | - | CC0 | three-lightmap-baker |
+| `cornell.glass-mirror` | three-lightmap-baker (built-in) | - | CC0 | three-lightmap-baker |
+| `cornell.emissive-strip` | three-lightmap-baker (built-in) | - | CC0 | three-lightmap-baker |
 | `threejs.pointlights` | three.js / `webgl_lights_pointlights` | https://threejs.org/examples/?q=pointlights#webgl_lights_pointlights | MIT | three.js authors |
 | `threejs.shadowmap` | three.js / `webgl_shadowmap` | https://threejs.org/examples/?q=shadowmap#webgl_shadowmap | MIT | three.js authors |
 | `threejs.decals` | three.js / `webgl_decals` (lighting setup only) | https://threejs.org/examples/?q=decals#webgl_decals | MIT | three.js authors |
-| `isometric.room` | three-lightmap-baker (built-in) | — | CC0 | three-lightmap-baker |
+| `isometric.room` | three-lightmap-baker (built-in) | - | CC0 | three-lightmap-baker |
 
 ## Notes
 
 - Three.js examples are MIT-licensed (see https://github.com/mrdoob/three.js/blob/master/LICENSE).
   Our ports use only the *lighting setup* (light positions, colors, intensities)
-  paired with primitive substitutes for any model assets — we do not load any
+  paired with primitive substitutes for any model assets - we do not load any
   external `.glb`, `.gltf`, `.hdr`, or texture assets from those examples.
 - The `webgl_decals` port substitutes a torus knot for the original Lee
   Perry-Smith head model. The head model itself is **not** included.

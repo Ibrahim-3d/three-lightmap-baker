@@ -1,5 +1,5 @@
 /**
- * BVHBuilder — TypeScript port of Eric Loftis's BVH_Quick_Builder.js
+ * BVHBuilder - TypeScript port of Eric Loftis's BVH_Quick_Builder.js
  *
  * SAH binning BVH builder. Input: per-triangle AABB array (9 floats/tri).
  * Output: BVH nodes written IN PLACE into the same array (8 floats/node).
@@ -16,7 +16,7 @@
  *   [3..5] max.xyz
  *   [6..8] centroid.xyz
  *
- * All state is function-local — re-entrant, no module-level mutable globals.
+ * All state is function-local - re-entrant, no module-level mutable globals.
  */
 
 const INF = Infinity;
@@ -259,7 +259,7 @@ function subdivide(
   }
 
   if (leftCount === 0 || leftCount === node.triCount) {
-    // All fallbacks failed — force leaf
+    // All fallbacks failed - force leaf
     node.leftFirst = triIdx[node.leftFirst]!;
     return;
   }

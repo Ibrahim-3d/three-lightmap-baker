@@ -1,4 +1,4 @@
-# Contributing — three-lightmap-baker
+# Contributing - three-lightmap-baker
 
 ## Architecture Rule: Two-Pass Bake (Non-Negotiable)
 
@@ -19,19 +19,19 @@ current CLA text.
 ## Shader Rules
 
 - All shaders MUST be GLSL 3.0 ES (`#version 300 es`)
-- Use MRT (Multiple Render Targets) where multiple outputs are needed — do NOT render the same geometry twice to write position and normal separately
+- Use MRT (Multiple Render Targets) where multiple outputs are needed - do NOT render the same geometry twice to write position and normal separately
 - Every shader uniform MUST have a JSDoc comment explaining its unit and range
 - Every shader MUST have a comment block at the top explaining: what it does, what its inputs are, what its outputs are
 - NO magic numbers in shaders. Use `#define` or uniforms with documented names
 - Floating-point constants MUST have explicit decimal points (`1.0` not `1`)
 - Guard against NaN/Inf: clamp PRNG output, check vector lengths before normalize, validate varyings at fragment entry
-- Do NOT use `texture2D` — use `texture()` (GLSL 3.0)
+- Do NOT use `texture2D` - use `texture()` (GLSL 3.0)
 
 ## TypeScript Rules
 
 - Strict mode always (`"strict": true` in tsconfig)
-- No `any` — use `unknown` and narrow, or define a proper type
-- No `as` type assertions except at FFI boundaries (WebGL calls, WASM interop) — and those MUST have a `// SAFETY:` comment explaining why the assertion is valid
+- No `any` - use `unknown` and narrow, or define a proper type
+- No `as` type assertions except at FFI boundaries (WebGL calls, WASM interop) - and those MUST have a `// SAFETY:` comment explaining why the assertion is valid
 - Exported functions MUST have JSDoc with `@param` and `@returns`
 - Internal functions SHOULD have a one-line comment explaining purpose
 - Prefer `interface` over `type` for object shapes (interfaces give better error messages and are extendable)
@@ -58,9 +58,9 @@ current CLA text.
 src/
 ├── lib/                    # The library (published to npm)
 │   ├── core/               # Orchestrator, options, result types
-│   │   ├── baker.ts        # LightmapBaker class — single entry point
+│   │   ├── baker.ts        # LightmapBaker class - single entry point
 │   │   ├── options.ts      # BakeOptions interface + defaults + validation
-│   │   ├── result.ts       # BakeResult class — lightmaps, AO maps, probes, dispose()
+│   │   ├── result.ts       # BakeResult class - lightmaps, AO maps, probes, dispose()
 │   │   └── types.ts        # Shared type definitions (NO implementation)
 │   ├── uv/                 # UV unwrapping (xatlas integration)
 │   │   └── unwrap.ts
@@ -124,7 +124,7 @@ try {
 ## Error Handling
 
 - Use custom error class: `BakeError extends Error` with `phase: string` and `meshName?: string`
-- Never swallow errors silently — log and rethrow, or log and continue with documented degradation
+- Never swallow errors silently - log and rethrow, or log and continue with documented degradation
 - Validate all options at entry (`baker.bake()`) BEFORE allocating GPU resources
 - Validate scene (has meshes, has at least one light source) BEFORE starting UV unwrap
 
@@ -153,7 +153,7 @@ Console logs prefixed with `[baker]`. No `console.log` without the prefix. No `c
 
 - Commit messages: `task-XX: short description` for task work, `fix: description` for bugfixes, `refactor: description` for cleanup
 - Each task is one or more commits. Squash is fine.
-- Do NOT commit debug screenshots to main — they go in a `.gitignore`d `screenshots/` directory
+- Do NOT commit debug screenshots to main - they go in a `.gitignore`d `screenshots/` directory
 - Do NOT commit `node_modules/`, `dist/`, or IDE config
 
 ## Code Modularity Rules
@@ -163,7 +163,7 @@ Console logs prefixed with `[baker]`. No `console.log` without the prefix. No `c
 - **Hard limit: 300 lines per file.** If a file exceeds 300 lines, it must be split before the next commit.
 - **Target: 150-250 lines per file.** This is the sweet spot where a file does one thing completely without scrolling.
 - **Shader files (.glsl): 200 lines max.** Extract shared functions into `common.glsl` and `#include` or import them.
-- **The only exception:** auto-generated files (type definitions from codegen, WASM bindings). These can exceed limits but must be marked with `// AUTO-GENERATED — DO NOT EDIT` at the top.
+- **The only exception:** auto-generated files (type definitions from codegen, WASM bindings). These can exceed limits but must be marked with `// AUTO-GENERATED - DO NOT EDIT` at the top.
 
 ### How to Split a File
 
@@ -173,10 +173,10 @@ When a file exceeds 300 lines, split by responsibility, not by arbitrary line co
 // BAD: split baker.ts into baker-part1.ts and baker-part2.ts
 
 // GOOD: split baker.ts into:
-//   baker.ts        — orchestration (calls phases in order, handles errors)
-//   options.ts      — option validation and defaults
-//   result.ts       — BakeResult class and disposal
-//   progress.ts     — progress reporting and timing
+//   baker.ts        - orchestration (calls phases in order, handles errors)
+//   options.ts      - option validation and defaults
+//   result.ts       - BakeResult class and disposal
+//   progress.ts     - progress reporting and timing
 ```
 
 Each extracted file must:
@@ -205,11 +205,11 @@ core/ (types, options, result)
   ↑
 passes/ (each pass depends on core types, nothing else)
   ↑
-scene/ (BVH, materials — depends on core types)
+scene/ (BVH, materials - depends on core types)
   ↑
-baker.ts (orchestrator — depends on everything above)
+baker.ts (orchestrator - depends on everything above)
   ↑
-demo/ (depends on lib/ — never the other way)
+demo/ (depends on lib/ - never the other way)
 ```
 
 A file may only import from files ABOVE it in this diagram, or from the same directory. Never downward.
@@ -220,7 +220,7 @@ A file may only import from files ABOVE it in this diagram, or from the same dir
 - **No singletons.** Multiple LightmapBaker instances must be able to coexist (different scenes, different settings) without interfering.
 - **Render targets are owned, not shared.** The function that creates an RT either returns it (caller owns) or disposes it (creator owns). Never "this RT lives in module scope and multiple functions write to it."
 
-### Before Every Commit — Modularity Checklist
+### Before Every Commit - Modularity Checklist
 
 - [ ] No file exceeds 300 lines
 - [ ] No function exceeds 50 lines

@@ -26,7 +26,7 @@ export function registerBakerMenus(): void {
   });
 
   // Path-Traced Bake menu item hidden 2026-05-19 with PT preview.
-  // PTBaker code stays in tree — re-enable by uncommenting when PT polish resumes.
+  // PTBaker code stays in tree - re-enable by uncommenting when PT polish resumes.
   // menuRegistry.register('Render', {
   //   id: 'render.pt-bake',
   //   label: 'Path-Traced Bake',
