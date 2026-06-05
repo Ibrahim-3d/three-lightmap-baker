@@ -4,7 +4,7 @@
 
 > Launch asset placeholder: replace this static screenshot with a short GIF/video showing a flat Three.js interior scene, the Bake action, visible GI/color bleeding, the lightmap atlas, and the baked result applied back to the scene.
 
-> Important GPU note: this baker is GPU-bound. Chrome and Edge must have **Use graphics acceleration when available** enabled, and `chrome://gpu` should report WebGL/WebGL2 as hardware accelerated. A website cannot programmatically switch a laptop from integrated graphics to a discrete GPU. The app reports the renderer it actually received, and launch automation can reject captures from the wrong GPU with `BAKER_EXPECT_GPU="RTX 3050" npm run capture:launch`. Playwright/Chromium is launched with `--enable-gpu --enable-webgl --ignore-gpu-blocklist --enable-gpu-rasterization --force_high_performance_gpu`, but those flags are a request to Chromium/ANGLE, not a guarantee over OS or driver GPU routing.
+> Important GPU note: this baker is GPU-bound. Chrome and Edge must have **Use graphics acceleration when available** enabled, and `chrome://gpu` should report WebGL/WebGL2 as hardware accelerated. Launch capture uses installed Chrome and, on Windows, prefers ANGLE D3D11 because that is the backend that selected the NVIDIA RTX GPU in testing. The app reports the renderer it actually received, and launch automation can reject captures from the wrong GPU with `BAKER_EXPECT_GPU="RTX 3050" npm run capture:launch`.
 
 <h1 align="center">🔆 Three Lightmap Baker</h1>
 
@@ -293,6 +293,12 @@ $env:BAKER_EXPECT_GPU="RTX 3050"; npm run capture:launch
 ```
 
 The capture helper uses installed Chrome by default. To intentionally use Playwright's bundled Chromium instead, set `BAKER_CAPTURE_BROWSER_CHANNEL=bundled`.
+
+On Windows the helper tries ANGLE backends in this order when `BAKER_EXPECT_GPU` is set: `d3d11`, `d3d11on12`, then `gl`. Override that list when debugging:
+
+```powershell
+$env:BAKER_CAPTURE_ANGLE="d3d11,d3d11on12,gl"; $env:BAKER_EXPECT_GPU="RTX 3050"; npm run capture:launch
+```
 
 | Device |         Scene | Resolution | Samples | Bounces | Denoise | Bake Time |
 | ------ | ------------: | ---------: | ------: | ------: | ------: | --------: |

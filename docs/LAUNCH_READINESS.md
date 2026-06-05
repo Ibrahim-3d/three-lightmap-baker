@@ -51,12 +51,21 @@ the renderer is not the expected launch GPU.
 Automation must launch Chromium with:
 
 ```text
---enable-gpu --enable-webgl --ignore-gpu-blocklist --enable-gpu-rasterization --force_high_performance_gpu
+--enable-gpu --enable-webgl --enable-webgl2 --ignore-gpu-blocklist --disable-gpu-driver-bug-workarounds --force-gpu-rasterization --enable-gpu-rasterization --enable-accelerated-2d-canvas --enable-zero-copy --disable-software-rasterizer --force_high_performance_gpu
 ```
 
 `--force_high_performance_gpu` is a Chromium switch used by upstream GPU test
 configs for dual-GPU machines, but it is not a substitute for OS/driver GPU
 assignment.
+
+On Windows, launch capture defaults to ANGLE D3D11 because that selected the
+NVIDIA RTX 3050 Ti Laptop GPU on the validation machine. When
+`BAKER_EXPECT_GPU` is set, the helper probes `d3d11`, `d3d11on12`, and `gl`
+before failing. If a future driver behaves differently, override the order:
+
+```text
+BAKER_CAPTURE_ANGLE="d3d11,d3d11on12,gl" BAKER_EXPECT_GPU="RTX 3050" npm run capture:launch
+```
 
 For benchmark automation, enforce the expected renderer:
 

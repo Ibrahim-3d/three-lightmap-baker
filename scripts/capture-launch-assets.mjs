@@ -16,17 +16,38 @@ const expectedGpu = process.env.BAKER_EXPECT_GPU?.trim();
 const requestedBrowserChannel = process.env.BAKER_CAPTURE_BROWSER_CHANNEL?.trim();
 const browserChannel =
   requestedBrowserChannel === 'bundled' ? undefined : requestedBrowserChannel || 'chrome';
+const requestedAngle = process.env.BAKER_CAPTURE_ANGLE?.trim();
+const defaultAngleCandidates =
+  process.platform === 'win32' ? ['d3d11', 'd3d11on12', 'gl'] : ['default', 'gl'];
+const angleCandidates = requestedAngle
+  ? requestedAngle
+      .split(',')
+      .map((candidate) => candidate.trim())
+      .filter(Boolean)
+  : defaultAngleCandidates;
+const probeTimeoutMs = Number(process.env.BAKER_CAPTURE_PROBE_TIMEOUT_MS ?? 30_000);
 const url = `${baseUrl}?test=1&scene=${encodeURIComponent(scene)}`;
-const chromeArgs = [
+const fixedChromeArgs = [
   '--enable-gpu',
-  '--use-angle=gl',
   '--enable-webgl',
+  '--enable-webgl2',
   '--ignore-gpu-blocklist',
+  '--disable-gpu-driver-bug-workarounds',
+  '--force-gpu-rasterization',
   '--enable-gpu-rasterization',
+  '--enable-accelerated-2d-canvas',
+  '--enable-zero-copy',
+  '--disable-software-rasterizer',
   '--force_high_performance_gpu',
   '--disable-background-timer-throttling',
   '--disable-renderer-backgrounding',
 ];
+
+function buildChromeArgs(angleBackend) {
+  const angleArg =
+    angleBackend && angleBackend !== 'default' ? [`--use-angle=${angleBackend}`] : [];
+  return [...fixedChromeArgs, ...angleArg];
+}
 
 function waitForUrl(target, timeoutMs = 60_000) {
   const deadline = Date.now() + timeoutMs;
@@ -68,10 +89,7 @@ async function startServerIfNeeded() {
   }
 }
 
-async function main() {
-  mkdirSync(outDir, { recursive: true });
-  const server = await startServerIfNeeded();
-
+async function launchBrowser(chromeArgs) {
   const launchOptions = {
     headless: process.env.HEADED ? false : true,
     args: chromeArgs,
@@ -80,8 +98,10 @@ async function main() {
     launchOptions.channel = browserChannel;
   }
 
-  const browser = await chromium.launch(launchOptions);
-  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  return chromium.launch(launchOptions);
+}
+
+function attachConsoleLogging(page) {
   page.on('console', (msg) => {
     const text = msg.text();
     if (
@@ -93,40 +113,116 @@ async function main() {
       console.info(`[browser:${msg.type()}] ${text}`);
     }
   });
+}
 
-  const startedAt = new Date().toISOString();
+async function preparePage(browser) {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  attachConsoleLogging(page);
+
+  await page.goto(url, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('body[data-baker-ready="1"]', { timeout: 30_000 });
+  await page.waitForFunction(() => {
+    const w = window;
+    return !!w.__baker && w.__baker.getMeshCount() > 0;
+  });
+  const meshCount = await page.evaluate(() => window.__baker.getMeshCount());
+  if (meshCount <= 0) {
+    throw new Error(`Scene "${scene}" has no bake-eligible meshes`);
+  }
+
+  const gpu = await page.evaluate(() => {
+    const canvas = document.querySelector('canvas');
+    const gl = canvas?.getContext('webgl2') ?? canvas?.getContext('webgl');
+    if (!gl) return { vendor: 'unavailable', renderer: 'unavailable' };
+    const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    return {
+      vendor: dbg ? gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR),
+      renderer: dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER),
+    };
+  });
+
+  return { page, meshCount, gpu };
+}
+
+async function withTimeout(promise, timeoutMs, label) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(
+      () => reject(new Error(`${label} timed out after ${timeoutMs}ms`)),
+      timeoutMs,
+    );
+  });
+
   try {
-    await page.goto(url, { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('body[data-baker-ready="1"]', { timeout: 30_000 });
-    await page.waitForFunction(() => {
-      const w = window;
-      return !!w.__baker && w.__baker.getMeshCount() > 0;
-    });
-    const meshCount = await page.evaluate(() => window.__baker.getMeshCount());
-    if (meshCount <= 0) {
-      throw new Error(`Scene "${scene}" has no bake-eligible meshes`);
+    return await Promise.race([promise, timeout]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function gpuMatchesExpected(gpu) {
+  if (!expectedGpu) return true;
+  const renderer = `${gpu.vendor} ${gpu.renderer}`;
+  return renderer.toLowerCase().includes(expectedGpu.toLowerCase());
+}
+
+async function chooseLaunchConfig() {
+  const probes = [];
+
+  for (const angleBackend of angleCandidates) {
+    const chromeArgs = buildChromeArgs(angleBackend);
+    let browser;
+    try {
+      browser = await launchBrowser(chromeArgs);
+      const { gpu } = await withTimeout(
+        preparePage(browser),
+        probeTimeoutMs,
+        `ANGLE ${angleBackend} probe`,
+      );
+      probes.push({ angleBackend, gpu });
+      console.info(`[capture] ANGLE ${angleBackend}: ${gpu.renderer}`);
+
+      if (gpuMatchesExpected(gpu)) {
+        return { angleBackend, chromeArgs, probes };
+      }
+    } catch (err) {
+      probes.push({
+        angleBackend,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      console.warn(`[capture] ANGLE ${angleBackend} probe failed: ${probes.at(-1).error}`);
+    } finally {
+      if (browser) await browser.close();
     }
 
-    const gpu = await page.evaluate(() => {
-      const canvas = document.querySelector('canvas');
-      const gl = canvas?.getContext('webgl2') ?? canvas?.getContext('webgl');
-      if (!gl) return { vendor: 'unavailable', renderer: 'unavailable' };
-      const dbg = gl.getExtension('WEBGL_debug_renderer_info');
-      return {
-        vendor: dbg ? gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR),
-        renderer: dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER),
-      };
-    });
+    if (!expectedGpu) break;
+  }
+
+  throw new Error(
+    [
+      `Expected GPU containing "${expectedGpu}", but no Chrome/ANGLE launch mode matched it.`,
+      `Browser channel: ${browserChannel || 'playwright bundled chromium'}`,
+      `Tried ANGLE backends: ${angleCandidates.join(', ')}`,
+      'Probe results:',
+      ...probes.map((probe) => {
+        if (probe.gpu) return `- ${probe.angleBackend}: ${probe.gpu.renderer}`;
+        return `- ${probe.angleBackend}: ${probe.error}`;
+      }),
+    ].join('\n'),
+  );
+}
+
+async function main() {
+  mkdirSync(outDir, { recursive: true });
+  const server = await startServerIfNeeded();
+  const startedAt = new Date().toISOString();
+  let browser;
+
+  try {
+    const launchConfig = await chooseLaunchConfig();
+    browser = await launchBrowser(launchConfig.chromeArgs);
+    const { page, meshCount, gpu } = await preparePage(browser);
     const renderer = `${gpu.vendor} ${gpu.renderer}`;
-    if (expectedGpu && !renderer.toLowerCase().includes(expectedGpu.toLowerCase())) {
-      throw new Error(
-        [
-          `Expected GPU containing "${expectedGpu}", but Chromium reported: ${gpu.renderer}`,
-          'The Chromium flags request hardware acceleration, but the browser cannot force OS/driver GPU assignment.',
-          `Browser channel: ${browserChannel || 'playwright bundled chromium'}. Change OS/driver routing before publishing benchmark numbers, or set BAKER_CAPTURE_BROWSER_CHANNEL=bundled only for non-launch smoke tests.`,
-        ].join('\n'),
-      );
-    }
 
     const looksSoftware = /swiftshader|llvmpipe|software rasterizer/i.test(renderer);
     if (looksSoftware) {
@@ -184,7 +280,9 @@ async function main() {
         arch: os.arch(),
         cpus: os.cpus().length,
       },
-      chromeArgs,
+      chromeArgs: launchConfig.chromeArgs,
+      angleBackend: launchConfig.angleBackend,
+      angleProbes: launchConfig.probes,
       expectedGpu: expectedGpu || null,
       browserChannel: browserChannel || 'playwright bundled chromium',
       outputs: {
@@ -208,8 +306,9 @@ async function main() {
         `- GPU: ${gpu.renderer}`,
         `- Browser: ${metrics.browser}`,
         `- Browser channel: ${browserChannel || 'playwright bundled chromium'}`,
+        `- ANGLE backend: ${launchConfig.angleBackend}`,
         `- Expected GPU: ${expectedGpu || 'not enforced'}`,
-        `- Chrome args: ${chromeArgs.join(' ')}`,
+        `- Chrome args: ${launchConfig.chromeArgs.join(' ')}`,
         '',
         '| Device | Scene | Resolution | Samples | Bounces | Denoise | Bake Time |',
         '|---|---:|---:|---:|---:|---:|---:|',
@@ -221,7 +320,7 @@ async function main() {
     console.info(`[capture] wrote ${outDir}`);
     console.info(`[capture] bake time ${metrics.elapsedSeconds}s on ${gpu.renderer}`);
   } finally {
-    await browser.close();
+    if (browser) await browser.close();
     if (server) server.kill();
   }
 }
