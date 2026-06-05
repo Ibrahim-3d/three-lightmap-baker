@@ -91,7 +91,7 @@ If you've used Unity's **Progressive Lightmapper** or Unreal's **Lightmass**, yo
 - **Multi-bounce** - 1-4 configurable bounce depth. Each bounce adds indirect illumination. Energy-conserving (albedo < 1 guarantees convergence).
 - **Per-triangle material data** - albedo and emissive packed into DataTextures, indexed by BVH triangle. Materials are respected during bounces - a red wall reflects red light because the bounce ray reads the wall's albedo.
 - **Progressive rendering** - watch the lightmap converge in real-time. Stop early if quality is acceptable.
-- **Bake presets** - Draft (2-5s), Preview (10-30s), Production (1-5min), Final (5-15min).
+- **Bake presets** - measured on the Cornell advanced scene from Draft through Final, with RTX 3050 Ti numbers listed below.
 - **Gap flood / edge dilation** - prevents black seams at UV island borders.
 - **Bilateral denoiser** - smooths noise while preserving shadow edges, guided by world-position and normal textures.
 - **TypeScript** - strict mode, fully typed API.
@@ -270,7 +270,7 @@ This section is intentionally a checklist until the final visual asset is captur
 
 ## Benchmarks
 
-Benchmark numbers should be published only after the same scene and settings are tested across machines. Use this format for the first public table:
+Measured on Windows with installed Chrome, ANGLE D3D11, and an NVIDIA GeForce RTX 3050 Ti Laptop GPU. Treat these as a reproducible baseline for the `cornell.advanced` scene, not a universal promise for every model or driver.
 
 Run the local capture and benchmark helper with:
 
@@ -278,7 +278,7 @@ Run the local capture and benchmark helper with:
 npm run capture:launch
 ```
 
-It writes `launch-artifacts/before-albedo-unlit.png`, `launch-artifacts/after-baked-combined.png`, `launch-artifacts/benchmark.json`, and `launch-artifacts/benchmark.md`. The output directory is ignored by git so you can rerun it on the real launch machine and copy only the numbers/assets you want to publish.
+It writes `launch-artifacts/before-solid-viewport.png`, `launch-artifacts/after-preview-baked-combined.png`, `launch-artifacts/after-production-baked-combined.png`, `launch-artifacts/benchmark.json`, and `launch-artifacts/benchmark.md`. The output directory is ignored by git so you can rerun it on the real launch machine and copy only the numbers/assets you want to publish.
 
 For launch numbers, enforce the expected renderer so a dual-GPU laptop cannot accidentally publish integrated-GPU results:
 
@@ -300,12 +300,14 @@ On Windows the helper tries ANGLE backends in this order when `BAKER_EXPECT_GPU`
 $env:BAKER_CAPTURE_ANGLE="d3d11,d3d11on12,gl"; $env:BAKER_EXPECT_GPU="RTX 3050"; npm run capture:launch
 ```
 
-| Device |         Scene | Resolution | Samples | Bounces | Denoise | Bake Time |
-| ------ | ------------: | ---------: | ------: | ------: | ------: | --------: |
-| TBD    |   Cornell Box |        512 |      64 |       2 |      On |       TBD |
-| TBD    | Interior Demo |       1024 |     128 |       2 |      On |       TBD |
+| Device | Scene | Preset | Resolution | Samples | Bounces | Denoise | Bake Time |
+| ------ | ----: | -----: | ---------: | ------: | ------: | ------: | --------: |
+| RTX 3050 Ti Laptop GPU | cornell.advanced | Draft | 256px | 4 x 32 frames (128 spp) | 2 | Off | 4.63s |
+| RTX 3050 Ti Laptop GPU | cornell.advanced | Preview | 512px | 5 x 96 frames (480 spp) | 2 | Off | 5.05s |
+| RTX 3050 Ti Laptop GPU | cornell.advanced | Production | 1024px | 6 x 256 frames (1536 spp) | 2 | Off | 36.48s |
+| RTX 3050 Ti Laptop GPU | cornell.advanced | Final | 2048px | 8 x 512 frames (4096 spp) | 2 | Off | 408.7s |
 
-Current preset expectations are directional only: Draft is for seconds-scale iteration, Preview is for design review, and Production/Final are for higher-quality output on discrete GPUs.
+The script captures one solid 3D before image, then Preview and Production baked images. Use the Production image as the main after asset and keep the Preview image for visual preset comparison.
 
 ---
 
@@ -394,12 +396,14 @@ The two-pass approach treats the renderer normally. Pass 1 uses the GPU for what
 
 ## Bake Presets
 
-| Preset         | Samples | Bounces | Resolution | Time (RTX 3060) | Use Case                       |
-| -------------- | ------- | ------- | ---------- | --------------- | ------------------------------ |
-| **Draft**      | 16      | 1       | 256px      | ~2-5s           | Quick iteration, layout checks |
-| **Preview**    | 64      | 2       | 512px      | ~10-30s         | Client preview, design review  |
-| **Production** | 256     | 3       | 1024px     | ~1-5min         | Published walkthroughs         |
-| **Final**      | 512+    | 4       | 2048px     | ~5-15min        | Hero shots, portfolio pieces   |
+Measured on the `cornell.advanced` scene only:
+
+| Preset         | Samples | Bounces | Resolution | Measured Time (RTX 3050 Ti) |
+| -------------- | ------- | ------- | ---------- | --------------------------- |
+| **Draft**      | 4 x 32 frames (128 spp) | 2 | 256px | 4.63s |
+| **Preview**    | 5 x 96 frames (480 spp) | 2 | 512px | 5.05s |
+| **Production** | 6 x 256 frames (1536 spp) | 2 | 1024px | 36.48s |
+| **Final**      | 8 x 512 frames (4096 spp) | 2 | 2048px | 408.7s |
 
 ---
 

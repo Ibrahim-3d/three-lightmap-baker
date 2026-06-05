@@ -22,9 +22,10 @@ architectural visualization. No Blender round-trip.
 ## Still manual before public launch
 
 - Run `BAKER_EXPECT_GPU="<expected renderer substring>" npm run capture:launch`
-  on the target machine to generate baseline before/after stills and benchmark
-  data in `launch-artifacts/` without accidentally publishing fallback-GPU
-  numbers.
+  on the target machine to generate `before-solid-viewport.png`,
+  `after-preview-baked-combined.png`, `after-production-baked-combined.png`,
+  and four-preset benchmark data in `launch-artifacts/` without accidentally
+  publishing fallback-GPU numbers.
 - Capture a top-of-README GIF/video: flat scene, click Bake, GI appears,
   atlas shown, baked result applied.
 - Review the generated before/after stills and replace them with a stronger
