@@ -4,7 +4,7 @@
 
 > Launch asset placeholder: replace this static screenshot with a short GIF/video showing a flat Three.js interior scene, the Bake action, visible GI/color bleeding, the lightmap atlas, and the baked result applied back to the scene.
 
-> Important GPU note: this baker is GPU-bound. In Chrome or Edge, enable **Use graphics acceleration when available**, restart the browser, and verify `chrome://gpu` reports WebGL/WebGL2 as hardware accelerated. On laptops or dual-GPU desktops, force Chrome onto the high-performance GPU in the OS or driver control panel. For automation and Playwright captures, launch Chromium with `--enable-gpu --enable-webgl --ignore-gpu-blocklist --enable-gpu-rasterization --force_high_performance_gpu`. Chromium uses `--force_high_performance_gpu` in GPU test configurations for dual-GPU machines, but OS/driver settings still decide whether the discrete GPU is actually available.
+> Important GPU note: this baker is GPU-bound. Chrome and Edge must have **Use graphics acceleration when available** enabled, and `chrome://gpu` should report WebGL/WebGL2 as hardware accelerated. A website cannot programmatically switch a laptop from integrated graphics to a discrete GPU. The app reports the renderer it actually received, and launch automation can reject captures from the wrong GPU with `BAKER_EXPECT_GPU="RTX 3050" npm run capture:launch`. Playwright/Chromium is launched with `--enable-gpu --enable-webgl --ignore-gpu-blocklist --enable-gpu-rasterization --force_high_performance_gpu`, but those flags are a request to Chromium/ANGLE, not a guarantee over OS or driver GPU routing.
 
 <h1 align="center">🔆 Three Lightmap Baker</h1>
 
@@ -280,10 +280,24 @@ npm run capture:launch
 
 It writes `launch-artifacts/before-albedo-unlit.png`, `launch-artifacts/after-baked-combined.png`, `launch-artifacts/benchmark.json`, and `launch-artifacts/benchmark.md`. The output directory is ignored by git so you can rerun it on the real launch machine and copy only the numbers/assets you want to publish.
 
-| Device | Scene | Resolution | Samples | Bounces | Denoise | Bake Time |
-|---|---:|---:|---:|---:|---:|---:|
-| TBD | Cornell Box | 512 | 64 | 2 | On | TBD |
-| TBD | Interior Demo | 1024 | 128 | 2 | On | TBD |
+For launch numbers, enforce the expected renderer so a dual-GPU laptop cannot accidentally publish integrated-GPU results:
+
+```bash
+BAKER_EXPECT_GPU="RTX 3050" npm run capture:launch
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:BAKER_EXPECT_GPU="RTX 3050"; npm run capture:launch
+```
+
+If you want to test installed Chrome instead of Playwright's bundled Chromium, use `BAKER_CAPTURE_BROWSER_CHANNEL=chrome`.
+
+| Device |         Scene | Resolution | Samples | Bounces | Denoise | Bake Time |
+| ------ | ------------: | ---------: | ------: | ------: | ------: | --------: |
+| TBD    |   Cornell Box |        512 |      64 |       2 |      On |       TBD |
+| TBD    | Interior Demo |       1024 |     128 |       2 |      On |       TBD |
 
 Current preset expectations are directional only: Draft is for seconds-scale iteration, Preview is for design review, and Production/Final are for higher-quality output on discrete GPUs.
 
@@ -311,10 +325,10 @@ Two-pass architecture. No vertex shader hacks. No fighting the Three.js renderer
 
 Each mesh's geometry is rendered with `gl_Position = uv2 * 2.0 - 1.0`, projecting triangles into their lightmap UV layout. Two textures are generated:
 
-| Texture | Contents | Purpose |
-|---|---|---|
-| **Position map** | World-space XYZ per texel (RGB = position) | Ray origins for Pass 2 |
-| **Normal map** | World-space normal per texel (RGB = normal) | Ray directions for Pass 2 |
+| Texture          | Contents                                    | Purpose                   |
+| ---------------- | ------------------------------------------- | ------------------------- |
+| **Position map** | World-space XYZ per texel (RGB = position)  | Ray origins for Pass 2    |
+| **Normal map**   | World-space normal per texel (RGB = normal) | Ray directions for Pass 2 |
 
 These textures are a 2D lookup table: for any texel coordinate, you can read the corresponding world position and surface normal.
 
@@ -335,13 +349,13 @@ For each sample:
     If ray hits a surface:
         Read hit surface's emissive color → add to radiance (direct)
         Read hit surface's albedo color
-        
+
         // Bounce: trace again from hit point
         Generate new direction around hit normal
         Trace bounce ray into BVH
         If bounce hits emissive surface:
             radiance += hitAlbedo × bounceEmissive (indirect GI)
-        
+
         // More bounces if configured (2, 3, 4...)
 
     Accumulate radiance into lightmap texel
@@ -361,25 +375,25 @@ The two-pass approach treats the renderer normally. Pass 1 uses the GPU for what
 
 ## The Landscape
 
-| Project | Last Updated | GI Bounces | Status |
-|---|---|---|---|
-| **This repo** | **Active** | **✅ 1-4 bounces** | **✅ Maintained** |
-| [lucas-jones/three-lightmap-baker](https://github.com/lucas-jones/three-lightmap-baker) | 2023 | ❌ Direct only | Archived (this fork continues it) |
-| [@react-three/lightmap](https://github.com/pmndrs/react-three-lightmap) | 2022-era package | ❌ Hemicube workflow | Not current with modern R3F |
-| [mem1b/lightbaking](https://github.com/mem1b/lightbaking) | Older Three.js era | ✅ Has bounces | Uses legacy Three.js APIs |
-| [three-gpu-pathtracer #5](https://github.com/gkjohnson/three-gpu-pathtracer/issues/5) | Issue open since 2021 | n/a | Renderer, not a lightmap exporter |
-| PlayCanvas lightmapper | Active | ❌ Direct + AO focused | Engine-integrated, not a Three.js package |
+| Project                                                                                 | Last Updated          | GI Bounces             | Status                                    |
+| --------------------------------------------------------------------------------------- | --------------------- | ---------------------- | ----------------------------------------- |
+| **This repo**                                                                           | **Active**            | **✅ 1-4 bounces**     | **✅ Maintained**                         |
+| [lucas-jones/three-lightmap-baker](https://github.com/lucas-jones/three-lightmap-baker) | 2023                  | ❌ Direct only         | Archived (this fork continues it)         |
+| [@react-three/lightmap](https://github.com/pmndrs/react-three-lightmap)                 | 2022-era package      | ❌ Hemicube workflow   | Not current with modern R3F               |
+| [mem1b/lightbaking](https://github.com/mem1b/lightbaking)                               | Older Three.js era    | ✅ Has bounces         | Uses legacy Three.js APIs                 |
+| [three-gpu-pathtracer #5](https://github.com/gkjohnson/three-gpu-pathtracer/issues/5)   | Issue open since 2021 | n/a                    | Renderer, not a lightmap exporter         |
+| PlayCanvas lightmapper                                                                  | Active                | ❌ Direct + AO focused | Engine-integrated, not a Three.js package |
 
 ---
 
 ## Bake Presets
 
-| Preset | Samples | Bounces | Resolution | Time (RTX 3060) | Use Case |
-|---|---|---|---|---|---|
-| **Draft** | 16 | 1 | 256px | ~2-5s | Quick iteration, layout checks |
-| **Preview** | 64 | 2 | 512px | ~10-30s | Client preview, design review |
-| **Production** | 256 | 3 | 1024px | ~1-5min | Published walkthroughs |
-| **Final** | 512+ | 4 | 2048px | ~5-15min | Hero shots, portfolio pieces |
+| Preset         | Samples | Bounces | Resolution | Time (RTX 3060) | Use Case                       |
+| -------------- | ------- | ------- | ---------- | --------------- | ------------------------------ |
+| **Draft**      | 16      | 1       | 256px      | ~2-5s           | Quick iteration, layout checks |
+| **Preview**    | 64      | 2       | 512px      | ~10-30s         | Client preview, design review  |
+| **Production** | 256     | 3       | 1024px     | ~1-5min         | Published walkthroughs         |
+| **Final**      | 512+    | 4       | 2048px     | ~5-15min        | Hero shots, portfolio pieces   |
 
 ---
 
@@ -393,14 +407,14 @@ const baker = new LightmapBaker(renderer, options?: BakeOptions);
 const baker = new LightmapBaker({ renderer, ...options });
 ```
 
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `samples` | `number` | `64` | Rays per texel. More = less noise, longer bake. |
-| `bounces` | `number` | `2` | Indirect light bounces. 1 = direct + one bounce. 4 = max. |
-| `resolution` | `number` | `512` | Lightmap texture size (square). |
-| `denoise` | `boolean` | `true` | Apply bilateral denoiser after bake. |
-| `dilatePx` | `number` | `4` | Edge dilation passes to prevent UV seam artifacts. |
-| `superSample` | `number` | `1` | Bake at resolution × superSample, then downscale. |
+| Option        | Type      | Default | Description                                               |
+| ------------- | --------- | ------- | --------------------------------------------------------- |
+| `samples`     | `number`  | `64`    | Rays per texel. More = less noise, longer bake.           |
+| `bounces`     | `number`  | `2`     | Indirect light bounces. 1 = direct + one bounce. 4 = max. |
+| `resolution`  | `number`  | `512`   | Lightmap texture size (square).                           |
+| `denoise`     | `boolean` | `true`  | Apply bilateral denoiser after bake.                      |
+| `dilatePx`    | `number`  | `4`     | Edge dilation passes to prevent UV seam artifacts.        |
+| `superSample` | `number`  | `1`     | Bake at resolution × superSample, then downscale.         |
 
 ### `baker.bake(scene, callbacks?)`
 
@@ -412,12 +426,12 @@ const result = await baker.bake(scene, {
 
 Returns a `BakeResult`:
 
-| Property | Type | Description |
-|---|---|---|
-| `lightmaps` | `Map<Mesh, Texture>` | Per-mesh lightmap textures |
-| `groups` | `BakeGroupView[]` | Per-atlas internals (direct/indirect/ao/composite/position/normal) |
-| `bvh` | `MeshBVH` | Shared BVH built for the bake |
-| `stats` | `object` | Mesh count, texel count, rays traced, and per-phase durations |
+| Property    | Type                 | Description                                                        |
+| ----------- | -------------------- | ------------------------------------------------------------------ |
+| `lightmaps` | `Map<Mesh, Texture>` | Per-mesh lightmap textures                                         |
+| `groups`    | `BakeGroupView[]`    | Per-atlas internals (direct/indirect/ao/composite/position/normal) |
+| `bvh`       | `MeshBVH`            | Shared BVH built for the bake                                      |
+| `stats`     | `object`             | Mesh count, texel count, rays traced, and per-phase durations      |
 
 ### `result.apply()`
 
@@ -447,7 +461,7 @@ Releases all GPU resources (textures, render targets).
 - Large atlases, high sample counts, and many bounces can still hit browser/GPU timeout behavior on weaker hardware.
 - Light/material coverage is focused on `MeshStandardMaterial`-style surfaces, emissive contribution, direct light collection, AO, and GI bounces. Advanced production lighting such as IES profiles, textured area lights, and full material parity remain roadmap items.
 - Auto UV2 unwrapping is designed to remove the Blender unwrap step, but pathological geometry can still need cleanup or manual UVs.
-- Playwright or other automated browser captures must launch Chromium with hardware acceleration and high-performance GPU flags. Otherwise numbers can accidentally measure SwiftShader, integrated GPU fallback, or blocklisted GPU behavior.
+- Playwright or other automated browser captures must record the actual WebGL renderer and should enforce the expected device with `BAKER_EXPECT_GPU`. Chromium GPU flags improve the odds of hardware acceleration, but they do not override OS/driver GPU assignment on every machine.
 - The current public package is prepared for npm release but is not published until the first release is cut.
 
 ---
@@ -475,6 +489,7 @@ Releases all GPU resources (textures, render targets).
 This repo is a fork of [lucas-jones/three-lightmap-baker](https://github.com/lucas-jones/three-lightmap-baker), which established the two-pass architecture and proved it works. The bounce lighting, material system, denoiser, and API are new.
 
 Built on top of:
+
 - [three-mesh-bvh](https://github.com/gkjohnson/three-mesh-bvh) by Garrett Johnson - GPU-accelerated BVH that makes browser ray tracing possible
 - [three-gpu-pathtracer](https://github.com/gkjohnson/three-gpu-pathtracer) by Garrett Johnson - reference implementation for path tracing in Three.js
 - [xatlas-three](https://github.com/repalash/xatlas-three/) - browser-native UV unwrapping via xatlas WASM

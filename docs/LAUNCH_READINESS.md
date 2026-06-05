@@ -21,8 +21,10 @@ architectural visualization. No Blender round-trip.
 
 ## Still manual before public launch
 
-- Run `npm run capture:launch` on the target machine to generate baseline
-  before/after stills and benchmark data in `launch-artifacts/`.
+- Run `BAKER_EXPECT_GPU="<expected renderer substring>" npm run capture:launch`
+  on the target machine to generate baseline before/after stills and benchmark
+  data in `launch-artifacts/` without accidentally publishing fallback-GPU
+  numbers.
 - Capture a top-of-README GIF/video: flat scene, click Bake, GI appears,
   atlas shown, baked result applied.
 - Review the generated before/after stills and replace them with a stronger
@@ -39,9 +41,12 @@ architectural visualization. No Blender round-trip.
 
 Chrome or Edge must have graphics acceleration enabled. Verify `chrome://gpu`
 shows WebGL/WebGL2 as hardware accelerated before trusting screenshots or
-benchmark numbers. On dual-GPU systems, also select the high-performance GPU in
-Windows Graphics settings, NVIDIA Control Panel, AMD Software, or the
-equivalent OS/driver panel.
+benchmark numbers.
+
+Do not claim that the site can force a high-performance GPU. Browser content
+cannot change OS/driver GPU routing. The correct product behavior is to request
+hardware acceleration, detect the actual WebGL renderer, and warn or fail when
+the renderer is not the expected launch GPU.
 
 Automation must launch Chromium with:
 
@@ -52,6 +57,18 @@ Automation must launch Chromium with:
 `--force_high_performance_gpu` is a Chromium switch used by upstream GPU test
 configs for dual-GPU machines, but it is not a substitute for OS/driver GPU
 assignment.
+
+For benchmark automation, enforce the expected renderer:
+
+```text
+BAKER_EXPECT_GPU="RTX 3050" npm run capture:launch
+```
+
+For installed Chrome instead of Playwright's bundled Chromium:
+
+```text
+BAKER_CAPTURE_BROWSER_CHANNEL=chrome npm run capture:launch
+```
 
 References:
 

@@ -12,6 +12,8 @@ const scene = process.env.BAKER_CAPTURE_SCENE ?? 'cornell.advanced';
 const captureResolution = Number(process.env.BAKER_CAPTURE_RESOLUTION ?? 128);
 const captureCasts = Number(process.env.BAKER_CAPTURE_CASTS ?? 2);
 const captureFrames = Number(process.env.BAKER_CAPTURE_FRAMES ?? 8);
+const expectedGpu = process.env.BAKER_EXPECT_GPU?.trim();
+const browserChannel = process.env.BAKER_CAPTURE_BROWSER_CHANNEL?.trim();
 const url = `${baseUrl}?test=1&scene=${encodeURIComponent(scene)}`;
 const chromeArgs = [
   '--enable-gpu',
@@ -68,10 +70,15 @@ async function main() {
   mkdirSync(outDir, { recursive: true });
   const server = await startServerIfNeeded();
 
-  const browser = await chromium.launch({
+  const launchOptions = {
     headless: process.env.HEADED ? false : true,
     args: chromeArgs,
-  });
+  };
+  if (browserChannel) {
+    launchOptions.channel = browserChannel;
+  }
+
+  const browser = await chromium.launch(launchOptions);
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   page.on('console', (msg) => {
     const text = msg.text();
@@ -108,6 +115,21 @@ async function main() {
         renderer: dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER),
       };
     });
+    const renderer = `${gpu.vendor} ${gpu.renderer}`;
+    if (expectedGpu && !renderer.toLowerCase().includes(expectedGpu.toLowerCase())) {
+      throw new Error(
+        [
+          `Expected GPU containing "${expectedGpu}", but Chromium reported: ${gpu.renderer}`,
+          'The Chromium flags request hardware acceleration, but the browser cannot force OS/driver GPU assignment.',
+          'Use BAKER_CAPTURE_BROWSER_CHANNEL=chrome to test installed Chrome, or change OS/driver routing before publishing benchmark numbers.',
+        ].join('\n'),
+      );
+    }
+
+    const looksSoftware = /swiftshader|llvmpipe|software rasterizer/i.test(renderer);
+    if (looksSoftware) {
+      console.warn(`[capture] software renderer detected: ${gpu.renderer}`);
+    }
 
     await page.evaluate(() => window.__baker.setLayer('albedoUnlit'));
     await page.waitForTimeout(500);
@@ -128,14 +150,10 @@ async function main() {
       },
       { resolution: captureResolution, casts: captureCasts, frames: captureFrames },
     );
-    await page.waitForFunction(
-      () => window.__baker.getBakeStatus() === 'done',
-      undefined,
-      {
-        timeout: Number(process.env.BAKER_CAPTURE_TIMEOUT_MS ?? 120_000),
-        polling: 250,
-      },
-    );
+    await page.waitForFunction(() => window.__baker.getBakeStatus() === 'done', undefined, {
+      timeout: Number(process.env.BAKER_CAPTURE_TIMEOUT_MS ?? 120_000),
+      polling: 250,
+    });
     const elapsedMs = Date.now() - t0;
 
     await page.evaluate(() => window.__baker.setLayer('combined'));
@@ -165,6 +183,8 @@ async function main() {
         cpus: os.cpus().length,
       },
       chromeArgs,
+      expectedGpu: expectedGpu || null,
+      browserChannel: browserChannel || null,
       outputs: {
         before: 'before-albedo-unlit.png',
         after: 'after-baked-combined.png',
@@ -185,6 +205,8 @@ async function main() {
         `- Bake time: ${metrics.elapsedSeconds}s`,
         `- GPU: ${gpu.renderer}`,
         `- Browser: ${metrics.browser}`,
+        `- Browser channel: ${browserChannel || 'playwright bundled chromium'}`,
+        `- Expected GPU: ${expectedGpu || 'not enforced'}`,
         `- Chrome args: ${chromeArgs.join(' ')}`,
         '',
         '| Device | Scene | Resolution | Samples | Bounces | Denoise | Bake Time |',
