@@ -1,8 +1,10 @@
 <p align="center">
-  <img src="screenshots/01-baseline.png" alt="Cornell Box with path-traced global illumination baked in-browser" width="720" />
+  <img src="screenshots/after-production-baked-combined.png" alt="Cornell advanced scene with path-traced global illumination baked in-browser" width="720" />
 </p>
 
-> Launch asset placeholder: replace this static screenshot with a short GIF/video showing a flat Three.js interior scene, the Bake action, visible GI/color bleeding, the lightmap atlas, and the baked result applied back to the scene.
+| Solid viewport before bake | Preview bake | Production bake |
+| --- | --- | --- |
+| <img src="screenshots/before-solid-viewport.png" alt="Cornell advanced scene before lightmap baking" width="260" /> | <img src="screenshots/after-preview-baked-combined.png" alt="Cornell advanced scene after Preview lightmap bake" width="260" /> | <img src="screenshots/after-production-baked-combined.png" alt="Cornell advanced scene after Production lightmap bake" width="260" /> |
 
 > Important GPU note: this baker is GPU-bound. Chrome and Edge must have **Use graphics acceleration when available** enabled, and `chrome://gpu` should report WebGL/WebGL2 as hardware accelerated. Launch capture uses installed Chrome and, on Windows, prefers ANGLE D3D11 because that is the backend that selected the NVIDIA RTX GPU in testing. The app reports the renderer it actually received, and launch automation can reject captures from the wrong GPU with `BAKER_EXPECT_GPU="RTX 3050" npm run capture:launch`.
 
