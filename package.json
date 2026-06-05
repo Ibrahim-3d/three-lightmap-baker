@@ -1,8 +1,38 @@
 {
 	"name": "three-lightmap-baker",
 	"version": "1.0.0",
-	"description": "Browser-first Three.js lightmap baker with path-traced GI",
+	"description": "Browser-based Three.js lightmap baker with path-traced global illumination, auto UV2, BVH ray tracing, AO, denoising, and progressive preview",
 	"type": "module",
+	"license": "MIT",
+	"author": "Ibrahim-3d",
+	"homepage": "https://github.com/Ibrahim-3d/three-lightmap-baker#readme",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/Ibrahim-3d/three-lightmap-baker.git"
+	},
+	"bugs": {
+		"url": "https://github.com/Ibrahim-3d/three-lightmap-baker/issues"
+	},
+	"keywords": [
+		"threejs",
+		"three",
+		"webgl",
+		"lightmap",
+		"lightmapping",
+		"global-illumination",
+		"path-tracing",
+		"bvh",
+		"three-mesh-bvh",
+		"xatlas",
+		"r3f",
+		"react-three-fiber",
+		"3d",
+		"rendering",
+		"procedural-3d",
+		"architectural-visualization",
+		"configurator"
+	],
+	"sideEffects": false,
 	"main": "./dist/package/index.cjs",
 	"module": "./dist/package/index.js",
 	"types": "./dist/package/index.d.ts",

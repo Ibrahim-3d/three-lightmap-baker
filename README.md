@@ -1,6 +1,8 @@
 <p align="center">
-  <img src="screenshots/cornell-box-gi.png" alt="Cornell Box with path-traced global illumination — baked in-browser" width="720" />
+  <img src="screenshots/01-baseline.png" alt="Cornell Box with path-traced global illumination baked in-browser" width="720" />
 </p>
+
+> Launch asset placeholder: replace this static screenshot with a short GIF/video showing a flat Three.js interior scene, the Bake action, visible GI/color bleeding, the lightmap atlas, and the baked result applied back to the scene.
 
 <h1 align="center">🔆 Three Lightmap Baker</h1>
 
@@ -16,7 +18,10 @@
   <a href="#quick-start">Quick Start</a> •
   <a href="#why-this-exists">Why This Exists</a> •
   <a href="#features">Features</a> •
+  <a href="#examples">Examples</a> •
+  <a href="#benchmarks">Benchmarks</a> •
   <a href="#how-it-works">How It Works</a> •
+  <a href="#known-limitations">Limitations</a> •
   <a href="#api">API</a> •
   <a href="#roadmap">Roadmap</a>
 </p>
@@ -195,6 +200,99 @@ const result = await baker.bake(scene);
 
 ---
 
+## Examples
+
+### Minimal Browser
+
+See [`examples/minimal-browser.ts`](./examples/minimal-browser.ts) for a copy-pasteable browser scene with a renderer, camera, `MeshStandardMaterial` geometry, direct light, and both supported constructor styles.
+
+### React Three Fiber
+
+The baker needs access to the underlying Three.js renderer and scene. In R3F, get them from `useThree()` and run the bake from a user action:
+
+```tsx
+import { useState } from 'react';
+import { useThree } from '@react-three/fiber';
+import { LightmapBaker } from 'three-lightmap-baker';
+
+export function BakeButton() {
+  const { gl, scene } = useThree();
+  const [busy, setBusy] = useState(false);
+
+  async function bake() {
+    setBusy(true);
+    try {
+      const baker = new LightmapBaker({
+        renderer: gl,
+        resolution: 512,
+        samples: 64,
+        bounces: 2,
+        denoise: true,
+      });
+
+      const result = await baker.bake(scene, {
+        onProgress: (phase, progress) => {
+          console.info(`[lightmap] ${phase}: ${Math.round(progress * 100)}%`);
+        },
+      });
+
+      result.apply();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <button type="button" onClick={bake} disabled={busy}>
+      {busy ? 'Baking...' : 'Bake'}
+    </button>
+  );
+}
+```
+
+Keep the button outside the `<Canvas>` if you prefer native DOM controls; the important part is that the bake runs after the scene contains real `MeshStandardMaterial` meshes and a renderer-backed WebGL context.
+
+### Interior / Architectural Demo
+
+The launch demo target is a small interior scene, not only a Cornell Box:
+
+1. Start with a flat Three.js room/configurator scene.
+2. Click **Bake**.
+3. Show progressive convergence, color bleeding, and soft contact shadows.
+4. Show the generated lightmap atlas.
+5. Apply the exported result back onto the same scene.
+
+This section is intentionally a checklist until the final visual asset is captured.
+
+---
+
+## Benchmarks
+
+Benchmark numbers should be published only after the same scene and settings are tested across machines. Use this format for the first public table:
+
+| Device | Scene | Resolution | Samples | Bounces | Denoise | Bake Time |
+|---|---:|---:|---:|---:|---:|---:|
+| TBD | Cornell Box | 512 | 64 | 2 | On | TBD |
+| TBD | Interior Demo | 1024 | 128 | 2 | On | TBD |
+
+Current preset expectations are directional only: Draft is for seconds-scale iteration, Preview is for design review, and Production/Final are for higher-quality output on discrete GPUs.
+
+---
+
+## Why Not Just Bake In Blender?
+
+Blender is still the right tool when your scene is authored offline, your assets are stable, and you can afford a DCC round-trip. This project targets the cases where that workflow breaks down:
+
+- Procedural scenes assembled at runtime.
+- Product configurators where users change layouts, finishes, or lights in the browser.
+- AI-generated or agent-authored 3D spaces.
+- Web architectural visualization that needs an in-app “Bake” button.
+- Pipelines where the source of truth is Three.js, not a `.blend` file.
+
+The goal is not to replace offline production renderers. The goal is browser-native baked lighting for dynamic Three.js workflows.
+
+---
+
 ## How It Works
 
 Two-pass architecture. No vertex shader hacks. No fighting the Three.js renderer.
@@ -327,6 +425,18 @@ Releases all GPU resources (textures, render targets).
 
 - `refreshAO({ intensity, exponent, enabled })` applies AO look changes instantly.
 - `rebakeAO({ samples, distance, targetSamples })` recomputes AO rays without re-running the full GI bake.
+
+---
+
+## Known Limitations
+
+- Browser/WebGL renderer required. True Node.js headless baking is planned but not shipped.
+- Requires WebGL 2 and `EXT_color_buffer_float` for HDR accumulation targets.
+- `result.export()` triggers browser downloads; it does not write directly to arbitrary filesystem paths.
+- Large atlases, high sample counts, and many bounces can still hit browser/GPU timeout behavior on weaker hardware.
+- Light/material coverage is focused on `MeshStandardMaterial`-style surfaces, emissive contribution, direct light collection, AO, and GI bounces. Advanced production lighting such as IES profiles, textured area lights, and full material parity remain roadmap items.
+- Auto UV2 unwrapping is designed to remove the Blender unwrap step, but pathological geometry can still need cleanup or manual UVs.
+- The current public package is prepared for npm release but is not published until the first release is cut.
 
 ---
 
