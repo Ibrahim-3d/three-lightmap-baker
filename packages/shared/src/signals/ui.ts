@@ -1,7 +1,7 @@
 import { signal } from '@preact/signals';
 
 /**
- * Generic shell UI signals. Renderer-agnostic — both `demo-shell/` and any
+ * Generic shell UI signals. Renderer-agnostic - both `demo-shell/` and any
  * renderer-specific UI in a package's `ui/` folder read/write these.
  *
  * Bake-specific signals live in `./bake.ts`.
@@ -21,7 +21,7 @@ export type SceneNode = {
 /** Currently selected scene-tree node id, or null when nothing is selected. */
 export const selectedId = signal<string | null>(null);
 
-/** Scene tree mirror — rebuilt by the orchestrator on every scene mutation. */
+/** Scene tree mirror - rebuilt by the orchestrator on every scene mutation. */
 export const sceneTree = signal<SceneNode[]>([]);
 
 /** Active transform-gizmo mode. */
@@ -39,7 +39,7 @@ export const objectTick = signal<number>(0);
 /** Active scene preset id. */
 export const activeSceneId = signal<string>('cornell.advanced');
 
-/** Layout state — persisted to localStorage in App. */
+/** Layout state - persisted to localStorage in App. */
 export const layout = signal<{ outlinerW: number; inspectorW: number; logOpen: boolean }>({
   outlinerW: 280,
   inspectorW: 320,
@@ -73,7 +73,7 @@ export const atlasViewerVisible = signal<boolean>(false);
 
 /**
  * Viewport fly-camera state. `flySpeed` is metres per second (range 0.1..50).
- * `flyActive` flips true while the user is holding right-mouse on the canvas —
+ * `flyActive` flips true while the user is holding right-mouse on the canvas -
  * read by the hotkey layer to suppress W/E/R gizmo shortcuts during fly mode.
  * Mouse-wheel while fly-active multiplies `flySpeed`.
  */
@@ -81,7 +81,7 @@ export const flySpeed = signal<number>(5);
 export const flyActive = signal<boolean>(false);
 
 /**
- * Viewport editor helpers — Blender-style ground grid + RGB world axes.
+ * Viewport editor helpers - Blender-style ground grid + RGB world axes.
  * Both default on; toggled from the View menu. Renderer reads the signals
  * each RAF to flip helper `.visible` so the bake path stays untouched
  * (helpers are tagged `lightmapIgnore`).
@@ -93,7 +93,7 @@ export const showAxes = signal<boolean>(true);
  * Unreal-style "dirty mesh" set. Each entry is a mesh uuid that has been
  * transformed (or had lighting-relevant material edited) since the last
  * successful bake. Dirty meshes render unlit while the rest of the scene
- * keeps its baked lightmap — same UX as Unreal's "needs rebuild" outline.
+ * keeps its baked lightmap - same UX as Unreal's "needs rebuild" outline.
  *
  * Renderer populates / clears the underlying Set + bumps the signal; UI
  * reads `.size` for badges.
@@ -103,7 +103,7 @@ export const dirtyMeshIds = signal<ReadonlySet<string>>(new Set<string>());
 /**
  * Post-processing controls (Unreal-style). \`master\` gates the whole composer;
  * each effect has its own toggle + parameters. Off by default so the
- * baker-QA workflow stays pristine — CLAUDE.md rule against post-FX is
+ * baker-QA workflow stays pristine - CLAUDE.md rule against post-FX is
  * honored unless the user explicitly enables for the showcase view.
  */
 export type PostFXSettings = {
@@ -135,7 +135,7 @@ export type PostFXSettings = {
   saturation: number; // -1..1
   /** Gamma adjustment (after tonemap). 1 = no change. */
   gamma: number;
-  /** ESL LUT pass — file resolved from /esl-demos/<name>. Empty = off. */
+  /** ESL LUT pass - file resolved from /esl-demos/<name>. Empty = off. */
   lutFile: string;
   /** ESL lens distortion. */
   lensDistortionEnabled: boolean;

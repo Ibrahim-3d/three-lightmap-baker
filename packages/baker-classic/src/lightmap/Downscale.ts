@@ -1,10 +1,10 @@
 /**
- * Lightmap downscale pass (Task 10 — supersample workflow).
+ * Lightmap downscale pass (Task 10 - supersample workflow).
  *
  * Bake at `internalResolution = targetResolution * superSample`, then run this
  * pass once per group to produce the target-resolution texture bound to
  * `mesh.lightMap`. Hardware bilinear (source's LinearFilter) handles the
- * anti-aliasing during the sample — no custom filter math needed.
+ * anti-aliasing during the sample - no custom filter math needed.
  *
  * Target RT is HalfFloatType to match the composite delivery format and avoid
  * the OES_texture_float_linear fallback path on iGPUs (see D-015).
@@ -58,7 +58,7 @@ class PassthroughMaterial extends ShaderMaterial {
     });
   }
 
-  // Shared program cache key — passthrough GLSL is invariant across instances.
+  // Shared program cache key - passthrough GLSL is invariant across instances.
   override customProgramCacheKey(): string {
     return 'DownscaleMaterial|glsl3|single-out';
   }

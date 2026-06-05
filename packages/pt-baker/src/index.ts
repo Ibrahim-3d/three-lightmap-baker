@@ -1,5 +1,5 @@
 /**
- * pt-baker — UV-space path-traced lightmap baker.
+ * pt-baker - UV-space path-traced lightmap baker.
  *
  * Uses the same BVH, light DataTexture, and path integrator as `pt-renderer`
  * so preview (real-time) and baked output are physically consistent.

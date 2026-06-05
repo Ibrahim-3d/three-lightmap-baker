@@ -171,7 +171,7 @@ export class CornellBoxExample implements BakerOrchestrator {
 
   private async _initPT(): Promise<void> {
     const sc = this.sceneController;
-    // matrixWorld is lazy — must force update before PTController reads it.
+    // matrixWorld is lazy - must force update before PTController reads it.
     sc.scene.updateMatrixWorld(true);
     this.ptController = new PTController({
       renderer: sc.renderer,
@@ -193,7 +193,7 @@ export class CornellBoxExample implements BakerOrchestrator {
     this.externalHooks.onSceneChanged?.();
   }
 
-  /** Hidden file input for GLB imports — clicked by the File menu. */
+  /** Hidden file input for GLB imports - clicked by the File menu. */
   private initGLBInput(): void {
     this.glbFileInput = document.createElement('input');
     this.glbFileInput.type = 'file';
@@ -287,9 +287,9 @@ export class CornellBoxExample implements BakerOrchestrator {
    * Per-RAF dirty check. Compares each mesh's current matrixWorld to its
    * post-bake snapshot. Dirty meshes get \`lightMapIntensity = 0\` so they
    * fall back to unlit albedo while the rest of the scene keeps its baked
-   * appearance — same UX as Unreal's "stationary light needs rebuild".
+   * appearance - same UX as Unreal's "stationary light needs rebuild".
    *
-   * Cheap — Matrix4.equals is a 16-element compare per mesh.
+   * Cheap - Matrix4.equals is a 16-element compare per mesh.
    */
   private updateDirtyTracking(): void {
     if (!this.bakedMatrices.size) return;
@@ -375,7 +375,7 @@ export class CornellBoxExample implements BakerOrchestrator {
   private async exportFinalImpl(): Promise<void> {
     const groups = this.bakeController.bakeGroups;
     if (!groups.length) {
-      console.warn('[baker] export: no bake to export — bake first');
+      console.warn('[baker] export: no bake to export - bake first');
       return;
     }
     const stage = groups[0]!.refinement ? 'refined' : 'composite';
@@ -412,7 +412,7 @@ export class CornellBoxExample implements BakerOrchestrator {
       return;
     }
     if (!this.bakeController.bakeGroups.length) {
-      console.warn('[baker] no baked lightmap available — bake first');
+      console.warn('[baker] no baked lightmap available - bake first');
       return;
     }
 
@@ -515,7 +515,7 @@ export class CornellBoxExample implements BakerOrchestrator {
         );
         this.bakeController.diag.snap('after FIRST post-bake scene render');
       } else {
-        // PT mode: PTController owns the render loop — skip normal Three.js render.
+        // PT mode: PTController owns the render loop - skip normal Three.js render.
         if (!this.ptController?.isActive) {
           // renderFrame() runs the EffectComposer if postFX.master is on,
           // otherwise a plain renderer.render. Either way the default
@@ -537,7 +537,7 @@ export class CornellBoxExample implements BakerOrchestrator {
 
   /**
    * Pull each bake group's texture for the current view layer and feed the
-   * atlas viewer. Texel-density and albedo layers have no per-group texture —
+   * atlas viewer. Texel-density and albedo layers have no per-group texture -
    * fall back to the composite (or hide if pre-bake).
    */
   private syncAtlasViewerTextures(): void {
@@ -739,7 +739,7 @@ export class CornellBoxExample implements BakerOrchestrator {
   }
 
   /**
-   * Path-Traced Bake — uses pt-renderer's BVH sampler for physically accurate
+   * Path-Traced Bake - uses pt-renderer's BVH sampler for physically accurate
    * lightmaps. Requires UV2 coordinates (run Quick Bake once to generate them).
    * After accumulation, applies dilation + optional denoise via baker-classic's
    * refinement pipeline so seams are filled and noise is suppressed.
@@ -749,8 +749,8 @@ export class CornellBoxExample implements BakerOrchestrator {
     if (!meshes.length) return;
     const hasUV2 = meshes.every((m) => m.geometry.hasAttribute('uv2'));
     if (!hasUV2) {
-      console.warn('[PTBaker] UV2 missing — run Quick Bake first to generate UV2 coords.');
-      this.externalHooks.onBakeError?.('UV2 missing — run Quick Bake first.');
+      console.warn('[PTBaker] UV2 missing - run Quick Bake first to generate UV2 coords.');
+      this.externalHooks.onBakeError?.('UV2 missing - run Quick Bake first.');
       return;
     }
 
@@ -787,7 +787,7 @@ export class CornellBoxExample implements BakerOrchestrator {
         },
       });
 
-      // Dilation + denoise — fills UV seams and reduces noise.
+      // Dilation + denoise - fills UV seams and reduces noise.
       // renderAtlas gives us the position texture needed for edge-aware dilation.
       const atlasResult = renderAtlas(sc.renderer, meshes, this.options.lightMapSize);
       const refined = await runRefinement(
@@ -820,7 +820,7 @@ export class CornellBoxExample implements BakerOrchestrator {
 
       // Store result so exportFinal() can access it.
       console.info(
-        '[PTBaker] done — ' +
+        '[PTBaker] done - ' +
           this.options.targetSamples +
           ' samples, ' +
           this.options.lightMapSize +

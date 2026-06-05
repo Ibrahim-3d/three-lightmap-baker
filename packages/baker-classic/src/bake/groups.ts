@@ -30,14 +30,14 @@ import type { ContextLossState, GroupInternals } from './internals';
 //
 // The classic baker runs ONE atlas/group at a time. Each group owns its own
 // lightmapper, AO mapper, composite, refinement, downscale, and atlas G-buffers
-// — everything that survives into `LightmapBakeResult.internals.groups`. This
+// - everything that survives into `LightmapBakeResult.internals.groups`. This
 // file owns those allocations for the lifetime of `runGroupBake` and hands
 // them back to the caller.
 
 const MIN_TILE_SIZE = 64;
 
 /**
- * Bag of inputs that every group bake needs — pre-resolved by the orchestrator
+ * Bag of inputs that every group bake needs - pre-resolved by the orchestrator
  * once and shared across all groups in a single bake. Avoids 10-positional-arg
  * function signatures.
  */
@@ -141,7 +141,7 @@ export async function runGroupBake(
   );
 
   // Composite is created BEFORE the mappers loop so its texture exists during
-  // accumulation — callers can mount `composite.texture` on materials
+  // accumulation - callers can mount `composite.texture` on materials
   // immediately and watch it fade in via per-RAF refreshes inside the tile
   // loop. Drives the `onFrame` hook contract.
   const composite = runComposite(
@@ -187,7 +187,7 @@ export async function runGroupBake(
 
   // Final texture chosen by user options (refinement output, or raw composite).
   // Still at INTERNAL resolution at this point. If superSample > 1, run a
-  // bilinear passthrough into a target-res RT — the result is what `mesh.lightMap`
+  // bilinear passthrough into a target-res RT - the result is what `mesh.lightMap`
   // binds to. Hardware bilinear (source LinearFilter) does the anti-aliasing.
   const finalInternalTex = refinement?.texture ?? composite.texture;
   const downscale =
@@ -219,12 +219,12 @@ export async function runGroupBake(
  *   - Never grow above currentTileSize (we don't have RAF data on the
  *     unloaded GPU; growing risks oscillation and TDR).
  *   - Floor at MIN_TILE_SIZE (64). Below that, scissor overhead dominates.
- *   - Be conservative — false positives just slow the bake; false negatives
+ *   - Be conservative - false positives just slow the bake; false negatives
  *     can TDR the user's machine.
  *
  * Heuristic: if 3 of the last 4 RAFs exceeded `tp.maxFrameMs * 1.5`, halve
  * the tile size. Halving (not subtracting) because tile work scales with
- * side² — halving the side quarters the per-tile cost.
+ * side² - halving the side quarters the per-tile cost.
  */
 function adaptiveTileSize(
   intervals: number[],

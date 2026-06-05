@@ -5,7 +5,7 @@
  * never need to import from each other directly.
  */
 
-// Registries — extension points renderers register into at app boot.
+// Registries - extension points renderers register into at app boot.
 export { panelRegistry, panelTick } from './registries/panel-registry';
 export type { PanelDescriptor, PanelComponent } from './registries/panel-registry';
 
@@ -27,7 +27,7 @@ export type {
 export { primitiveCatalog, createAsset, wrapAsBakerLight } from './assets/primitives';
 export type { AssetSpec, AssetCategory, PrimitiveDef, LightDef } from './assets/primitives';
 
-// Signals — UI state shared across packages.
+// Signals - UI state shared across packages.
 export {
   selectedId,
   sceneTree,
@@ -70,7 +70,7 @@ export {
 } from './signals/bake';
 export type { BakeStatus, PTSettings } from './signals/bake';
 
-// UI primitives — generic fields + helpers used by both shell and panel packages.
+// UI primitives - generic fields + helpers used by both shell and panel packages.
 export {
   Row,
   Section,
@@ -94,7 +94,7 @@ export {
   markStale,
 } from './ui/helpers';
 
-// Undo/redo command history — generic stack, producers (transforms, asset
+// Undo/redo command history - generic stack, producers (transforms, asset
 // add/remove, …) push Command objects after applying their effect.
 export { commandHistory, canUndo, canRedo } from './history/command-history';
 export type { Command } from './history/command-history';

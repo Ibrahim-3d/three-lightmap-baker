@@ -22,7 +22,7 @@ export type MenuItem = {
   /** Hotkey label (display only). */
   hotkey?: string;
   /** Checked-state predicate. When set, the item renders with a leading ✓
-   *  when truthy — standard for boolean toggles (Show Grid, Show Axes, …). */
+   *  when truthy - standard for boolean toggles (Show Grid, Show Axes, …). */
   checked?: () => boolean;
 };
 

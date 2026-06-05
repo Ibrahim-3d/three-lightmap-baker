@@ -4,8 +4,8 @@ Terms used in this codebase, defined precisely to prevent ambiguity across sessi
 
 | Term | Definition |
 |---|---|
-| **Lightmap** | A texture storing pre-computed lighting information, applied to a mesh via UV2. Sampled at runtime as a simple texture lookup — zero per-frame cost. |
-| **UV2** | Second UV channel on a mesh geometry. UV0 is for tiling textures (albedo, normal maps). UV2 is for lightmaps — every surface point maps to a UNIQUE texel (no overlap allowed). |
+| **Lightmap** | A texture storing pre-computed lighting information, applied to a mesh via UV2. Sampled at runtime as a simple texture lookup - zero per-frame cost. |
+| **UV2** | Second UV channel on a mesh geometry. UV0 is for tiling textures (albedo, normal maps). UV2 is for lightmaps - every surface point maps to a UNIQUE texel (no overlap allowed). |
 | **BVH** | Bounding Volume Hierarchy. A tree structure that accelerates ray-scene intersection from O(n) to O(log n). Built by three-mesh-bvh from merged scene geometry. |
 | **Bounce** | An indirect light path. Ray leaves surface A, hits surface B, light from B reflects back toward A modulated by B's albedo. N bounces = N indirect reflections. |
 | **Color bleeding** | Visible effect of bounce lighting. A red wall's reflected light tints nearby white surfaces pink. THE visual indicator that GI is working. |

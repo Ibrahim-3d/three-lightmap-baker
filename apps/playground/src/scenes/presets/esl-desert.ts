@@ -90,7 +90,7 @@ async function build(parent: Object3D): Promise<SceneBuildResult> {
 
 sceneRegistry.register({
   id: 'esl.desert',
-  label: 'ESL — Desert',
+  label: 'ESL - Desert',
   category: 'esl',
   description:
     'Port of enhance-shader-lighting Desert demo. Outdoor terrain + water. AO map dropped per source demo. Post-FX parity via task #4.',

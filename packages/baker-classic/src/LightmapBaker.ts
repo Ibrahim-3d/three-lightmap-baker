@@ -12,7 +12,7 @@ import type { ContextLossState } from './bake/internals';
 // off `./LightmapBaker` unchanged.
 export { LightmapBakeResult } from './bake/result';
 
-// Public type surface — re-exported through `./index.ts`. Definitions live
+// Public type surface - re-exported through `./index.ts`. Definitions live
 // in `./bake/types` to keep this file under the 300-LOC modularity cap.
 export type {
   BakePhase,
@@ -28,14 +28,67 @@ export type {
   BakeGroupView,
 } from './bake/types';
 
+export type LightmapBakerInitOptions = LightmapBakerOptions & {
+  /**
+   * Optional renderer for clean constructor usage:
+   * `new LightmapBaker({ renderer, ...opts })`.
+   *
+   * You can also pass it as the first constructor argument:
+   * `new LightmapBaker(renderer, opts)`.
+   */
+  renderer?: WebGLRenderer;
+};
+
+function resolveGIOptions(gi: LightmapBakerInitOptions['gi']): ResolvedBakerOptions['gi'] {
+  if (typeof gi === 'boolean') {
+    return {
+      enabled: gi,
+      intensity: 1.0,
+      skyColor: 0xffffff,
+      skyIntensity: 0.0,
+    };
+  }
+
+  return {
+    enabled: gi?.enabled ?? true,
+    intensity: gi?.intensity ?? 1.0,
+    skyColor: gi?.skyColor ?? 0xffffff,
+    skyIntensity: gi?.skyIntensity ?? 0.0,
+  };
+}
+
+function resolveAOOptions(
+  ao: LightmapBakerInitOptions['ao'],
+  castsPerFrame: number | undefined,
+): ResolvedBakerOptions['ao'] {
+  if (typeof ao === 'boolean') {
+    return {
+      enabled: ao,
+      distance: 0.5,
+      intensity: 1.0,
+      exponent: 1.5,
+      samples: castsPerFrame ?? 5,
+    };
+  }
+
+  return {
+    enabled: ao?.enabled ?? true,
+    distance: ao?.distance ?? 0.5,
+    intensity: ao?.intensity ?? 1.0,
+    exponent: ao?.exponent ?? 1.5,
+    samples: ao?.samples ?? castsPerFrame ?? 5,
+  };
+}
+
 /**
- * One-call lightmap baker — wraps the lib primitives behind the Task 06 spec API.
+ * One-call lightmap baker - wraps the lib primitives behind the Task 06 spec API.
  *
  * Spec deviations (intentional, documented in JSDoc per call site):
  *
- *  1. Constructor takes a `WebGLRenderer`. The spec omits this; in practice the baker
- *     can't run without a GL context, and creating a headless one would mean the user's
- *     scene textures wouldn't be in our context. Caller passes their renderer.
+ *  1. A WebGLRenderer is required before `bake()`, either via:
+ *       - `new LightmapBaker(renderer, opts)`
+ *       - `new LightmapBaker({ renderer, ...opts })`
+ *       - `baker.setRenderer(renderer)`
  *  2. `result.lightmaps` returns a `Map<Mesh, Texture>` where each mesh maps to its
  *     group's atlas texture. With `perMesh` grouping, meshes in different resolution
  *     groups get different textures. Without `perMesh`, all entries share one texture.
@@ -46,68 +99,90 @@ export type {
  *     directories. With per-mesh grouping each group is exported as a separate file.
  */
 export class LightmapBaker {
+  private _renderer: WebGLRenderer | null = null;
   private opts: ResolvedBakerOptions;
 
+  constructor(renderer: WebGLRenderer, opts?: LightmapBakerOptions);
+  constructor(opts?: LightmapBakerInitOptions);
   constructor(
-    public readonly renderer: WebGLRenderer,
-    opts: LightmapBakerOptions = {},
+    rendererOrOptions: WebGLRenderer | LightmapBakerInitOptions = {},
+    maybeOptions: LightmapBakerOptions = {},
   ) {
-    validateOptions(opts);
+    // We intentionally rely on `isWebGLRenderer === true` (Three.js runtime tag)
+    // and a minimal shape check as a fallback for compatibility across renderer
+    // wrappers that preserve the same API surface.
+    const usesRendererArg = (v: unknown): v is WebGLRenderer =>
+      !!v &&
+      typeof v === 'object' &&
+      (('isWebGLRenderer' in v && (v as { isWebGLRenderer?: boolean }).isWebGLRenderer === true) ||
+        ('getContext' in v && 'domElement' in v));
+
+    const rawOptions: LightmapBakerInitOptions = usesRendererArg(rendererOrOptions)
+      ? { ...maybeOptions, renderer: rendererOrOptions }
+      : { ...rendererOrOptions, ...maybeOptions };
+
+    validateOptions(rawOptions);
+    this._renderer = rawOptions.renderer ?? null;
 
     this.opts = {
-      samples: opts.samples ?? 96,
-      castsPerFrame: opts.castsPerFrame ?? 5,
-      bounces: Math.min(4, Math.max(1, opts.bounces ?? 1)),
-      resolution: opts.resolution ?? 1024,
-      superSample: opts.superSample ?? 1,
-      denoise: opts.denoise ?? true,
-      filtering: opts.filtering ?? 'linear',
-      texelsPerMeter: opts.texelsPerMeter ?? 0,
-      perMesh: opts.perMesh ?? {},
+      samples: rawOptions.samples ?? 96,
+      castsPerFrame: rawOptions.castsPerFrame ?? 5,
+      bounces: Math.min(4, Math.max(1, rawOptions.bounces ?? 1)),
+      resolution: rawOptions.resolution ?? 1024,
+      superSample: rawOptions.superSample ?? 1,
+      denoise: rawOptions.denoise ?? true,
+      filtering: rawOptions.filtering ?? 'linear',
+      texelsPerMeter: rawOptions.texelsPerMeter ?? 0,
+      perMesh: rawOptions.perMesh ?? {},
       light: {
-        position: opts.light?.position ?? new Vector3(0, 10, 0),
-        color: opts.light?.color ?? 0xffffff,
-        intensity: opts.light?.intensity ?? 2.0,
-        size: opts.light?.size ?? 1.0,
-        enabled: opts.light?.enabled ?? true,
+        position: rawOptions.light?.position ?? new Vector3(0, 10, 0),
+        color: rawOptions.light?.color ?? 0xffffff,
+        intensity: rawOptions.light?.intensity ?? 2.0,
+        size: rawOptions.light?.size ?? 1.0,
+        enabled: rawOptions.light?.enabled ?? true,
       },
-      gi: {
-        enabled: opts.gi?.enabled ?? true,
-        intensity: opts.gi?.intensity ?? 1.0,
-        skyColor: opts.gi?.skyColor ?? 0xffffff,
-        skyIntensity: opts.gi?.skyIntensity ?? 0.0,
-      },
-      ao: {
-        enabled: opts.ao?.enabled ?? true,
-        distance: opts.ao?.distance ?? 0.5,
-        intensity: opts.ao?.intensity ?? 1.0,
-        exponent: opts.ao?.exponent ?? 1.5,
-        samples: opts.ao?.samples ?? opts.castsPerFrame ?? 5,
-      },
+      gi: resolveGIOptions(rawOptions.gi),
+      ao: resolveAOOptions(rawOptions.ao, rawOptions.castsPerFrame),
       refinementOptions: {
         ...DEFAULT_REFINEMENT,
-        ...(opts.refinementOptions ?? {}),
-        denoiseEnabled: opts.denoise ?? DEFAULT_REFINEMENT.denoiseEnabled,
+        ...(rawOptions.refinementOptions ?? {}),
+        denoiseEnabled: rawOptions.denoise ?? DEFAULT_REFINEMENT.denoiseEnabled,
       },
-      timeoutProtection: opts.timeoutProtection,
+      timeoutProtection: rawOptions.timeoutProtection,
     };
+  }
+
+  get renderer(): WebGLRenderer | null {
+    return this._renderer;
+  }
+
+  setRenderer(renderer: WebGLRenderer): this {
+    this._renderer = renderer;
+    return this;
   }
 
   /**
    * Bake the scene. Returns a `LightmapBakeResult` that owns the GPU
-   * resources — call `result.dispose()` when done.
+   * resources - call `result.dispose()` when done.
    *
    * This method owns three concerns the pipeline can't:
    *   1. Mesh collection + EXT validation (must fail fast before pipeline setup).
    *   2. GPU-capabilities-driven timeout-protection resolution (caller's
    *      `opts.timeoutProtection` overrides device-detected defaults).
    *   3. Context-loss guard install + teardown (must release the listener even
-   *      if the pipeline throws — `try/finally` is the only safe shape).
+   *      if the pipeline throws - `try/finally` is the only safe shape).
    *
    * Everything else (partition → unwrap → BVH → lights → groups → drain →
    * stats → result) lives in `bake/pipeline.ts::runBakePipeline`.
    */
   async bake(scene: Scene | Object3D, hooks: BakeHooks = {}): Promise<LightmapBakeResult> {
+    const renderer = this._renderer;
+    if (!renderer)
+      throw new BakeError(
+        'renderer is required: use `new LightmapBaker(renderer, opts)`, `new LightmapBaker({ renderer, ...opts })`, or `baker.setRenderer(renderer)`',
+        'validation',
+      );
+
     const t0 = performance.now();
 
     const allMeshes = collectBakeMeshes(scene);
@@ -117,24 +192,24 @@ export class LightmapBaker {
         'validation',
       );
 
-    const gl = this.renderer.getContext();
+    const gl = renderer.getContext();
     if (!gl.getExtension('EXT_color_buffer_float'))
       throw new BakeError(
         'EXT_color_buffer_float WebGL2 extension is unavailable; FloatType RTs cannot be allocated',
         'validation',
       );
 
-    const caps = detectGPUCapabilities(this.renderer);
+    const caps = detectGPUCapabilities(renderer);
     const tp = resolveTimeoutProtection(this.opts.timeoutProtection, caps);
 
     // Context-loss guard: shared mutable flag flipped by the canvas listener.
     // Each tick of the mapper loop checks it before scheduling new work.
     const ctxState: ContextLossState = { lost: false };
-    const canvas = this.renderer.domElement;
+    const canvas = renderer.domElement;
     const onLost = (e: Event): void => {
       e.preventDefault(); // Tells the browser we'll attempt recovery (we don't, but it's harmless).
       ctxState.lost = true;
-      console.error('[baker] webglcontextlost during bake — cancelling');
+      console.error('[baker] webglcontextlost during bake - cancelling');
     };
     canvas.addEventListener('webglcontextlost', onLost as EventListener, false);
     const releaseContextGuard = (): void => {
@@ -150,7 +225,7 @@ export class LightmapBaker {
 
     try {
       return await runBakePipeline({
-        renderer: this.renderer,
+        renderer,
         opts: this.opts,
         scene,
         allMeshes,

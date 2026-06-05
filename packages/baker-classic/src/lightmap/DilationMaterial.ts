@@ -1,10 +1,10 @@
 import { GLSL3, NoBlending, ShaderMaterial, Texture } from 'three';
 
 /*
- * Dilation Pass — GLSL3 fragment shader.
+ * Dilation Pass - GLSL3 fragment shader.
  *
  * Input  : `map` (current lightmap), `positions` (G-buffer; alpha=1 inside UV charts).
- * Output : `fragColor` (RGBA float) — same texel filled in for chart interiors;
+ * Output : `fragColor` (RGBA float) - same texel filled in for chart interiors;
  *          chart-exterior texels get the average of their non-empty 3x3 neighbours.
  *
  * Purpose: trilinear filtering at chart borders would otherwise sample pure black.
@@ -12,7 +12,7 @@ import { GLSL3, NoBlending, ShaderMaterial, Texture } from 'three';
  */
 
 export class DilationMaterial extends ShaderMaterial {
-  // resolution and DILATION_EMPTY_EPS are uniform/hardcoded — no per-instance GLSL variation.
+  // resolution and DILATION_EMPTY_EPS are uniform/hardcoded - no per-instance GLSL variation.
   // Renderer owns the compiled WebGLProgram; dispose() is unaffected.
   override customProgramCacheKey(): string {
     return 'DilationMaterial|glsl3|single-out';
@@ -50,7 +50,7 @@ export class DilationMaterial extends ShaderMaterial {
                     vec4 here = texture(map, vUv);
                     float chart = texture(positions, vUv).a;
 
-                    // Inside a chart — pass through.
+                    // Inside a chart - pass through.
                     if (chart > 0.0) {
                         fragColor = here;
                         return;

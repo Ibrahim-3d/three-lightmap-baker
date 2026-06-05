@@ -11,7 +11,7 @@ import { BakeError } from '../errors';
 import type { BakeHooks, BakeStats, BakeGroupView } from './types';
 import type { GroupInternals } from './internals';
 
-/** Result of a successful bake. Owns the GPU resources — call `dispose()` to release. */
+/** Result of a successful bake. Owns the GPU resources - call `dispose()` to release. */
 export class LightmapBakeResult {
   constructor(
     private readonly renderer: WebGLRenderer,
@@ -36,7 +36,7 @@ export class LightmapBakeResult {
   }
 
   /**
-   * Live BVH used by every group's mappers — covers the FULL bake set
+   * Live BVH used by every group's mappers - covers the FULL bake set
    * (including excluded meshes, since they cast shadows / contribute GI).
    * Read-only handle; lifetime is owned by the result. Useful for advanced
    * callers that want to reuse the BVH for their own ray queries.
@@ -46,15 +46,15 @@ export class LightmapBakeResult {
   }
 
   /**
-   * Public per-group view — every texture produced by every group's bake.
+   * Public per-group view - every texture produced by every group's bake.
    * Use this for advanced layer mounting (debug visualizations of Direct,
    * Indirect, AO, Position, Normal channels), multi-atlas viewers, or
    * manual refinement re-runs against the live composite.
    *
-   * Texture refs are STABLE — store the ref, not a copy. Three.js will see
+   * Texture refs are STABLE - store the ref, not a copy. Three.js will see
    * updates automatically on accumulation, AO re-bake, or manual refinement.
    *
-   * Cost: O(groups) — each call rebuilds the wrapper array.
+   * Cost: O(groups) - each call rebuilds the wrapper array.
    */
   get groups(): ReadonlyArray<BakeGroupView> {
     return this.internals.groups.map((g) => ({
@@ -135,7 +135,7 @@ export class LightmapBakeResult {
     for (let i = 0; i < groups.length; i++) {
       const g = groups[i]!;
       // When superSample > 1, export the downscaled (target-res) texture, not
-      // the internal-res source — exportLightmap reads pixels at the supplied
+      // the internal-res source - exportLightmap reads pixels at the supplied
       // resolution and would otherwise read past the end of the buffer.
       const finalTex = g.downscale?.texture ?? g.refinement?.texture ?? g.composite.texture;
       const name = groups.length > 1 ? `${base}_group${i}` : base;
@@ -156,7 +156,7 @@ export class LightmapBakeResult {
   }
 
   /**
-   * View-time AO tweak — applies new intensity / exponent / enabled to every
+   * View-time AO tweak - applies new intensity / exponent / enabled to every
    * group's composite. Sub-millisecond per group; no re-bake. Returns
    * immediately. Use this for `aoIntensity`, `aoExponent`, and `aoEnabled`.
    */
@@ -171,7 +171,7 @@ export class LightmapBakeResult {
   }
 
   /**
-   * Re-bake AO only — re-runs every group's AO mapper with the supplied
+   * Re-bake AO only - re-runs every group's AO mapper with the supplied
    * options, refreshes its composite to read the new AO texture, and re-runs
    * refinement. Bounce textures (direct/indirect) are NOT touched. Cost ≈
    * (AO ray cost / total bake ray cost) × original bake time, typically
@@ -215,7 +215,7 @@ export class LightmapBakeResult {
           this.internals.refinementOptions,
         );
         // If supersampling, the downscale wraps refinement's NEW texture and
-        // its target ref stays stable — only the source pointer changes. Mesh
+        // its target ref stays stable - only the source pointer changes. Mesh
         // bindings keep pointing at downscale.texture; no Map update needed.
         // For SS=1, the refinement texture itself is the new ref → update Map.
         if (g.downscale) {
@@ -228,7 +228,7 @@ export class LightmapBakeResult {
           }
         }
       } else if (g.downscale) {
-        // No refinement — downscale source is composite.texture (stable ref);
+        // No refinement - downscale source is composite.texture (stable ref);
         // just re-blit so the new AO accumulator flows through.
         g.downscale.refresh();
       }
@@ -274,7 +274,7 @@ function rebakeAOForGroup(
         reject(new BakeError('aborted by signal', 'bake'));
         return;
       }
-      // AO-only re-bake doesn't install its own context-loss guard — the
+      // AO-only re-bake doesn't install its own context-loss guard - the
       // caller (`LightmapBakeResult.rebakeAO`) is short enough that a lost
       // context will surface as a draw-call failure on the next renderer
       // call. Adding one would require threading the canvas through.

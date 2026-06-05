@@ -2,7 +2,7 @@ precision highp float;
 precision highp int;
 precision highp sampler2D;
 
-// ── Dynamic object uniforms — PTController updates these each frame ──────────
+// ── Dynamic object uniforms - PTController updates these each frame ──────────
 // Boxes: inverse world matrix (local-space BVH + transform in shader = zero rebuild)
 uniform mat4  uTallBoxInvMatrix;
 uniform mat4  uShortBoxInvMatrix;
@@ -95,7 +95,7 @@ float SceneIntersect()
 	}
 	objCount++;
 
-	// ── Dynamic sphere (movable — update uSpherePosition each frame) ──────────
+	// ── Dynamic sphere (movable - update uSpherePosition each frame) ──────────
 	d = SphereIntersect(uSphereRadius, uSpherePosition, rayOrigin, rayDirection);
 	if (d < t) {
 		t           = d;
@@ -203,7 +203,7 @@ vec3 CalculateRadiance(out vec3 objectNormal, out vec3 objectColor,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SetupScene — matches SceneController's 10-unit Cornell Box.
+// SetupScene - matches SceneController's 10-unit Cornell Box.
 //   ROOM = 10, camera at (0,5,18) looking at (0,5,0).
 //   X: [-5,+5]  Y: [0,10]  Z: [-5,+5]  (open front face at Z=+5 toward camera)
 //
@@ -216,43 +216,43 @@ void SetupScene()
 	vec3 z  = vec3(0);
 	vec3 L1 = vec3(1.0, 0.85, 0.6) * 3.0; // warm ceiling light (tuned for 10-unit room)
 
-	// quads[0] — area light: 2.5×2.5 just below ceiling (Y=9.98)
+	// quads[0] - area light: 2.5×2.5 just below ceiling (Y=9.98)
 	quads[0] = Quad(vec3(0,-1,0),
 		vec3(-1.25, 9.98,-1.25), vec3( 1.25, 9.98,-1.25),
 		vec3( 1.25, 9.98, 1.25), vec3(-1.25, 9.98, 1.25),
 		L1, z, LIGHT);
 
-	// quads[1] — floor Y=0
+	// quads[1] - floor Y=0
 	quads[1] = Quad(vec3(0,1,0),
 		vec3(-5,0, 5), vec3( 5,0, 5),
 		vec3( 5,0,-5), vec3(-5,0,-5),
 		z, vec3(0.93), DIFF);
 
-	// quads[2] — ceiling Y=10
+	// quads[2] - ceiling Y=10
 	quads[2] = Quad(vec3(0,-1,0),
 		vec3(-5,10,-5), vec3( 5,10,-5),
 		vec3( 5,10, 5), vec3(-5,10, 5),
 		z, vec3(0.93), DIFF);
 
-	// quads[3] — back wall Z=-5
+	// quads[3] - back wall Z=-5
 	quads[3] = Quad(vec3(0,0,1),
 		vec3(-5, 0,-5), vec3( 5, 0,-5),
 		vec3( 5,10,-5), vec3(-5,10,-5),
 		z, vec3(0.93), DIFF);
 
-	// quads[4] — left wall X=-5 (red)
+	// quads[4] - left wall X=-5 (red)
 	quads[4] = Quad(vec3(1,0,0),
 		vec3(-5, 0, 5), vec3(-5, 0,-5),
 		vec3(-5,10,-5), vec3(-5,10, 5),
 		z, vec3(0.70, 0.12, 0.05), DIFF);
 
-	// quads[5] — right wall X=+5 (green)
+	// quads[5] - right wall X=+5 (green)
 	quads[5] = Quad(vec3(-1,0,0),
 		vec3( 5, 0,-5), vec3( 5, 0, 5),
 		vec3( 5,10, 5), vec3( 5,10,-5),
 		z, vec3(0.20, 0.40, 0.12), DIFF);
 
-	// boxes — local-space bounds only; world transforms via inv-matrix uniforms
+	// boxes - local-space bounds only; world transforms via inv-matrix uniforms
 	boxes[0] = Box(vec3(-1.5,-3,-1.5), vec3(1.5, 3, 1.5), z, vec3(0.95), SPEC); // tall mirror
 	boxes[1] = Box(vec3(-1.5,-1.5,-1.5), vec3(1.5,1.5,1.5), z, vec3(0.93), DIFF); // short diffuse
 }

@@ -86,7 +86,7 @@ export type TransformSnap = { pos: Vector3; rot: Euler; scale: Vector3 };
 export type SceneControllerHooks = {
   /** Fired after every scene rebuild / GLB import. Orchestrator rebuilds per-mesh UI here. */
   onSceneChanged: (meshes: SceneObj[]) => void;
-  /** Called after every scene rebuild — must pin the dummy lightmap onto every mesh
+  /** Called after every scene rebuild - must pin the dummy lightmap onto every mesh
    *  to prevent post-bake shader recompile (Session 12 mitigation). */
   installDummyLightmaps: (meshes: SceneObj[]) => void;
   /** Notify the orchestrator when bake-owned GPU resources must be torn down
@@ -115,8 +115,8 @@ export const LIGHT_DUMMY_ID = 'light:dummy';
 /**
  * Owns the THREE side of the demo: scene graph, camera, renderer, orbit/transform
  * controls, the visual+bake light dummy, scene-build factories (Cornell), and GLB
- * import. Knows nothing about the LightmapBaker call site — that lives in
- * BakeController. Knows nothing about Tweakpane / DOM — that stays in the
+ * import. Knows nothing about the LightmapBaker call site - that lives in
+ * BakeController. Knows nothing about Tweakpane / DOM - that stays in the
  * orchestrator until T-D2 (Preact).
  */
 export class SceneController {
@@ -197,7 +197,7 @@ export class SceneController {
     });
     this.renderer.domElement.addEventListener('webglcontextrestored', () => {
       console.error(
-        '[baker:debug] CONTEXT RESTORED — RT data lost, lightmap textures are now empty',
+        '[baker:debug] CONTEXT RESTORED - RT data lost, lightmap textures are now empty',
         { meshes: this.meshes.length },
       );
     });
@@ -206,7 +206,7 @@ export class SceneController {
     this.controls.target.set(0, 5, 0);
     this.controls.update();
 
-    // Editor helpers — ground grid + world axes at origin. Tagged
+    // Editor helpers - ground grid + world axes at origin. Tagged
     // `lightmapIgnore` so the baker's BVH/material walks skip them; also
     // drawn with depthWrite off so they don't z-fight the Cornell floor.
     this.gridHelper = new GridHelper(40, 40, 0x555555, 0x2a2a2a);
@@ -236,7 +236,7 @@ export class SceneController {
     this.scene.add(this.axesHelper);
 
     // RectAreaLight needs its uniforms LUT initialised once before any scene
-    // using it is rendered. Safe to call multiple times — LUT is cached.
+    // using it is rendered. Safe to call multiple times - LUT is cached.
     RectAreaLightUniformsLib.init();
 
     // Default scene area light. Wrapped as a regular baker-style light group
@@ -250,7 +250,7 @@ export class SceneController {
     this.lightDummy.position.set(0, ROOM - 0.001, 0);
     this.scene.add(this.lightDummy);
 
-    // Bake-marker disc — still used by `modes.ts` to flash a white pulse
+    // Bake-marker disc - still used by `modes.ts` to flash a white pulse
     // during bake. Tagged `lightmapIgnore` so it doesn't bake into the atlas.
     this.lightMarker = new Mesh(
       new PlaneGeometry(2.5, 2.5),
@@ -262,14 +262,14 @@ export class SceneController {
     this.lightDummy.add(this.lightMarker);
 
     // Area light: emits along its local -Z. Rotate so -Z faces world -Y
-    // (downward — i.e. ceiling-mounted by default). This is now the real
+    // (downward - i.e. ceiling-mounted by default). This is now the real
     // bake-side light (no `lightmapIgnore`); `collectLightsFromScene` packs it
     // alongside any asset-library lights so the editor and the bake agree.
     this.visualLight = new RectAreaLight(0xffffff, 5, 2.5, 2.5);
     this.visualLight.rotation.x = -Math.PI / 2;
     this.lightDummy.add(this.visualLight);
 
-    // Thin rectangle outline that traces the emitter — gives the "real area
+    // Thin rectangle outline that traces the emitter - gives the "real area
     // light" look in solid view. RectAreaLightHelper attaches itself to the
     // light and updates its own matrixWorld each frame.
     const areaHelper = new RectAreaLightHelper(this.visualLight);
@@ -407,7 +407,7 @@ export class SceneController {
         visible: m.visible,
       });
     }
-    // All lights (default area + asset-library Point / Spot / Sun / Area) —
+    // All lights (default area + asset-library Point / Spot / Sun / Area) -
     // top-level scene children carrying `userData.bakerLightType`.
     for (const child of this.scene.children) {
       if (!child.userData?.bakerLightType) continue;
@@ -516,7 +516,7 @@ export class SceneController {
   /**
    * Dispose every geometry+material under `cornellRoot`, detach the root from
    * the scene, and clear `meshes`. Single cleanup path used by `rebuildScene`,
-   * `importGLB`, and `loadPresetById` — keeps GPU resource lifetime tied to
+   * `importGLB`, and `loadPresetById` - keeps GPU resource lifetime tied to
    * the active scene root and avoids leaks across preset swaps.
    */
   private disposeCornellRoot(): void {
@@ -702,14 +702,14 @@ export class SceneController {
    */
   private syncPostFX(): void {
     const s = postFXSettings.value;
-    // Tone mapping + exposure are RENDERER-level — not post-fx passes. They
+    // Tone mapping + exposure are RENDERER-level - not post-fx passes. They
     // configure the scene's color pipeline whether or not the composer chain
     // is active. Gating them behind `master` broke the dropdown/slider for
     // users in bake-QA mode.
     this.renderer.toneMapping = TONE_MAP_LOOKUP[s.toneMapping] ?? NoToneMapping;
     this.renderer.toneMappingExposure = s.exposure;
 
-    // ESL env enable runs whether or not the composer exists — it touches
+    // ESL env enable runs whether or not the composer exists - it touches
     // scene-level state, not composer passes.
     this.syncEslEnv();
 
@@ -721,7 +721,7 @@ export class SceneController {
       this.fogObject.density = s.fogDensity;
       this.scene.fog = this.fogObject;
     } else {
-      // Always clear when not active — covers the toggle-off case even when
+      // Always clear when not active - covers the toggle-off case even when
       // a non-ESL preset never set our fogObject.
       this.scene.fog = null;
     }
@@ -771,7 +771,7 @@ export class SceneController {
   }
 
   /** Push `eslEnvEnabled` signal into actual three.js state. Cheap (one walk +
-   *  scalar set) — runs each frame inside syncPostFX. */
+   *  scalar set) - runs each frame inside syncPostFX. */
   private syncEslEnv(): void {
     const on = eslEnvEnabled.value;
     (this.scene as unknown as { environmentIntensity: number }).environmentIntensity = on ? 1 : 0;
@@ -799,7 +799,7 @@ export class SceneController {
     } else {
       // Defensive: SSAOPass + other composer passes set scene.overrideMaterial
       // or rebind render targets during their pre-passes. If a pass throws or
-      // gets disabled mid-flight, those leak — direct render then shows black.
+      // gets disabled mid-flight, those leak - direct render then shows black.
       // Reset known side-effects before falling back to a plain renderer pass.
       this.scene.overrideMaterial = null;
       this.renderer.setRenderTarget(null);
@@ -822,7 +822,7 @@ export class SceneController {
     return { center, size: Math.max(size.x, size.y, size.z) || 10 };
   }
 
-  /** Snap camera to one of the canonical viewpoints — Front (1), Right (3),
+  /** Snap camera to one of the canonical viewpoints - Front (1), Right (3),
    *  Top (7), Persp (0). Distance keyed to scene size so it works across
    *  scales (Cornell vs imported levels). */
   setView(view: 'front' | 'right' | 'top' | 'persp' | 'back' | 'left' | 'bottom'): void {
@@ -895,7 +895,7 @@ export class SceneController {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  //  T-D7 — Asset Library: drag-drop add, delete, ground-plane pick
+  //  T-D7 - Asset Library: drag-drop add, delete, ground-plane pick
   // ──────────────────────────────────────────────────────────────────────────
 
   private groundPlane = new Plane(new Vector3(0, 1, 0), 0);
@@ -971,7 +971,7 @@ export class SceneController {
 
   /**
    * Remove a node (mesh or scene-added light) by uuid. No-ops for the built-in
-   * light dummy. Disposes GPU resources — for an undoable removal, use
+   * light dummy. Disposes GPU resources - for an undoable removal, use
    * `detachNode` + `attachNode` instead, and only `disposeDetachedNode` once
    * the command falls off the history.
    */
@@ -1001,7 +1001,7 @@ export class SceneController {
     }
 
     // Any direct scene child carrying `bakerLightType` is fair game to delete
-    // — including the default area light. The user can drag a fresh one in
+    // - including the default area light. The user can drag a fresh one in
     // from the asset library if they want it back.
     const target = this.scene.children.find((o) => o.uuid === id);
     if (target?.userData?.bakerLightType) {
@@ -1051,7 +1051,7 @@ export class SceneController {
     });
   }
 
-  /** Parent reference for newly added primitives — used by AddCommand for
+  /** Parent reference for newly added primitives - used by AddCommand for
    *  redo (so it can re-attach to the same cornellRoot it was added to). */
   getCornellRoot(): Object3D | null {
     return this.cornellRoot;
@@ -1087,7 +1087,7 @@ export class SceneController {
     // walk so the wrappers don't accidentally show up as "meshes".
     this.hoistRawLights(this.cornellRoot);
 
-    // Walk newly-added meshes (scoped to cornellRoot — preset content all lives
+    // Walk newly-added meshes (scoped to cornellRoot - preset content all lives
     // there by contract). Skip lightmap-ignored meshes (mirror/glass/emissive
     // markers); the lightDummy is parented to `scene`, not cornellRoot, so its
     // visual-marker disc cannot be picked up here.
@@ -1098,7 +1098,7 @@ export class SceneController {
       this.meshes.push(m as SceneObj);
     });
 
-    // Hide the default area light when the preset brought its own lighting —
+    // Hide the default area light when the preset brought its own lighting -
     // avoids "stuffing an area light into every demo" (e.g. the three.js
     // point-lights port should bake from the point lights only).
     // `disableFallbackLight` lets presets force it hidden even when no lights
@@ -1138,7 +1138,7 @@ export class SceneController {
   }
 
   /** Stamp `_originalMap = mat.map` on every mesh material that doesn't have
-   *  the shadow field yet. Idempotent — re-callable across preset swaps. */
+   *  the shadow field yet. Idempotent - re-callable across preset swaps. */
   private stampOriginalMap(meshes: ReadonlyArray<Mesh>): void {
     for (const m of meshes) {
       const mat = m.material as
@@ -1177,7 +1177,7 @@ export class SceneController {
 
   /**
    * Read `userData.eslPostFX` from a preset root (or any descendant) and push
-   * the matching fields into the `postFXSettings` signal. Idempotent — safe to
+   * the matching fields into the `postFXSettings` signal. Idempotent - safe to
    * call repeatedly. Does nothing when no ESL config is present (other presets
    * keep their own post-fx state).
    */
@@ -1212,7 +1212,7 @@ export class SceneController {
     const next = {
       ...cur,
       master: true,
-      // Keep user's tonemap unless they're on `none` — then default to ACES.
+      // Keep user's tonemap unless they're on `none` - then default to ACES.
       toneMapping: cur.toneMapping === 'none' ? ('aces' as const) : cur.toneMapping,
       exposure: (cfg.toneMappingExposure as number) ?? cur.exposure,
       bloomEnabled: !!bloom1,

@@ -8,10 +8,12 @@ test-results/
 playwright-report/
 blob-report/
 test-results/
+launch-artifacts/
 
 # Build outputs
 dist/
 build/
+*.tgz
 
 # IDEs and Editors
 .vscode/

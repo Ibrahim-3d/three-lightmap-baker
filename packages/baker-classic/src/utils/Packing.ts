@@ -1,10 +1,10 @@
 import { Mesh, Vector3 } from 'three';
 
 /**
- * Lightmap atlas bin-packing — density-aware.
+ * Lightmap atlas bin-packing - density-aware.
  *
  * Goal: assign N meshes to M atlases so that each atlas is filled close to (but
- * not over) its capacity. The user picks ONE knob — `texelsPerMeter` — which
+ * not over) its capacity. The user picks ONE knob - `texelsPerMeter` - which
  * determines how many lightmap texels each square world-meter of surface gets.
  * Meshes with more world-space surface need more texels and therefore more
  * atlas area; small props share an atlas, big walls/floors get their own.
@@ -27,7 +27,7 @@ const cr = new Vector3();
  * (or vertex buffer if non-indexed) and applies `mesh.matrixWorld` to each
  * vertex before computing the triangle's cross-product / 2 area.
  *
- * Caller must have flushed `scene.updateMatrixWorld(true)` first — this
+ * Caller must have flushed `scene.updateMatrixWorld(true)` first - this
  * function reads `matrixWorld` directly without re-computing.
  *
  * Returns 0 for meshes with no position attribute (treated as no-op).
@@ -68,7 +68,7 @@ export interface BinPackOptions {
   /** Atlas side length in texels (e.g. 1024). All atlases share this size. */
   atlasResolution: number;
   /**
-   * Target texel density — texels per world unit (typically meters).
+   * Target texel density - texels per world unit (typically meters).
    * Higher = more lightmap detail per mesh, more atlases required.
    */
   texelsPerMeter: number;
@@ -109,7 +109,7 @@ export interface BinAssignment {
  *
  * If a single mesh's `uvFraction` exceeds `fillRatio` (one mesh demands more
  * than one atlas can hold at the target density), it's clamped to `fillRatio`
- * and gets its own atlas — its effective density falls below the user's target,
+ * and gets its own atlas - its effective density falls below the user's target,
  * which the texel-density debug visualization will surface as a red band.
  *
  * Returns one `BinAssignment` per input mesh, in input order (not sort order).
@@ -134,7 +134,7 @@ export function binPackMeshes(meshes: Mesh[], opts: BinPackOptions): BinAssignme
     return { mesh, inputIdx, surfaceArea, uvFraction };
   });
 
-  // Sort descending — first-fit-decreasing minimizes wasted space.
+  // Sort descending - first-fit-decreasing minimizes wasted space.
   const sorted = [...items].sort((a, b) => b.uvFraction - a.uvFraction);
 
   const binFills: number[] = [];
@@ -145,12 +145,12 @@ export function binPackMeshes(meshes: Mesh[], opts: BinPackOptions): BinAssignme
     if (frac > fillRatio) {
       // Single mesh too big for one atlas at the target density. Clamp + warn.
       // Effective density of this mesh will be ~sqrt(fillRatio / uvFraction)
-      // times the target — the texel-density debug layer makes this visible.
+      // times the target - the texel-density debug layer makes this visible.
       const tag =
         item.mesh.name ||
         `Mesh ${item.inputIdx + 1} (${item.mesh.geometry.type.replace('Geometry', '')})`;
       console.warn(
-        `[baker] mesh "${tag}" wants ${(frac * 100).toFixed(0)}% of one ${opts.atlasResolution}² atlas at ${opts.texelsPerMeter} texels/m — clamping to ${(fillRatio * 100).toFixed(0)}% (effective density reduced)`,
+        `[baker] mesh "${tag}" wants ${(frac * 100).toFixed(0)}% of one ${opts.atlasResolution}² atlas at ${opts.texelsPerMeter} texels/m - clamping to ${(fillRatio * 100).toFixed(0)}% (effective density reduced)`,
       );
       frac = fillRatio;
     }

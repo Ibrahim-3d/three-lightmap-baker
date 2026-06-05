@@ -2,11 +2,11 @@
  * Public library API surface.
  *
  * Phase 2 (Task 06): physical lib/demo split. Imports below are the only
- * sanctioned entry points — internal-only modules (e.g. *Material.ts shader
+ * sanctioned entry points - internal-only modules (e.g. *Material.ts shader
  * classes) are intentionally NOT re-exported and may change without notice.
  *
- * Phase 3 will wrap these primitives in a `LightmapBaker` class with the
- * spec'd one-call API: `new LightmapBaker(opts).bake(scene)`.
+ * `LightmapBaker` now provides the high-level API. Lower-level exports remain
+ * public for advanced workflows.
  */
 
 // --- Atlas (UV2 unwrap + position/normal G-buffers) ---
@@ -37,7 +37,7 @@ export { mergeGeometry, extractPerTriangleMaterials } from './utils/GeometryUtil
 export type { PerTriangleMaterials } from './utils/GeometryUtils';
 export { buildMaterialTextures } from './utils/MaterialTextures';
 
-// --- Density-aware atlas bin-packing (Stage 1 — multiple-atlas pipeline) ---
+// --- Density-aware atlas bin-packing (Stage 1 - multiple-atlas pipeline) ---
 export { computeMeshSurfaceArea, binPackMeshes } from './utils/Packing';
 export type { BinPackOptions, BinAssignment } from './utils/Packing';
 
@@ -64,6 +64,7 @@ export type { BakeErrorPhase } from './errors';
 // --- High-level one-call API (Phase 3) ---
 export { LightmapBaker, LightmapBakeResult } from './LightmapBaker';
 export type {
+  LightmapBakerInitOptions,
   LightmapBakerOptions,
   LightOptions,
   GIOptions,

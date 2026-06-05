@@ -1,0 +1,18 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"rootDir": "./packages/baker-classic/src",
+		"outDir": "./dist/package",
+		"noEmit": false,
+		"emitDeclarationOnly": true,
+		"declaration": true,
+		"declarationMap": true
+	},
+	"include": [
+		"./packages/baker-classic/src/index.ts",
+		"./packages/baker-classic/src/types/**/*.d.ts"
+	],
+	"exclude": [
+		"./packages/baker-classic/src/ui/**/*"
+	]
+}

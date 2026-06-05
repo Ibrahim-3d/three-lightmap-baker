@@ -19,7 +19,7 @@ export type CompositeMaterialOptions = {
 
 /**
  * Full-screen GLSL3 quad shader that sums Direct*directIntensity + Indirect*giIntensity, multiplied by AO.
- * Writes to an internal float RT — NO tonemapping, stays linear.
+ * Writes to an internal float RT - NO tonemapping, stays linear.
  * Phase A.3: giIntensity and directIntensity are applied here at view time.
  */
 export class CompositeMaterial extends ShaderMaterial {

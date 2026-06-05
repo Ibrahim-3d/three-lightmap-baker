@@ -15,7 +15,7 @@ export function showToast(kind: ToastKind, text: string): void {
 }
 
 /**
- * Top-center floating chip. One at a time — newer pushes replace older.
+ * Top-center floating chip. One at a time - newer pushes replace older.
  * Auto-dismisses after 4s. Renders nothing when toastMsg is null.
  */
 export function Toast() {

@@ -1,5 +1,5 @@
 /**
- * BVHSceneBuilder — converts a live THREE.Scene into DataTextures for GPU path tracing.
+ * BVHSceneBuilder - converts a live THREE.Scene into DataTextures for GPU path tracing.
  *
  * Mirrors Eric Loftis's prepareGeometryForPT() from GLTF_Model_Viewer.js, but with
  * a custom many-texture albedo pipeline (sampler2DArray) suitable for interior-
@@ -47,13 +47,13 @@ import {
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { buildBVH } from './BVHBuilder';
 
-// Material type constants — match GLSL #defines in pathtracing_uniforms_and_defines
+// Material type constants - match GLSL #defines in pathtracing_uniforms_and_defines
 const MAT_LIGHT = 0; // emissive area light
 const MAT_REFR = 2; // glass / dielectric refractive
 const MAT_PBR = 10; // unified PBR (all metals + dielectrics)
 
 const TEX_SIZE = 2048;
-const MAX_TRIANGLES = (TEX_SIZE * TEX_SIZE) / 8; // 524,288 — 8 texels per tri
+const MAX_TRIANGLES = (TEX_SIZE * TEX_SIZE) / 8; // 524,288 - 8 texels per tri
 
 /**
  * Per-layer resolution for the albedo sampler2DArray. All source textures are
@@ -80,7 +80,7 @@ export const MAX_ALBEDO_LAYERS = 64;
 
 /**
  * Enable verbose per-mesh / per-material console diagnostics during scene build.
- * Off by default — set to true (or wire to a build flag / URL param) when
+ * Off by default - set to true (or wire to a build flag / URL param) when
  * investigating geometry / material packing bugs.
  */
 const DEBUG_BUILD_LOG = false;
@@ -97,7 +97,7 @@ export interface BVHSceneData {
    * layer index in slot 7's first float. Materials without `.map` use -1.
    */
   albedoArray: DataArrayTexture;
-  /** Layer count (≥ 1 — at least the fallback). */
+  /** Layer count (≥ 1 - at least the fallback). */
   albedoLayerCount: number;
   triangleCount: number;
 }
@@ -117,7 +117,7 @@ export function buildBVHScene(scene: Scene): BVHSceneData {
   const meshes: Mesh[] = [];
   scene.traverse((obj) => {
     if (!(obj instanceof Mesh) || !obj.geometry || !obj.visible) return;
-    // PT renderer needs ALL MeshStandardMaterial geometry for correct ray tracing —
+    // PT renderer needs ALL MeshStandardMaterial geometry for correct ray tracing -
     // emissive surfaces are light sources, glass/mirrors affect reflections.
     // lightmapIgnore is a classic-baker flag ("don't bake onto this"); the PT
     // renderer must still see the mesh. Non-standard materials (gizmos, helpers)
@@ -165,7 +165,7 @@ export function buildBVHScene(scene: Scene): BVHSceneData {
 
     if (!nonIndexed.attributes['normal']) nonIndexed.computeVertexNormals();
 
-    // Strip all attributes except position/normal/uv — avoids uv1/tangent/color
+    // Strip all attributes except position/normal/uv - avoids uv1/tangent/color
     // mismatch errors when mergeGeometries processes heterogeneous geometries.
     const keep = new Set(['position', 'normal', 'uv']);
     for (const name of Object.keys(nonIndexed.attributes)) {
@@ -174,7 +174,7 @@ export function buildBVHScene(scene: Scene): BVHSceneData {
 
     const triCount = nonIndexed.attributes['position']!.count / 3;
 
-    // Material lookup — Three.js convention:
+    // Material lookup - Three.js convention:
     //   • mesh.material as ARRAY → groups index into the array by group.materialIndex
     //   • mesh.material as SINGLE → that material is used for ALL groups regardless of
     //     group.materialIndex (BoxGeometry assigns 0..5 to its 6 face groups, but a single
@@ -244,7 +244,7 @@ export function buildBVHScene(scene: Scene): BVHSceneData {
 
   if (totalTris > MAX_TRIANGLES) {
     console.warn(
-      `[PTSceneBuilder] Scene has ${totalTris} triangles — exceeds 2048² limit of ${MAX_TRIANGLES}. Extra triangles will be ignored.`,
+      `[PTSceneBuilder] Scene has ${totalTris} triangles - exceeds 2048² limit of ${MAX_TRIANGLES}. Extra triangles will be ignored.`,
     );
   }
 
@@ -470,7 +470,7 @@ export function disposeBVHSceneData(d: BVHSceneData | null): void {
 /**
  * Try to allocate a `Uint8Array` of the requested layer count. If the
  * allocation throws (browser memory pressure, V8 fragmentation), retry with
- * progressively fewer layers until something succeeds — minimum 1 layer
+ * progressively fewer layers until something succeeds - minimum 1 layer
  * (the white fallback). Returns the buffer + the actual layer count used.
  *
  * This shields us from a hard crash when MAX_ALBEDO_LAYERS is bumped high
@@ -489,13 +489,13 @@ function _allocLayerBuffer(
     } catch (err) {
       console.warn(
         `[PTSceneBuilder] albedo array alloc failed at ${layers} layers ` +
-          `(${((perLayerBytes * layers) / (1024 * 1024)).toFixed(1)} MiB) — retrying with half`,
+          `(${((perLayerBytes * layers) / (1024 * 1024)).toFixed(1)} MiB) - retrying with half`,
         err,
       );
       layers = Math.floor(layers / 2);
     }
   }
-  // Final fallback — always succeeds (1 layer at 1×1 is < 4 bytes).
+  // Final fallback - always succeeds (1 layer at 1×1 is < 4 bytes).
   return { data: new Uint8Array(perLayerBytes), actualLayers: 1 };
 }
 
@@ -506,14 +506,14 @@ function _allocLayerBuffer(
  * shared `<canvas>` with `drawImage`.
  *
  * Memory cost: 4 MiB per layer at the default 1024² (RGBA8). For 64 layers
- * that's 256 MiB — allocated once per scene build, reused until the next
+ * that's 256 MiB - allocated once per scene build, reused until the next
  * `setScene`. Allocation is wrapped in `_allocLayerBuffer` which halves
  * the layer count on RangeError and logs a warning, so a too-ambitious
  * `MAX_ALBEDO_LAYERS` degrades gracefully instead of crashing.
  *
  * sRGB conversion is delegated to the GPU sampler (texture.colorSpace =
  * SRGBColorSpace). Source images that aren't canvas-drawable (raw DataTextures,
- * videos still loading, missing/CORS-tainted images) are skipped — the layer
+ * videos still loading, missing/CORS-tainted images) are skipped - the layer
  * falls back to white and a warning is logged.
  */
 function _buildAlbedoArray(sources: Texture[]): {
@@ -537,10 +537,10 @@ function _buildAlbedoArray(sources: Texture[]): {
     );
   }
 
-  // Layer 0 — white fallback
+  // Layer 0 - white fallback
   for (let i = 0; i < perLayerBytes; i++) data[i] = 255;
 
-  // Layers 1..actualLayers-1 — rasterize sources via shared canvas
+  // Layers 1..actualLayers-1 - rasterize sources via shared canvas
   const canvas = typeof document !== 'undefined' ? document.createElement('canvas') : null;
   if (canvas) {
     canvas.width = W;
@@ -555,14 +555,14 @@ function _buildAlbedoArray(sources: Texture[]): {
       // Fall back to white for this layer
       for (let p = 0; p < perLayerBytes; p++) data[layerOffset + p] = 255;
       if (!ctx) {
-        console.warn('[PTSceneBuilder] no 2d canvas context — albedo array filled with white');
+        console.warn('[PTSceneBuilder] no 2d canvas context - albedo array filled with white');
       }
       continue;
     }
     try {
       ctx.clearRect(0, 0, W, H);
       // drawImage handles HTMLImageElement, HTMLCanvasElement, ImageBitmap,
-      // HTMLVideoElement (when ready) — covers the common Three.js paths.
+      // HTMLVideoElement (when ready) - covers the common Three.js paths.
       // Stretch to W×H; aspect-ratio preservation can come later.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ctx.drawImage(src.image as any, 0, 0, W, H);
@@ -570,7 +570,7 @@ function _buildAlbedoArray(sources: Texture[]): {
       data.set(imgData.data, layerOffset);
     } catch (err) {
       console.warn(
-        `[PTSceneBuilder] failed to rasterize albedo texture into layer ${i + 1} — using white fallback`,
+        `[PTSceneBuilder] failed to rasterize albedo texture into layer ${i + 1} - using white fallback`,
         err,
       );
       for (let p = 0; p < perLayerBytes; p++) data[layerOffset + p] = 255;
@@ -677,7 +677,7 @@ function _matDesc(mat: MeshStandardMaterial | null, sourceTextures: Texture[]): 
       uvTransform: null,
     };
 
-  // Emissive area light — color = emissive * intensity
+  // Emissive area light - color = emissive * intensity
   if (mat.emissiveIntensity > 0 && mat.emissive.r + mat.emissive.g + mat.emissive.b > 0.001) {
     const e = mat.emissive;
     const ei = mat.emissiveIntensity;
@@ -694,7 +694,7 @@ function _matDesc(mat: MeshStandardMaterial | null, sourceTextures: Texture[]): 
     };
   }
 
-  // Glass / dielectric refraction — three paths:
+  // Glass / dielectric refraction - three paths:
   // 1. Explicit transparent + low opacity (standard THREE.js transparent)
   // 2. MeshPhysicalMaterial.transmission > 0 (KHR_materials_transmission GLTF extension)
   // 3. Explicit transmissive check via duck typing (avoids importing MeshPhysicalMaterial)
@@ -702,7 +702,7 @@ function _matDesc(mat: MeshStandardMaterial | null, sourceTextures: Texture[]): 
   const hasTransmission = typeof physMat.transmission === 'number' && physMat.transmission > 0.1;
   const isGlass = (mat.transparent && mat.opacity < 0.99) || hasTransmission;
 
-  // Capture texture UV transform (offset/repeat/rotation) — applied to UVs during packing.
+  // Capture texture UV transform (offset/repeat/rotation) - applied to UVs during packing.
   // THREE.js stores this as texture.matrix (Matrix3). We pack as [m00,m10,m01,m11,m02,m12].
   const uvTransform = _getUVTransform(mat.map);
 
@@ -726,7 +726,7 @@ function _matDesc(mat: MeshStandardMaterial | null, sourceTextures: Texture[]): 
     };
   }
 
-  // Unified PBR — roughness + metalness drive specular/diffuse in the shader
+  // Unified PBR - roughness + metalness drive specular/diffuse in the shader
   return {
     type: MAT_PBR,
     r: mat.color.r,

@@ -7,8 +7,8 @@ const MAX = 30;
 const STEP = 0.1;
 
 /**
- * Top-right viewport overlay — fly-camera speed dropdown. The closed pill
- * shows "Camera Speed — X m/s"; clicking opens a popover that contains the
+ * Top-right viewport overlay - fly-camera speed dropdown. The closed pill
+ * shows "Camera Speed - X m/s"; clicking opens a popover that contains the
  * slider. Reads/writes `flySpeed` (metres per second); `FlyController` also
  * writes it via mouse-wheel while fly mode is active.
  *
@@ -16,7 +16,7 @@ const STEP = 0.1;
  * clear "you are flying" affordance. Tooltip teaches the gesture: hold RMB,
  * then WASD / QE / Shift / wheel.
  *
- * Lives inline in the viewport overlay row — positioning handled by parent.
+ * Lives inline in the viewport overlay row - positioning handled by parent.
  */
 export function ViewportFlySpeed() {
   const v = flySpeed.value;

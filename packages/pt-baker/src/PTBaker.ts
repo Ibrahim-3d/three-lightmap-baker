@@ -1,5 +1,5 @@
 /**
- * PTBaker — UV-space path-traced lightmap baker.
+ * PTBaker - UV-space path-traced lightmap baker.
  *
  * Pipeline:
  *   1. Build BVH scene data from the live THREE.js scene (uses pt-renderer).
@@ -51,7 +51,7 @@ export interface PTBakeOptions {
 }
 
 export interface PTBakeResult {
-  /** Accumulated radiance / sampleCount — ready to use as lightMap. */
+  /** Accumulated radiance / sampleCount - ready to use as lightMap. */
   texture: WebGLRenderTarget;
   /** Number of samples accumulated. */
   samples: number;
@@ -132,14 +132,14 @@ export class PTBaker {
     const rtB = makeRT(size);
     const rtOut = makeRT(size);
 
-    // Bake material — one instance, shared across all meshes in the scene.
+    // Bake material - one instance, shared across all meshes in the scene.
     // The albedo array texture (with layer-0 white fallback) lives inside
     // sceneData; PTBakeMaterial wires it up automatically.
     const mat = new PTBakeMaterial(sceneData, lightTex);
     mat.uniforms['uNumPTLights']!.value = numLights;
     mat.uniforms['uSkyLightIntensity']!.value = options.skyIntensity ?? 1.0;
 
-    // Divide material — renders accumulated RT → normalised output.
+    // Divide material - renders accumulated RT → normalised output.
     const divideMat = new ShaderMaterial({
       vertexShader: _divideVert,
       fragmentShader: _divideFrag,

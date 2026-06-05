@@ -1,7 +1,7 @@
 /**
  * Registers erichlof's PathTracing GLSL utility chunks into THREE.ShaderChunk
  * so that `#include <chunk_name>` works in our PT shaders.
- * Call registerChunks() once before creating any PTRenderer — idempotent.
+ * Call registerChunks() once before creating any PTRenderer - idempotent.
  */
 import { ShaderChunk } from 'three';
 

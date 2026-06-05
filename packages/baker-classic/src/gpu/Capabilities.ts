@@ -1,7 +1,7 @@
 import { WebGLRenderer } from 'three';
 
 /**
- * GPU capability detection — used by the timeout-protection layer to pick
+ * GPU capability detection - used by the timeout-protection layer to pick
  * conservative defaults on iGPUs / unknown hardware while letting discrete
  * GPUs run at near-native speed.
  *
@@ -22,7 +22,7 @@ export type GPUCapabilities = {
    * Recommended initial side length in texels for one ray-tracing draw call.
    * If `>= bake resolution`, the bake runs in a single draw per sample
    * (legacy behaviour). If `<`, the bake is split into scissored tiles, each
-   * a separate `gl.draw()` — TDR-safe but with `(res / tileSize)²` more draw
+   * a separate `gl.draw()` - TDR-safe but with `(res / tileSize)²` more draw
    * calls per sample.
    */
   initialTileSize: number;
@@ -52,7 +52,7 @@ const DEFAULTS: Record<GPUTier, Pick<GPUCapabilities, 'initialTileSize' | 'maxBa
  *   - "Apple M2 Pro" / "Apple M3 Max"                       → discrete (unified mem, but fast)
  *   - "Mali-G78" / "Adreno 740"                             → integrated (mobile)
  *
- * NOTE: Heuristics are intentionally conservative — when uncertain, return
+ * NOTE: Heuristics are intentionally conservative - when uncertain, return
  * `'unknown'` so the safe defaults apply.
  *
  * @example
@@ -74,7 +74,7 @@ export function classifyRenderer(renderer: string): GPUTier {
   //      - 'intel hd', 'intel uhd', 'iris', 'vega', 'mali', 'adreno', 'powervr'
   //   2. discrete keywords
   //      - 'geforce', 'rtx', 'gtx', 'quadro', 'radeon rx', 'radeon pro',
-  //        'apple m'  (Apple Silicon — unified memory but desktop-class throughput)
+  //        'apple m'  (Apple Silicon - unified memory but desktop-class throughput)
   //   3. else 'unknown'
   //
   // Replace the body below with your implementation.
@@ -100,7 +100,7 @@ export function classifyRenderer(renderer: string): GPUTier {
 /**
  * Detect GPU capabilities for the given renderer. Called once at bake start.
  *
- * Always returns a valid struct — never throws. If `WEBGL_debug_renderer_info`
+ * Always returns a valid struct - never throws. If `WEBGL_debug_renderer_info`
  * is unavailable, returns `tier='unknown'` with conservative defaults and
  * empty vendor/renderer strings.
  */

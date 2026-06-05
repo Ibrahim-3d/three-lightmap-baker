@@ -1,5 +1,5 @@
 /**
- * Ambient dust particles — port of ESL's `AmbientParticles.js`. MIT.
+ * Ambient dust particles - port of ESL's `AmbientParticles.js`. MIT.
  *
  * Instanced billboard quads scattered in a volume around the camera area,
  * drifting via shader-time animation. Cheap atmospheric flavor; pure visual,

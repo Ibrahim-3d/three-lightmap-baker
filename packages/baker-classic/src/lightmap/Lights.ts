@@ -1,11 +1,11 @@
 /**
- * Lights.ts — multi-light packing for the lightmap bake pipeline.
+ * Lights.ts - multi-light packing for the lightmap bake pipeline.
  *
  * Lights are stored in a 4-wide DataTexture (RGBA float), one row per light:
- *   texel (0, i): vec4(pos.xyz,   typeEncoded)  — position + type [0..3]
- *   texel (1, i): vec4(dir.xyz,   params.x)     — direction + param0
- *   texel (2, i): vec4(color.rgb, params.y)     — color + param1
- *   texel (3, i): vec4(params.z,  params.w, 0, 0) — remaining params
+ *   texel (0, i): vec4(pos.xyz,   typeEncoded)  - position + type [0..3]
+ *   texel (1, i): vec4(dir.xyz,   params.x)     - direction + param0
+ *   texel (2, i): vec4(color.rgb, params.y)     - color + param1
+ *   texel (3, i): vec4(params.z,  params.w, 0, 0) - remaining params
  *
  * Type encoding: point=0, directional=1, spot=2, area=3.
  *
@@ -57,7 +57,7 @@ export const LIGHT_TEX_WIDTH = 4;
  *
  * Skips:
  *  - Invisible lights (`visible === false`)
- *  - Anything marked `userData.lightmapIgnore = true` — same opt-out flag the
+ *  - Anything marked `userData.lightmapIgnore = true` - same opt-out flag the
  *    mesh collector honors. Use this on visual-only lights (camera-render
  *    helpers, gizmo lights) that must NOT contribute energy to the bake.
  *    Without this guard, a 30× display-only PointLight in the scene gets

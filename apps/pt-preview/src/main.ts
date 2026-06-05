@@ -1,5 +1,5 @@
 /**
- * pt-preview — stand-alone real-time path tracer demo.
+ * pt-preview - stand-alone real-time path tracer demo.
  *
  * Minimal wiring: builds a Cornell Box scene directly (no DCC shell), creates
  * a PTController, and starts the render loop. No baking, no Preact.

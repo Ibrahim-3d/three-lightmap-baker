@@ -1,5 +1,5 @@
 /**
- * PTRenderer — erichlof-style real-time path tracer for the viewport.
+ * PTRenderer - erichlof-style real-time path tracer for the viewport.
  *
  * 3-pass ping-pong (identical to erichlof's InitCommon.js):
  *   Pass 1: PT shader  → pathTracingRT   (1 sample, reads prev frame)
@@ -46,7 +46,7 @@ export interface PTRendererOptions {
   /** Scene-specific uniforms merged into PT pass (DataTextures, Colors, etc.). */
   sceneUniforms?: PTSceneUniforms;
   /**
-   * When true sampleCounter stays at 1.0 every frame — always live.
+   * When true sampleCounter stays at 1.0 every frame - always live.
    * Set false for static scenes so progressive accumulation kicks in.
    */
   sceneIsDynamic?: boolean;
@@ -67,7 +67,7 @@ const _makeMesh = (mat: ShaderMaterial) => new Mesh(_planeGeo, mat);
 // ── PTRenderer ───────────────────────────────────────────────────────────────
 
 export class PTRenderer {
-  // Three scenes — one per pass
+  // Three scenes - one per pass
   private ptScene = new Scene();
   private copyScene = new Scene();
   private outputScene = new Scene();
@@ -109,7 +109,7 @@ export class PTRenderer {
     // Procedural noise texture used as a per-pixel random seed by the rand()
     // function in pathtracing_random_functions.glsl. The uniform is named
     // tBlueNoiseTexture for compatibility with the erichlof reference, but
-    // the contents are currently WHITE noise (Math.random()) — a known
+    // the contents are currently WHITE noise (Math.random()) - a known
     // quality regression vs. a real blue-noise PNG. Path tracing still works
     // correctly; convergence at low SPP is just noisier than ideal. Replace
     // with a void-and-cluster generator or load a static PNG when investing

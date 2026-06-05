@@ -3,8 +3,9 @@ import { defineConfig, devices } from '@playwright/test';
 /**
  * Playwright config for the demo e2e suite.
  *
- * - Headless Chromium with hardware GL where available (`--enable-gpu`,
- *   `--use-angle=gl`). Tests run under SwiftShader as fallback (slow but works).
+ * - Headless Chromium with hardware GL where available. GPU-sensitive tests
+ *   must keep the launch args below, especially `--force_high_performance_gpu`
+ *   on dual-GPU machines and `--ignore-gpu-blocklist` for blocked drivers.
  * - Boots the Vite dev server (`npm run start`) and waits for it before launching.
  * - Base URL appends `?test=1` per spec so `window.__baker` is exposed.
  * - Per-test timeout long enough for a Draft bake (~10s on SwiftShader).
@@ -33,6 +34,8 @@ export default defineConfig({
                         '--use-angle=gl',
                         '--enable-webgl',
                         '--ignore-gpu-blocklist',
+                        '--enable-gpu-rasterization',
+                        '--force_high_performance_gpu',
                     ],
                 },
             },

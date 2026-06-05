@@ -4,17 +4,17 @@ import type { AOMapper, Lightmapper, PackedLight, PostProcessOptions } from '../
 import type { PerMeshOverride } from '../utils/Partition';
 
 // Public type surface for the classic baker. All `import type` so this file
-// strips to nothing at runtime — pure declaration aggregation, not a module.
+// strips to nothing at runtime - pure declaration aggregation, not a module.
 
 export type BakePhase = 'uv-unwrap' | 'geometry' | 'bake' | 'refine';
 
 /**
- * Per-frame bake snapshot — fires after each RAF tick during the `bake` phase.
+ * Per-frame bake snapshot - fires after each RAF tick during the `bake` phase.
  * Lets callers preserve a live preview of the in-flight accumulator (mount
  * `compositeTexture` on a material's `lightMap` slot once and watch it fade in)
  * and drive their own UI updates (FPS counter, progress widget, stats overlay).
  *
- * The texture refs are STABLE across calls — Three.js will pick up the latest
+ * The texture refs are STABLE across calls - Three.js will pick up the latest
  * sample on its next render automatically. Don't store copies; store the ref.
  */
 export type BakeFrameInfo = {
@@ -28,7 +28,7 @@ export type BakeFrameInfo = {
   aoSamples: number;
   /** Target sample count for this group (= `LightmapBakerOptions.samples`). */
   targetSamples: number;
-  /** True on the final RAF of this group — both mappers report done. */
+  /** True on the final RAF of this group - both mappers report done. */
   done: boolean;
   /** Live composite texture (direct + indirect × gi) × ao. Refreshed per-RAF. */
   compositeTexture: Texture;
@@ -55,7 +55,7 @@ export type BakeHooks = {
 
 export type BakeStats = {
   meshCount: number;
-  /** Resolution × resolution — atlas texel count (summed across all groups). */
+  /** Resolution × resolution - atlas texel count (summed across all groups). */
   texelCount: number;
   /** Estimate: samples × castsPerFrame × texelCount. */
   raysTraced: number;
@@ -90,10 +90,10 @@ export type LightmapBakerOptions = {
   refinementOptions?: Partial<PostProcessOptions>;
   /** Light source. Required for any direct lighting; see LightOptions defaults below. */
   light?: LightOptions;
-  /** Indirect / GI controls. */
-  gi?: GIOptions;
-  /** Ambient occlusion controls. */
-  ao?: AOOptions;
+  /** Indirect / GI controls. Pass `false` to disable GI quickly. */
+  gi?: GIOptions | boolean;
+  /** Ambient occlusion controls. Pass `false` to disable AO quickly. */
+  ao?: AOOptions | boolean;
   /** UV2 filtering at view time. Default 'linear'. */
   filtering?: 'linear' | 'nearest';
   /**
@@ -103,7 +103,7 @@ export type LightmapBakerOptions = {
    * one or more atlases of side `resolution`. Larger meshes auto-spawn additional
    * atlases when one cannot hold them all at the target density.
    *
-   * When NOT provided (default), the baker falls back to resolution-only grouping —
+   * When NOT provided (default), the baker falls back to resolution-only grouping -
    * all meshes share one atlas at `resolution`, OR meshes with `perMesh[uuid].resolution`
    * overrides get their own per-resolution atlas.
    *
@@ -178,7 +178,7 @@ export type GIOptions = {
 
 export type AOOptions = {
   enabled?: boolean;
-  /** AO max distance — first hits beyond this are treated as "no occluder". Default 0.5. */
+  /** AO max distance - first hits beyond this are treated as "no occluder". Default 0.5. */
   distance?: number;
   /** Darkness multiplier on the final occlusion amount. Default 1.0. Sane 0..3. */
   intensity?: number;
@@ -194,24 +194,24 @@ export type AOOptions = {
 
 /**
  * Public per-group view exposed by `LightmapBakeResult.groups`. Provides
- * read-only access to every texture produced by a group's bake — needed by
+ * read-only access to every texture produced by a group's bake - needed by
  * advanced callers that mount per-channel debug layers (Direct, Indirect, AO,
  * Position, Normal), run their own refinement passes, or implement a
  * multi-atlas viewer.
  *
- * All textures are STABLE refs — Three.js will see updates automatically when
+ * All textures are STABLE refs - Three.js will see updates automatically when
  * the underlying RT contents change (e.g. during accumulation, after `rebakeAO`,
  * after a manual refinement re-run).
  */
 export type BakeGroupView = {
-  /** Meshes assigned to this group (read-only — do NOT mutate). */
+  /** Meshes assigned to this group (read-only - do NOT mutate). */
   readonly meshes: ReadonlyArray<Mesh>;
   /**
    * Lightmap side length bound to `mesh.lightMap` (the public/delivery res).
    *
    * NOTE: When `superSample > 1`, the textures in `textures.*` are at the
    * INTERNAL bake resolution (`resolution × superSample`), not at `resolution`.
-   * The downscaled target-res texture is what meshes actually use — fetch it
+   * The downscaled target-res texture is what meshes actually use - fetch it
    * via `LightmapBakeResult.lightmaps.get(mesh)`. Use `internalResolution`
    * for read-render-target / pixel-count operations against `textures.*`.
    */
@@ -222,7 +222,7 @@ export type BakeGroupView = {
    */
   readonly internalResolution: number;
   /**
-   * Live bounce mapper instance for this group. Read-only handle —
+   * Live bounce mapper instance for this group. Read-only handle -
    * lifetime is owned by the result; do NOT call `.dispose()`. Useful for
    * advanced callers that want to drive accumulation per-RAF or introspect
    * per-group sample counts (`textures` for direct/indirect refs, `setTileSize`,
@@ -230,7 +230,7 @@ export type BakeGroupView = {
    */
   readonly lightmapper: Lightmapper;
   /**
-   * Live AO mapper instance for this group. Read-only handle — lifetime
+   * Live AO mapper instance for this group. Read-only handle - lifetime
    * is owned by the result; do NOT call `.dispose()`. Mirrors `lightmapper`
    * for the AO pass.
    */
@@ -254,7 +254,7 @@ export type BakeGroupView = {
 };
 
 /**
- * Internal — the LightmapBaker constructor's normalized options shape. Shared
+ * Internal - the LightmapBaker constructor's normalized options shape. Shared
  * across bake/* helpers (groups, pipeline) so the orchestrator can pass a
  * single typed bag instead of N positional parameters. Not exported from the
  * public package barrel.

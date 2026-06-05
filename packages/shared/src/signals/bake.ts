@@ -3,7 +3,7 @@ import type { Texture } from 'three';
 
 /**
  * Bake-progress signals. Technically baker-specific, but the shell's
- * `<StatusBar/>` and `<StaleBanner/>` read them — keeping them in shared
+ * `<StatusBar/>` and `<StaleBanner/>` read them - keeping them in shared
  * avoids the shell having to import from `baker-classic/`. Renderers that
  * don't bake (pure preview) leave the signals at their defaults.
  */
@@ -37,14 +37,14 @@ export const isBaking = computed(() => bakeStatus.value === 'baking');
 // ── PT renderer settings ─────────────────────────────────────────────────────
 
 /**
- * Path tracer settings — shared with the baker's sky/env fill so one slider
+ * Path tracer settings - shared with the baker's sky/env fill so one slider
  * drives both. Lives in shared/ so `WorldPage` (baker-classic/ui) and the
  * PT inspector page (pt-renderer/ui) read the same atom.
  */
 export type PTSettings = {
   /** 0 = dark sky, 3 = bright sky (feeds baker GI miss-hit fill + PT sky). */
   skyIntensity: number;
-  /** Global light-intensity multiplier (default 0.15 — normalises THREE.js scene lights). */
+  /** Global light-intensity multiplier (default 0.15 - normalises THREE.js scene lights). */
   lightScale: number;
   /** 0 = pinhole; > 0 = depth-of-field blur radius. */
   aperture: number;

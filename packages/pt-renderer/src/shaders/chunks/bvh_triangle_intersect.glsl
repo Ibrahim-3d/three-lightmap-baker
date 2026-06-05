@@ -1,7 +1,7 @@
 //-------------------------------------------------------------------------------------------------------------------
 float BVH_TriangleIntersect( vec3 v0, vec3 v1, vec3 v2, vec3 rayOrigin, vec3 rayDirection, out float u, out float v )
 //-------------------------------------------------------------------------------------------------------------------
-{	// Möller–Trumbore triangle intersection — DOUBLE-SIDED
+{	// Möller–Trumbore triangle intersection - DOUBLE-SIDED
 	// Erichlof's original rejects det < 0 (back-face culling). We remove that
 	// check because Three.js BoxGeometry / merged geometry may have mixed
 	// winding after clone + applyMatrix4 + toNonIndexed + mergeGeometries.

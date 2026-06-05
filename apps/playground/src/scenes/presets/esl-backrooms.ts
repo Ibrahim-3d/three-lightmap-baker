@@ -106,7 +106,7 @@ async function build(parent: Object3D): Promise<SceneBuildResult> {
 
 sceneRegistry.register({
   id: 'esl.backrooms',
-  label: 'ESL — Backrooms',
+  label: 'ESL - Backrooms',
   category: 'esl',
   description:
     'Port of enhance-shader-lighting Backrooms demo. Indoor maze. Audio + compression-pass deferred to PostFX task #4.',

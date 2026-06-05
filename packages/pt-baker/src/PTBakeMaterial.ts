@@ -1,5 +1,5 @@
 /**
- * PTBakeMaterial — ShaderMaterial for UV-space path-traced lightmap baking.
+ * PTBakeMaterial - ShaderMaterial for UV-space path-traced lightmap baking.
  *
  * Vertex: renders geometry in UV2 space (gl_Position = uv2*2-1).
  * Fragment: shoots a cosine-weighted hemisphere ray from the world-space
@@ -77,7 +77,7 @@ export class PTBakeMaterial extends ShaderMaterial {
     });
 
     // THREE.js doesn't include modelMatrix / normalMatrix in the auto-uniforms
-    // for ShaderMaterial — override by setting these in the material.
+    // for ShaderMaterial - override by setting these in the material.
     this.customProgramCacheKey = () => 'pt-bake-v1';
   }
 

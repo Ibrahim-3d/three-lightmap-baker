@@ -44,7 +44,7 @@ export type RaycastOptions = {
   bounces: number;
   /**
    * Per-draw-call ceiling in texels. When `< resolution`, the bake is split
-   * into scissored tiles — `(resolution / tileSize)²` draws per sample. TDR
+   * into scissored tiles - `(resolution / tileSize)²` draws per sample. TDR
    * protection on iGPUs / large resolutions. Default = `resolution` (one
    * draw per sample, identical to pre-Task-08 behaviour).
    */
@@ -63,7 +63,7 @@ export type LightmapperRender = {
 export type Lightmapper = {
   renderTarget: WebGLMultipleRenderTargets;
   /**
-   * Direct/indirect output textures. AO has been split into a separate pass —
+   * Direct/indirect output textures. AO has been split into a separate pass -
    * see `AOMapper.ts`. Composite consumes (direct, indirect, ao-from-AOMapper).
    */
   textures: { direct: Texture; indirect: Texture };
@@ -84,7 +84,7 @@ export type Lightmapper = {
    * `>= resolution` to disable tiling.
    */
   setTileSize: (tileSize: number) => void;
-  /** Reset accumulator (re-bake without rebuilding BVH/textures — currently unused, future-proof). */
+  /** Reset accumulator (re-bake without rebuilding BVH/textures - currently unused, future-proof). */
   reset: () => void;
   /** Free GPU resources (RT, material, fullscreen quad geometry). Call before re-baking. */
   dispose: () => void;
@@ -122,7 +122,7 @@ export const generateLightmapper = (
     indirectLightEnabled: options.indirectLightEnabled,
   });
 
-  // FloatType MRT — HalfFloat MRT was tested but caused 30× perf regression on
+  // FloatType MRT - HalfFloat MRT was tested but caused 30× perf regression on
   // ANGLE D3D11 (NVIDIA, RTX 3050 Ti reproduced 32s → 981s). Driver's MRT path
   // for HalfFloat hits a slow fallback when sampled by a downstream shader.
   // FloatType is fully supported (`OES_texture_float_linear: true` on the
@@ -172,7 +172,7 @@ export const generateLightmapper = (
 
   /**
    * Draw one tile of the current sample. Returns wall-clock ms (JS-side; does
-   * NOT capture GPU async work — see Capabilities.ts comment on RAF-interval
+   * NOT capture GPU async work - see Capabilities.ts comment on RAF-interval
    * adaptation). On the last tile of a sample, `totalSamples` increments and
    * a `pendingTileSize` (if any) is committed before the next sample.
    */
@@ -269,7 +269,7 @@ export const generateLightmapper = (
     const clamped = Math.max(1, Math.min(resolution, n | 0));
     if (clamped === tileSize && pendingTileSize === null) return;
     if (nextTileIndex === 0) {
-      // At a sample boundary already — apply immediately.
+      // At a sample boundary already - apply immediately.
       tileSize = clamped;
       grid = computeTileGrid(tileSize);
       pendingTileSize = null;

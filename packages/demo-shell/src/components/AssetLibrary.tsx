@@ -5,7 +5,7 @@ import { Box, Circle, Cylinder, Disc, Lightbulb, Square, Sun, Triangle } from '.
 /**
  * Asset Library panel (T-D7). Two categories: Primitives + Lights. Each tile is
  * an HTML5 drag source carrying a JSON-encoded `AssetSpec` on the
- * `application/x-baker-asset` mime — main.tsx listens for the drop on the
+ * `application/x-baker-asset` mime - main.tsx listens for the drop on the
  * renderer canvas and routes to `SceneController.addAsset`.
  */
 export function AssetLibrary() {

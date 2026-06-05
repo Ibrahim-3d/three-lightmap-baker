@@ -8,7 +8,7 @@ export type DenoiseMaterialOptions = {
 };
 
 /**
- * Bilateral denoiser (BrutPitt's smartDeNoise). GLSL 1.0 ES — kept on this version
+ * Bilateral denoiser (BrutPitt's smartDeNoise). GLSL 1.0 ES - kept on this version
  * deliberately because the algorithm uses `texture2D` and reads-on-loop that have
  * no measurable benefit from GLSL3 conversion, and Phase 7 fork preserves it.
  *
@@ -17,7 +17,7 @@ export type DenoiseMaterialOptions = {
  */
 export class DenoiseMaterial extends ShaderMaterial {
   // USE_SLIDER define is always 0; sigma/threshold/kSigma are uniforms. GLSL1 (deliberate exception
-  // to project GLSL3 rule — see comment above). No per-instance GLSL variation. Renderer owns program.
+  // to project GLSL3 rule - see comment above). No per-instance GLSL variation. Renderer owns program.
   override customProgramCacheKey(): string {
     return 'DenoiseMaterial|glsl1|single-out';
   }
@@ -42,7 +42,7 @@ export class DenoiseMaterial extends ShaderMaterial {
 				varying vec2 vUv;
 				void main() {
 					vUv = uv;
-					// NDC pass-through — matches DilationMaterial/CompositeMaterial.
+					// NDC pass-through - matches DilationMaterial/CompositeMaterial.
 					// Using projectionMatrix * modelViewMatrix with the default
 					// OrthographicCamera (near=0.1) clips the z=0 quad and produces
 					// no output, silently bypassing denoise.

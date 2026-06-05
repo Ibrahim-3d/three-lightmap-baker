@@ -357,7 +357,7 @@ void main()
 	// average accumulation buffer
 	filteredPixelColor *= uOneOverSampleCounter;
 
-	// No tonemap — match classic baker (writes linear; renderer.outputColorSpace=sRGB).
+	// No tonemap - match classic baker (writes linear; renderer.outputColorSpace=sRGB).
 	// GLSL3 raw ShaderMaterial bypasses Three's auto sRGB encode, so apply OETF here.
 	pc_fragColor = vec4(linearToSRGB(filteredPixelColor), 1.0);
 }

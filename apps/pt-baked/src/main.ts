@@ -1,5 +1,5 @@
 /**
- * pt-baked — side-by-side: real-time PT preview (left) vs baked PT lightmap (right).
+ * pt-baked - side-by-side: real-time PT preview (left) vs baked PT lightmap (right).
  *
  * Split-screen: left half = PTRenderer (progressive, updates in real time),
  * right half = baked lightmap applied to geometry.
@@ -111,7 +111,7 @@ scene.updateMatrixWorld(true);
 
 // ── Right half: baked lightmap scene (separate copy of scene) ─────────────────
 
-// We render the same geometry twice — left half with PT, right with baked lightmap.
+// We render the same geometry twice - left half with PT, right with baked lightmap.
 // To avoid shader conflicts, we keep two scene objects but share geometry/materials.
 // The baked lightMap is applied to materials directly; standard rasteriser renders right half.
 
@@ -191,7 +191,7 @@ async function runBake(): Promise<void> {
   disposeBVHSceneData(sceneData);
   baker.dispose();
   baking = false;
-  statusEl.textContent = `Done — ${SAMPLES} samples, 1024² px`;
+  statusEl.textContent = `Done - ${SAMPLES} samples, 1024² px`;
 }
 
 document.getElementById('btn-bake')!.addEventListener('click', () => {
@@ -214,14 +214,14 @@ function tick(): void {
 
   renderer.setScissorTest(true);
 
-  // Left half — PT progressive renderer.
+  // Left half - PT progressive renderer.
   if (pt) {
     renderer.setViewport(0, 0, half, h);
     renderer.setScissor(0, 0, half, h);
     pt.render(renderer, camera, delta);
   }
 
-  // Right half — standard rasteriser with lightMap applied.
+  // Right half - standard rasteriser with lightMap applied.
   // Hide the dynamic point light to avoid double-lighting (baked + live).
   ptLight.visible = false;
   renderer.setViewport(half, 0, w - half, h);

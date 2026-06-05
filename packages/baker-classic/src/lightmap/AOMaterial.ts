@@ -26,7 +26,7 @@ export type AOMaterialOptions = {
 };
 
 /**
- * Standalone AO bake material. Stores RAW normalized visibility per texel —
+ * Standalone AO bake material. Stores RAW normalized visibility per texel -
  * `mean over rays of t`, where `t = clamp(dist/ambientDistance, 0, 1)` on hit
  * within range, else 1.0. The `aoIntensity` / `aoExponent` remap is applied
  * at composite time, so tweaking those sliders does not require a re-bake.
@@ -34,7 +34,7 @@ export type AOMaterialOptions = {
  * Same RNG, hemisphere sampler, ray bias, and BVH usage as LightmapperMaterial.
  */
 export class AOMaterial extends ShaderMaterial {
-  // aoSamples and ambientDistance are uniforms (runtime) — not compile-time.
+  // aoSamples and ambientDistance are uniforms (runtime) - not compile-time.
   // GLSL source is identical across all AOMaterial instances. Renderer owns the WebGLProgram.
   override customProgramCacheKey(): string {
     return 'AOMaterial|glsl3|single-out';

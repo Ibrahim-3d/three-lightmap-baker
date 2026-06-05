@@ -52,7 +52,7 @@ function build(parent: Object3D): SceneBuildResult {
     root.add(w);
   }
 
-  // Three colored point lights — visual markers as small emissive spheres
+  // Three colored point lights - visual markers as small emissive spheres
   // (`lightmapIgnore=true` so they aren't UV-unwrapped).
   const lights: [number, number, number, number][] = [
     [0xff4040, -3.0, 3.0, 0.0],
@@ -83,7 +83,7 @@ function build(parent: Object3D): SceneBuildResult {
 
 sceneRegistry.register({
   id: 'threejs.pointlights',
-  label: 'three.js — Point Lights',
+  label: 'three.js - Point Lights',
   category: 'threejs-port',
   description:
     'Port of the three.js webgl_lights_pointlights example: 3 colored point lights in a closed room.',

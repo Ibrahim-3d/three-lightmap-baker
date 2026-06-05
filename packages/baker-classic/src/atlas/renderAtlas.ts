@@ -16,11 +16,11 @@ import {
 } from 'three';
 
 /*
- * Atlas G-buffer shaders — GLSL3.
+ * Atlas G-buffer shaders - GLSL3.
  *
  * Vertex shader rasterizes geometry in UV2 space (gl_Position = uv2*2 - 1).
  * Fragment shader writes either the world-space position (with a=1 chart-mask)
- * or the world-space normal into a FloatType RT — these textures form the
+ * or the world-space normal into a FloatType RT - these textures form the
  * lookup table the bake fragment shader reads to seed each ray.
  */
 
@@ -63,7 +63,7 @@ const normalVertexShader = /* glsl */ `
     void main() {
         // Inverse-transpose of the upper-left 3x3 of the model matrix preserves
         // normal direction under non-uniform scale. mat3(modelMatrix) alone
-        // skews normals on stretched axes — visible as wrong shading falloff
+        // skews normals on stretched axes - visible as wrong shading falloff
         // on imported GLB content. inverse()/transpose() are GLSL3 built-ins.
         mat3 worldNormalMatrix = transpose(inverse(mat3(modelMatrix)));
         vec3 worldNormal = worldNormalMatrix * normal;
@@ -80,7 +80,7 @@ const normalFragmentShader = /* glsl */ `
     out vec4 fragColor;
 
     void main() {
-        // Guard against zero-length normals (degenerate geometry) — produces (0,0,0,0)
+        // Guard against zero-length normals (degenerate geometry) - produces (0,0,0,0)
         // so the bake shader can detect the miss instead of generating NaN.
         float len = length(vNormal.xyz);
         fragColor = len > 1e-6 ? vec4(vNormal.xyz / len, vNormal.w) : vec4(0.0);
@@ -161,7 +161,7 @@ export const renderAtlas = (
     });
     rts.push(target);
 
-    // Camera is local — no GPU resources, no dispose needed.
+    // Camera is local - no GPU resources, no dispose needed.
     const orthographicCamera = new OrthographicCamera(-100, 100, -100, 100, -100, 200);
     orthographicCamera.updateMatrix();
 

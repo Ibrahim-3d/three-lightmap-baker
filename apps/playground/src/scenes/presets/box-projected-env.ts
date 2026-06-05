@@ -1,5 +1,5 @@
 /**
- * Box-Projected Environment Map shader patch — port of ESL's
+ * Box-Projected Environment Map shader patch - port of ESL's
  * `BoxProjectedEnvMapHelper.js` (credits: codercat / 0beqz). MIT.
  *
  * Treats a single equirect HDR probe as if it were captured inside an axis-
@@ -13,11 +13,11 @@
  * binding pattern.
  *
  * Three.js 0.161 chunk-target audit:
- *  - `#include <worldpos_vertex>` — present ✓
- *  - `#include <envmap_physical_pars_fragment>` — present ✓
- *  - `vec3 worldNormal = inverseTransformDirection( normal, viewMatrix );` —
+ *  - `#include <worldpos_vertex>` - present ✓
+ *  - `#include <envmap_physical_pars_fragment>` - present ✓
+ *  - `vec3 worldNormal = inverseTransformDirection( normal, viewMatrix );` -
  *    string-match still present in 0.161 envmap_physical_pars_fragment ✓
- *  - `reflectVec = inverseTransformDirection( reflectVec, viewMatrix );` —
+ *  - `reflectVec = inverseTransformDirection( reflectVec, viewMatrix );` -
  *    still present ✓
  */
 import { ShaderChunk, type Vector3, type WebGLProgramParametersWithUniforms } from 'three';

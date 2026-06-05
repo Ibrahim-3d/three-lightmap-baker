@@ -25,7 +25,7 @@ function build(parent: Object3D): SceneBuildResult {
   ground.position.set(0, -0.2, 0);
   root.add(ground);
 
-  // A handful of primitive obstacles — substitutes for the original example's
+  // A handful of primitive obstacles - substitutes for the original example's
   // knight + tree silhouettes. Lighting (a high directional sun) is what we
   // care about reproducing.
   const obstacles: Array<[string, Mesh]> = [
@@ -50,7 +50,7 @@ function build(parent: Object3D): SceneBuildResult {
     root.add(m);
   }
 
-  // Directional "sun" — display-only; baker reads lightDummy.position for
+  // Directional "sun" - display-only; baker reads lightDummy.position for
   // direct light.
   const sun = new DirectionalLight(0xfff4d0, 1.5);
   sun.position.set(10, 18, 8);
@@ -66,7 +66,7 @@ function build(parent: Object3D): SceneBuildResult {
 
 sceneRegistry.register({
   id: 'threejs.shadowmap',
-  label: 'three.js — Shadow Map',
+  label: 'three.js - Shadow Map',
   category: 'threejs-port',
   description:
     'Port of webgl_shadowmap: outdoor scene with directional sun + ground + a few obstacles.',

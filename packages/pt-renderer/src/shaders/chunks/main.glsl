@@ -89,7 +89,7 @@ void main( void )
 		previousPixel.a = 0.0;
 		currentPixel.rgb *= 0.5; // brightness of new image (noisy)
 	}
-	else if (uSceneIsDynamic) // dynamic scene, sampleCounter always 1 — need stable blend
+	else if (uSceneIsDynamic) // dynamic scene, sampleCounter always 1 - need stable blend
 	{
 		// 0.9/0.1 exponential blend: converges to the true 1-sample radiance.
 		// Without this, prev*1.0 + cur*1.0 diverges to infinity each frame.

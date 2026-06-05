@@ -46,7 +46,7 @@ function build(parent: Object3D): SceneBuildResult {
   right.position.set(HALF + T / 2, HALF, 0);
   root.add(right);
 
-  // Tall mirror cube — metalness=1, very low roughness.
+  // Tall mirror cube - metalness=1, very low roughness.
   // userData.lightmapIgnore=true so the baker skips it (mirror reflection is
   // view-time only; UV unwrap is meaningless).
   const mirror = new Mesh(
@@ -59,7 +59,7 @@ function build(parent: Object3D): SceneBuildResult {
   mirror.userData.lightmapIgnore = true;
   root.add(mirror);
 
-  // Glass sphere — transmission=1, roughness=0. Also ignored by bake.
+  // Glass sphere - transmission=1, roughness=0. Also ignored by bake.
   const glass = new Mesh(
     new SphereGeometry(1.2, 48, 32),
     new MeshPhysicalMaterial({
@@ -86,7 +86,7 @@ function build(parent: Object3D): SceneBuildResult {
 
 sceneRegistry.register({
   id: 'cornell.glass-mirror',
-  label: 'Cornell — Glass + Mirror',
+  label: 'Cornell - Glass + Mirror',
   category: 'cornell',
   description:
     'Cornell with a mirror cube + glass sphere (excluded from bake; rendered view-time only).',

@@ -15,7 +15,7 @@ export function registerPTRendererUI(): void {
   if (_registered) return;
   _registered = true;
 
-  // Inspector tab — visible only when in path-traced mode.
+  // Inspector tab - visible only when in path-traced mode.
   panelRegistry.register({
     id: 'pathtracer',
     label: 'Path Tracer',
@@ -23,7 +23,7 @@ export function registerPTRendererUI(): void {
     when: () => renderMode.value === 'pathtraced',
   });
 
-  // Render menu item — toggle between rasterisation and PT.
+  // Render menu item - toggle between rasterisation and PT.
   menuRegistry.register('Render', {
     id: 'toggle-pathtracer',
     label: 'Path Traced',

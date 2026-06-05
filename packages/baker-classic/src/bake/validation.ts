@@ -5,7 +5,7 @@ import type { GPUCapabilities } from '../gpu/Capabilities';
 import type { LightmapBakerOptions, TimeoutProtectionOptions } from './types';
 
 // Pure helpers shared by `LightmapBaker.constructor` and `bake()`. No GL state,
-// no class fields — all inputs come through parameters so this file is unit-
+// no class fields - all inputs come through parameters so this file is unit-
 // testable in isolation.
 
 export const toLinearColor = (c: Color | string | number | undefined, fallback: number): Color =>
@@ -14,7 +14,7 @@ export const toLinearColor = (c: Color | string | number | undefined, fallback: 
 export const isPowerOfTwo = (n: number): boolean => n > 0 && (n & (n - 1)) === 0;
 
 /**
- * Default refinement options — merged onto user overrides in the constructor.
+ * Default refinement options - merged onto user overrides in the constructor.
  * Frozen-by-convention; treat as read-only.
  */
 export const DEFAULT_REFINEMENT: PostProcessOptions = {
@@ -39,7 +39,10 @@ export function validateOptions(opts: LightmapBakerOptions): void {
   if (!Number.isFinite(casts) || casts < 1 || casts > 256)
     throw new BakeError(`castsPerFrame must be 1-256, got ${casts}`, 'validation');
 
-  const aoSamples = opts.ao?.samples;
+  const aoOptions = typeof opts.ao === 'boolean' ? undefined : opts.ao;
+  const giOptions = typeof opts.gi === 'boolean' ? undefined : opts.gi;
+
+  const aoSamples = aoOptions?.samples;
   if (aoSamples !== undefined && (!Number.isFinite(aoSamples) || aoSamples < 0 || aoSamples > 64))
     throw new BakeError(`ao.samples must be 0-64, got ${aoSamples}`, 'validation');
 
@@ -67,15 +70,18 @@ export function validateOptions(opts: LightmapBakerOptions): void {
   if (opts.light?.size !== undefined && opts.light.size < 0)
     throw new BakeError(`light.size must be >= 0, got ${opts.light.size}`, 'validation');
 
-  if (opts.gi?.intensity !== undefined && opts.gi.intensity < 0)
-    throw new BakeError(`gi.intensity must be >= 0, got ${opts.gi.intensity}`, 'validation');
-  if (opts.gi?.skyIntensity !== undefined && opts.gi.skyIntensity < 0)
-    throw new BakeError(`gi.skyIntensity must be >= 0, got ${opts.gi.skyIntensity}`, 'validation');
+  if (giOptions?.intensity !== undefined && giOptions.intensity < 0)
+    throw new BakeError(`gi.intensity must be >= 0, got ${giOptions.intensity}`, 'validation');
+  if (giOptions?.skyIntensity !== undefined && giOptions.skyIntensity < 0)
+    throw new BakeError(
+      `gi.skyIntensity must be >= 0, got ${giOptions.skyIntensity}`,
+      'validation',
+    );
 
-  if (opts.ao?.distance !== undefined && opts.ao.distance < 0)
-    throw new BakeError(`ao.distance must be >= 0, got ${opts.ao.distance}`, 'validation');
+  if (aoOptions?.distance !== undefined && aoOptions.distance < 0)
+    throw new BakeError(`ao.distance must be >= 0, got ${aoOptions.distance}`, 'validation');
 
-  // Validate top-level density (Phase 1 — density-aware multi-atlas).
+  // Validate top-level density (Phase 1 - density-aware multi-atlas).
   if (opts.texelsPerMeter !== undefined) {
     const tpm = opts.texelsPerMeter;
     if (!Number.isFinite(tpm) || tpm <= 0 || tpm > 1024)
@@ -108,7 +114,7 @@ export function validateOptions(opts: LightmapBakerOptions): void {
     );
     if (overrides.length > 0) {
       console.warn(
-        `[baker] texelsPerMeter is set; perMesh[].resolution overrides on ${overrides.length} mesh(es) will be ignored — density mode uses one shared resolution.`,
+        `[baker] texelsPerMeter is set; perMesh[].resolution overrides on ${overrides.length} mesh(es) will be ignored - density mode uses one shared resolution.`,
       );
     }
   }
@@ -137,7 +143,7 @@ export function validateOptions(opts: LightmapBakerOptions): void {
 
 /**
  * Resolve timeout-protection settings from user opts + detected GPU capabilities.
- * Pure function for testability — no side effects beyond the capability log.
+ * Pure function for testability - no side effects beyond the capability log.
  */
 export function resolveTimeoutProtection(
   user: TimeoutProtectionOptions | undefined,

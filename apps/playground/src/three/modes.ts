@@ -78,7 +78,7 @@ export const LAYERS: Layer[] = [
   {
     // Material-swap layer: replaces mesh material with MeshBasicMaterial that
     // shows the albedo texture WITHOUT any lighting, env probe, or lightmap.
-    // Pure unlit diffuse — best for inspecting texture content & uv mapping.
+    // Pure unlit diffuse - best for inspecting texture content & uv mapping.
     id: 'albedoUnlit',
     label: 'Albedo (Unlit)',
     group: 'debug',
@@ -168,7 +168,7 @@ export class RenderModeRunner {
       return;
     }
 
-    // Material-swap layer (Albedo Unlit) — pure diffuse, no lighting at all.
+    // Material-swap layer (Albedo Unlit) - pure diffuse, no lighting at all.
     if (layer.id === 'albedoUnlit') {
       const live = new Set<Mesh>(meshes);
       for (const m of this.albedoUnlitMats.keys()) {
@@ -224,7 +224,7 @@ export class RenderModeRunner {
         mat.lightMapIntensity = 0;
         nullLM++;
       }
-      // Intentionally NOT setting mat.needsUpdate — variant pinned at scene init.
+      // Intentionally NOT setting mat.needsUpdate - variant pinned at scene init.
     }
     if (DEBUG) {
       console.info('[baker:debug] applyRenderMode', {
@@ -239,7 +239,7 @@ export class RenderModeRunner {
     (lightMarker.material as MeshBasicMaterial).color = new Color(0xffffff);
 
     // Visual disc light is the viewport "scene lamp". On.
-    //   - Albedo layer (always — that layer is the unlit/textured preview).
+    //   - Albedo layer (always - that layer is the unlit/textured preview).
     //   - Any output layer when no bake exists yet. Without this, Combined
     //     pre-bake mounts a dummy lightmap with intensity 0 AND no scene
     //     lights → MeshStandardMaterial renders fully black. With it on,
@@ -253,7 +253,7 @@ export class RenderModeRunner {
   /**
    * Sync per-mesh TexelDensityMaterial cache with current mesh list + options.
    * Each mesh's effective target = global texelsPerMeter × per-mesh scale.
-   * Cheap — uniform writes only. Triggered on Texel Density layer activation,
+   * Cheap - uniform writes only. Triggered on Texel Density layer activation,
    * per-mesh density slider, global texelsPerMeter, and lightMapSize changes.
    */
   refreshTexelDensityMaterials(): void {

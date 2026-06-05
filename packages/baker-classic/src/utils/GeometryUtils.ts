@@ -25,7 +25,7 @@ const KEPT_ATTRIBUTES = new Set(['position', 'normal', 'uv', 'uv2', 'meshIndex']
  * mesh-by-mesh concatenation. Vertices are NOT reordered though, so reading
  * `meshIndex` from any of the triangle's vertices recovers the original mesh
  * identity. Used by extractPerTriangleMaterials to build a material lookup
- * keyed by post-BVH triangle index — matching what the GPU shader's
+ * keyed by post-BVH triangle index - matching what the GPU shader's
  * `faceIndices.w` returns at hit time.
  *
  * Normalizes inputs: forces indexed geometry (mergeVertices) and strips
@@ -58,7 +58,7 @@ export const mergeGeometry = (meshes: Mesh[]): BufferGeometry => {
   if (!merged) {
     const names = meshes.map((m, i) => m.name || `<unnamed#${i}>`).join(', ');
     throw new BakeError(
-      `mergeGeometries returned null — incompatible attribute sets across meshes [${names}]`,
+      `mergeGeometries returned null - incompatible attribute sets across meshes [${names}]`,
       'geometry',
     );
   }
@@ -70,7 +70,7 @@ export const mergeGeometry = (meshes: Mesh[]): BufferGeometry => {
  * its inputs. Index N in these arrays refers to the same triangle the BVH
  * reports as faceIndex N at hit time.
  *
- * Both arrays are flat RGB triplets — length === totalTriangles * 3.
+ * Both arrays are flat RGB triplets - length === totalTriangles * 3.
  */
 export interface PerTriangleMaterials {
   albedo: Float32Array;
@@ -93,11 +93,11 @@ const WHITE_FALLBACK: MatColors = { aR: 1, aG: 1, aB: 1, eR: 0, eG: 0, eB: 0 };
 
 const readMaterialColors = (material: Material | Material[]): MatColors => {
   // Material arrays (faces with different materials per group). For now we
-  // take the first entry and warn — proper per-face lookup needs the
+  // take the first entry and warn - proper per-face lookup needs the
   // geometry's `groups` mapping. None of Cornell's meshes use this path.
   if (Array.isArray(material)) {
     console.warn(
-      '[baker] material array detected; using slot 0 only — per-face material groups not yet supported',
+      '[baker] material array detected; using slot 0 only - per-face material groups not yet supported',
     );
     const slot0 = material[0];
     return slot0 ? readMaterialColors(slot0) : WHITE_FALLBACK;
@@ -105,7 +105,7 @@ const readMaterialColors = (material: Material | Material[]): MatColors => {
 
   const m = material as MeshStandardMaterial & MeshBasicMaterial;
 
-  // MeshStandardMaterial / MeshPhysicalMaterial — has both .color and .emissive
+  // MeshStandardMaterial / MeshPhysicalMaterial - has both .color and .emissive
   if ('emissive' in m && m.emissive) {
     const intensity = (m as MeshStandardMaterial).emissiveIntensity ?? 1.0;
     return {
@@ -118,12 +118,12 @@ const readMaterialColors = (material: Material | Material[]): MatColors => {
     };
   }
 
-  // MeshBasicMaterial — has .color only, no emissive concept
+  // MeshBasicMaterial - has .color only, no emissive concept
   if ('color' in m && m.color) {
     return { aR: m.color.r, aG: m.color.g, aB: m.color.b, eR: 0, eG: 0, eB: 0 };
   }
 
-  // ShaderMaterial / RawShaderMaterial / unknown — can't extract a single albedo
+  // ShaderMaterial / RawShaderMaterial / unknown - can't extract a single albedo
   console.warn(
     '[baker] material has no .color (likely ShaderMaterial); defaulting to white albedo',
   );
@@ -135,7 +135,7 @@ const readMaterialColors = (material: Material | Material[]): MatColors => {
  * post-BVH-construction merged index buffer (which is what the GPU shader
  * receives in `faceIndices.w` at hit time).
  *
- * MUST be called AFTER `new MeshBVH(merged)` — the BVH reorders `merged.index`
+ * MUST be called AFTER `new MeshBVH(merged)` - the BVH reorders `merged.index`
  * in place, so calling this before BVH construction produces an off-by-mesh
  * lookup table that returns the wrong colour for almost every hit.
  *
@@ -158,7 +158,7 @@ export const extractPerTriangleMaterials = (
   const meshIdxAttr = merged.attributes.meshIndex as BufferAttribute | undefined;
   if (!meshIdxAttr) {
     throw new BakeError(
-      "merged geometry is missing 'meshIndex' attribute — did mergeGeometry skip the per-vertex tag?",
+      "merged geometry is missing 'meshIndex' attribute - did mergeGeometry skip the per-vertex tag?",
       'geometry',
     );
   }

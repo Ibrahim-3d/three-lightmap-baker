@@ -84,7 +84,7 @@ function build(parent: Object3D): SceneBuildResult {
 
 sceneRegistry.register({
   id: 'cornell.advanced',
-  label: 'Cornell — Advanced',
+  label: 'Cornell - Advanced',
   category: 'cornell',
   description: 'Cornell Box + sphere + torus knot + accent block. Matches today’s default.',
   build,

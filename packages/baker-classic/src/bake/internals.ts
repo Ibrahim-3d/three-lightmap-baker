@@ -8,7 +8,7 @@ import type {
 } from '../lightmap';
 
 // Internal mutable state shared across the split bake helpers. Not exported
-// from the public barrel. All `import type` — strips to nothing at runtime.
+// from the public barrel. All `import type` - strips to nothing at runtime.
 
 export type GroupInternals = {
   lightmapper: Lightmapper;
@@ -21,7 +21,7 @@ export type GroupInternals = {
   /** Internal bake resolution = resolution × superSample. */
   internalResolution: number;
   /**
-   * Downscale wrapper. Non-null when `superSample > 1` — wraps the internal-res
+   * Downscale wrapper. Non-null when `superSample > 1` - wraps the internal-res
    * final texture and exposes a stable target-res texture for mesh binding.
    * Refreshed when refinement re-runs (rebakeAO path).
    */

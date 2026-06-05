@@ -4,13 +4,13 @@ import { atlasViewerVisible, showAxes, showGrid } from 'shared';
 import { ChevronDown } from './icons';
 
 /**
- * Top-right viewport overlay — Blender/Unreal-style "Overlays" toggle list.
+ * Top-right viewport overlay - Blender/Unreal-style "Overlays" toggle list.
  * Renders a single pill button that opens a popover with one row per boolean
  * signal (grid, axes, atlas viewer). Each row is a click-target with a
  * leading checkbox; clicking flips the underlying signal.
  *
  * Lives in the same horizontal row as `ViewportToggle` and the camera-speed
- * dropdown — the row container handles positioning, this component is
+ * dropdown - the row container handles positioning, this component is
  * pure inline + relatively-anchored popover.
  */
 type Entry = {
@@ -60,7 +60,7 @@ export function ViewportOverlaysMenu() {
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         class="flex items-center gap-1.5 px-3 py-1 text-[11px] font-medium text-text-0 bg-bg-1/95 backdrop-blur border border-border rounded-md shadow-md hover:bg-bg-2 transition-colors"
-        title="Viewport overlays — toggle grid, axes, atlas viewer"
+        title="Viewport overlays - toggle grid, axes, atlas viewer"
       >
         <span>Overlays</span>
         <span class="text-text-2 text-[10px] tabular-nums">

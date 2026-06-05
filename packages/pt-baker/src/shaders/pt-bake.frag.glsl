@@ -24,7 +24,7 @@ precision highp sampler2DArray;
 uniform sampler2D tTriangleTexture;
 uniform sampler2D tAABBTexture;
 
-// ── Albedo array — single sampler2DArray binding (see bvh-scene.frag.glsl).
+// ── Albedo array - single sampler2DArray binding (see bvh-scene.frag.glsl).
 uniform sampler2DArray tAlbedoArray;
 
 vec3 sampleAlbedo(int layer, vec2 uv) {
