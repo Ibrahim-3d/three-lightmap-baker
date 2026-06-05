@@ -40,6 +40,9 @@ jobs:
       - name: Vite build
         run: npm run build
 
+      - name: Package API import smoke test
+        run: npm run test:api-import
+
   modularity:
     name: Modularity (advisory)
     runs-on: ubuntu-latest
