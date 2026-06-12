@@ -41,7 +41,9 @@ export function Inspector() {
         ))}
       </div>
 
-      <div class="flex-1 overflow-auto">{ActiveComponent && <ActiveComponent key={activeTab.id} />}</div>
+      <div class="flex-1 overflow-auto">
+        {ActiveComponent && <ActiveComponent key={activeTab.id} />}
+      </div>
 
       <Splitter
         side="right"
