@@ -185,11 +185,15 @@ export class BakeController {
     for (const entry of entries) {
       entry.texture.channel = 2;
       for (const mesh of entry.meshes) {
-        const mat = mesh.material as MeshStandardMaterial;
-        if (!mat) continue;
-        mat.lightMap = entry.texture;
-        mat.lightMapIntensity = 1;
-        mat.needsUpdate = true;
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const mat of mats) {
+          if (mat && 'lightMap' in mat) {
+            const m = mat as MeshStandardMaterial;
+            m.lightMap = entry.texture;
+            m.lightMapIntensity = 1;
+            m.needsUpdate = true;
+          }
+        }
         this.restoredLightmaps.set(mesh, entry.texture);
       }
     }

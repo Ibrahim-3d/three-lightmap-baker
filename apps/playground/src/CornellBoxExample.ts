@@ -63,6 +63,12 @@ type QualityPresetName = keyof typeof QUALITY_PRESETS;
 
 type Vec3Tuple = [number, number, number];
 
+type ProjectMaterialV1 = {
+  color: number;
+  roughness: number;
+  metalness: number;
+};
+
 type ProjectAssetV1 = {
   spec: AssetSpec;
   name: string;
@@ -70,11 +76,9 @@ type ProjectAssetV1 = {
   position: Vec3Tuple;
   rotation: Vec3Tuple;
   scale: Vec3Tuple;
-  material?: {
-    color: number;
-    roughness: number;
-    metalness: number;
-  };
+  /** @deprecated use materials */
+  material?: ProjectMaterialV1;
+  materials?: ProjectMaterialV1[];
 };
 
 type ProjectOptionsV1 = {
@@ -375,7 +379,9 @@ export class CornellBoxExample implements BakerOrchestrator {
   private static arrayBufferToBase64(buffer: ArrayBuffer): string {
     const bytes = new Uint8Array(buffer);
     let binary = '';
-    const chunkSize = 0x8000;
+    // Reduced chunk size (0x8000 -> 0x1000) to prevent 'Maximum call stack size
+    // exceeded' on browsers with strict stack limits during String.fromCharCode.
+    const chunkSize = 0x1000;
     for (let i = 0; i < bytes.length; i += chunkSize) {
       const chunk = bytes.subarray(i, i + chunkSize);
       binary += String.fromCharCode(...chunk);
@@ -576,25 +582,29 @@ export class CornellBoxExample implements BakerOrchestrator {
         position: [obj.position.x, obj.position.y, obj.position.z],
         rotation: [obj.rotation.x, obj.rotation.y, obj.rotation.z],
         scale: [obj.scale.x, obj.scale.y, obj.scale.z],
-        material: this.projectMaterial(obj),
+        materials: this.projectMaterials(obj),
       };
     });
   }
 
-  private projectMaterial(obj: Object3D): ProjectAssetV1['material'] | undefined {
+  private projectMaterials(obj: Object3D): ProjectMaterialV1[] | undefined {
     const stack = [obj];
     while (stack.length) {
       const child = stack.pop();
       if (!child) continue;
       if (child instanceof Mesh) {
-        const mat = child.material;
-        if (mat instanceof MeshStandardMaterial) {
-          return {
-            color: mat.color.getHex(),
-            roughness: mat.roughness,
-            metalness: mat.metalness,
-          };
+        const mats = Array.isArray(child.material) ? child.material : [child.material];
+        const results: ProjectMaterialV1[] = [];
+        for (const mat of mats) {
+          if (mat instanceof MeshStandardMaterial) {
+            results.push({
+              color: mat.color.getHex(),
+              roughness: mat.roughness,
+              metalness: mat.metalness,
+            });
+          }
         }
+        if (results.length) return results;
       }
       stack.push(...child.children);
     }
@@ -610,16 +620,22 @@ export class CornellBoxExample implements BakerOrchestrator {
     obj.scale.set(asset.scale[0], asset.scale[1], asset.scale[2]);
     obj.userData.assetSpec = { ...asset.spec };
 
-    if (!asset.material) return;
-    const material = asset.material;
+    const materials = asset.materials ?? (asset.material ? [asset.material] : null);
+    if (!materials) return;
+
     obj.traverse((child) => {
       if (!(child instanceof Mesh)) return;
-      const mat = child.material;
-      if (!(mat instanceof MeshStandardMaterial)) return;
-      mat.color.setHex(material.color);
-      mat.roughness = material.roughness;
-      mat.metalness = material.metalness;
-      mat.needsUpdate = true;
+      const mats = Array.isArray(child.material) ? child.material : [child.material];
+      for (let i = 0; i < mats.length; i++) {
+        const mat = mats[i];
+        const spec = materials[i] ?? materials[0];
+        if (mat instanceof MeshStandardMaterial && spec) {
+          mat.color.setHex(spec.color);
+          mat.roughness = spec.roughness;
+          mat.metalness = spec.metalness;
+          mat.needsUpdate = true;
+        }
+      }
     });
   }
 
