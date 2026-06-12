@@ -13,13 +13,15 @@ import {
   Section,
   selectedId,
   TextField,
+  getOrchestrator,
 } from 'shared';
-import { getBakerOrchestrator } from 'baker-classic/ui';
 
 /** Object tab: name + visible + transform numeric inputs. */
 export function ObjectPage() {
   void objectTick.value; // re-render on transform/visibility writes
-  const app = getBakerOrchestrator();
+  // Cast to any to access options without importing the specific BakerOrchestrator interface
+  // from baker-classic, avoiding a circular dependency between shell and renderer.
+  const app = getOrchestrator() as any;
   const obj = lookupSelected(selectedId.value);
   if (!obj) {
     return <Empty />;

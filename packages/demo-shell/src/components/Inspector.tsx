@@ -27,6 +27,7 @@ export function Inspector() {
       <div class="border-b border-border bg-bg-2 flex">
         {tabs.map((t) => (
           <button
+            key={t.id}
             type="button"
             class={`flex-1 px-2 h-7 text-[11px] font-medium border-r border-border last:border-r-0 ${
               active === t.id
@@ -40,7 +41,7 @@ export function Inspector() {
         ))}
       </div>
 
-      <div class="flex-1 overflow-auto">{ActiveComponent && <ActiveComponent />}</div>
+      <div class="flex-1 overflow-auto">{ActiveComponent && <ActiveComponent key={activeTab.id} />}</div>
 
       <Splitter
         side="right"
