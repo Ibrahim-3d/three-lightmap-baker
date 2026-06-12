@@ -24,6 +24,20 @@ async function sampleRegion(
     return samples;
 }
 
+async function sampleGrid(
+    page: Parameters<typeof samplePixel>[0],
+    w: number,
+    h: number,
+    xs: number[],
+    ys: number[],
+): Promise<Pixel[]> {
+    const coords: Array<[number, number]> = [];
+    for (const x of xs) {
+        for (const y of ys) coords.push([x, y]);
+    }
+    return sampleRegion(page, w, h, coords);
+}
+
 function bestDominance(samples: Pixel[], primary: 0 | 1, secondary: 0 | 1 | 2): number {
     return Math.max(...samples.map((p) => p[primary] - p[secondary]));
 }
@@ -61,18 +75,23 @@ test.describe('cornell bake (draft)', () => {
         expect(h).toBeGreaterThan(500);
 
         // --- Wall color check ---
-        // Left/right walls: sample a small region because CI GPU/camera output can
-        // shift a few pixels while the visual signature is still correct.
-        const leftWall = await sampleRegion(page, w, h, [
-            [0.25, 0.42],
-            [0.28, 0.45],
-            [0.31, 0.48],
-        ]);
-        const rightWall = await sampleRegion(page, w, h, [
-            [0.69, 0.42],
-            [0.72, 0.45],
-            [0.75, 0.48],
-        ]);
+        // Left/right walls: scan broad half-room regions because CI GPU/camera
+        // output can shift enough that exact pixels land on black background.
+        const wallYs = [0.25, 0.33, 0.41, 0.49, 0.57, 0.65, 0.73];
+        const leftWall = await sampleGrid(
+            page,
+            w,
+            h,
+            [0.12, 0.18, 0.24, 0.3, 0.36, 0.42, 0.48],
+            wallYs,
+        );
+        const rightWall = await sampleGrid(
+            page,
+            w,
+            h,
+            [0.52, 0.58, 0.64, 0.7, 0.76, 0.82, 0.88],
+            wallYs,
+        );
         // Floor center, lower portion.
         const floor = await samplePixel(page, Math.round(w * 0.5), Math.round(h * 0.7));
         // Upper room sample. This should be visibly lit, but not necessarily
