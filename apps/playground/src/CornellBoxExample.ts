@@ -653,6 +653,11 @@ export class CornellBoxExample implements BakerOrchestrator {
     this.options.pause = false;
     bakeStatus.value = 'baking';
 
+    // If the user starts a bake from a debug material-swap layer (Texel Density
+    // or Albedo Unlit), restore real scene materials before LightmapBaker reads
+    // material colors/textures. The selected layer is re-applied after bake.
+    this.renderModeRunner.restoreSwappedMaterials();
+
     // Note: the default area light is now a regular asset-library light edited
     // directly through SceneLightPage (no options-mirror), so we no longer
     // overwrite its color/intensity from `options.lightColor` at bake time.

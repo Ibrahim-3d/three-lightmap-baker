@@ -112,6 +112,7 @@ export class AtlasViewer {
     this.scene = new Scene();
     this.cam = new OrthographicCamera();
     this.quad = new Mesh(new PlaneGeometry(2, 2), this.mat);
+    this.quad.frustumCulled = false;
     this.scene.add(this.quad);
   }
 

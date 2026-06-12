@@ -148,6 +148,14 @@ export class RenderModeRunner {
 
   constructor(private deps: RenderModeRunnerDeps) {}
 
+  restoreSwappedMaterials(): void {
+    const meshes = this.deps.getMeshes();
+    for (const m of meshes) {
+      const orig = this.originalMaterials.get(m);
+      if (orig && m.material !== orig) m.material = orig as SceneObj['material'];
+    }
+  }
+
   apply(): void {
     const opts = this.deps.getOptions();
     const meshes = this.deps.getMeshes();
@@ -198,10 +206,7 @@ export class RenderModeRunner {
     }
 
     // Restore originals if we just left a swap layer.
-    for (const m of meshes) {
-      const orig = this.originalMaterials.get(m);
-      if (orig && m.material !== orig) m.material = orig as SceneObj['material'];
-    }
+    this.restoreSwappedMaterials();
 
     let mounted = 0;
     let nullLM = 0;
