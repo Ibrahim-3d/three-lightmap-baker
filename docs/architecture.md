@@ -1,6 +1,6 @@
 # Architecture - Three Lightmap Baker
 
-Current as of 2026-06-10.
+Current as of 2026-06-12.
 
 ## Repository layout (relevant paths)
 
@@ -10,6 +10,8 @@ apps/pt-preview/                    Standalone real-time PT preview
 apps/pt-baked/                      PT preview vs baked comparison
 packages/baker-classic/src/         Classic lightmap baker library
   LightmapBaker.ts                  Public entrypoint (constructor + bake orchestration)
+  rendererAdapter.ts                Browser/offscreen renderer ownership boundary
+  runtimeCapabilities.ts            Runtime capability matrix and Node-safe probe
   bake/                             Pipeline orchestration + result lifecycle
   atlas/                            UV2 generation + UV-space rasterization
   lightmap/                         Path-traced passes, AO, composite, refinement
@@ -69,6 +71,8 @@ docs/                               Product docs, status, roadmap
 
 - `new LightmapBaker(renderer, options?)` (explicit renderer injection)
 - `new LightmapBaker({ renderer, ...options })` (clean config style)
+- `new LightmapBaker({ rendererAdapter, ...options })` (external renderer/context ownership)
+- `getLightmapRuntimeCapabilities()` (browser/offscreen/Node capability probe)
 
 A renderer is required before calling `bake()`.
 
@@ -76,4 +80,5 @@ A renderer is required before calling `bake()`.
 
 - Current implementation is **WebGL browser-first**.
 - True Node.js headless baking is **not yet implemented**.
-- Existing architecture keeps renderer ownership explicit. `LightmapRendererAdapter` is the current offscreen/test-harness boundary for renderer setup and context-loss wiring, with Playwright runtime smoke coverage for the detached/offscreen browser path. True Node-compatible baking is still future work.
+- Existing architecture keeps renderer ownership explicit. `LightmapRendererAdapter` is the current offscreen/test-harness boundary for renderer setup and context-loss wiring, with Playwright runtime smoke coverage for the detached/offscreen browser path.
+- `getLightmapRuntimeCapabilities()` is the current staging API for automation. In Node it reports `canBake: false` and explains the missing true headless renderer/runtime path instead of attempting an unsupported bake.

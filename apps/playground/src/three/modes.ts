@@ -131,6 +131,7 @@ export type RenderModeRunnerDeps = {
   getVisualLight(): RectAreaLight;
   getLightMarker(): Mesh;
   getDummyLightmap(): Texture;
+  getRestoredLightmap(mesh: Mesh): Texture | null;
 };
 
 /**
@@ -213,7 +214,11 @@ export class RenderModeRunner {
       // intensity=0 instead of mat.lightMap=null. Setting null removes the
       // USE_LIGHTMAP define → forces a shader recompile → NVIDIA D3D11 TDR.
       const group = meshToGroup.get(m);
-      const lm = group ? layer.getLightMap({ group }) : null;
+      const restored =
+        !group && (layer.id === 'combined' || layer.id === 'combinedPost')
+          ? this.deps.getRestoredLightmap(m)
+          : null;
+      const lm = group ? layer.getLightMap({ group }) : restored;
       if (lm) {
         mat.lightMap = lm;
         mat.lightMap.channel = 2;

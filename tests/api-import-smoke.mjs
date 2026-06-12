@@ -32,6 +32,18 @@ const assertExports = (label, mod) => {
   if (typeof mod?.createRendererAdapter !== 'function') {
     throw new Error(`${label}: createRendererAdapter export is missing`);
   }
+  if (typeof mod?.getLightmapRuntimeCapabilities !== 'function') {
+    throw new Error(`${label}: getLightmapRuntimeCapabilities export is missing`);
+  }
+  if (typeof mod?.classifyRenderer !== 'function') {
+    throw new Error(`${label}: classifyRenderer export is missing`);
+  }
+  if (mod.classifyRenderer('ANGLE (NVIDIA, NVIDIA GeForce RTX 3060, D3D11)') !== 'discrete') {
+    throw new Error(`${label}: classifyRenderer discrete smoke failed`);
+  }
+  if (mod.classifyRenderer('ANGLE (Intel, Intel(R) Iris(R) Xe Graphics, D3D11)') !== 'integrated') {
+    throw new Error(`${label}: classifyRenderer integrated smoke failed`);
+  }
 };
 
 const esmLocal = await import('three-lightmap-baker');
@@ -69,17 +81,21 @@ try {
   const tsconfig = path.join(tempDir, 'tsconfig.json');
   fs.writeFileSync(
     esmCheck,
-    "import { LightmapBaker, loadXAtlasThree, createRendererAdapter } from 'three-lightmap-baker';\n" +
+    "import { LightmapBaker, loadXAtlasThree, createRendererAdapter, getLightmapRuntimeCapabilities, classifyRenderer } from 'three-lightmap-baker';\n" +
       "if (typeof LightmapBaker !== 'function') throw new Error('missing LightmapBaker');\n" +
       "if (typeof loadXAtlasThree !== 'function') throw new Error('missing loadXAtlasThree');\n" +
-      "if (typeof createRendererAdapter !== 'function') throw new Error('missing createRendererAdapter');\n",
+      "if (typeof createRendererAdapter !== 'function') throw new Error('missing createRendererAdapter');\n" +
+      "if (getLightmapRuntimeCapabilities().runtime !== 'node') throw new Error('expected node runtime');\n" +
+      "if (classifyRenderer('ANGLE (NVIDIA, NVIDIA GeForce RTX 3060, D3D11)') !== 'discrete') throw new Error('expected discrete gpu');\n",
   );
   fs.writeFileSync(
     cjsCheck,
-    "const { LightmapBaker, loadXAtlasThree, createRendererAdapter } = require('three-lightmap-baker');\n" +
+    "const { LightmapBaker, loadXAtlasThree, createRendererAdapter, getLightmapRuntimeCapabilities, classifyRenderer } = require('three-lightmap-baker');\n" +
       "if (typeof LightmapBaker !== 'function') throw new Error('missing LightmapBaker');\n" +
       "if (typeof loadXAtlasThree !== 'function') throw new Error('missing loadXAtlasThree');\n" +
-      "if (typeof createRendererAdapter !== 'function') throw new Error('missing createRendererAdapter');\n",
+      "if (typeof createRendererAdapter !== 'function') throw new Error('missing createRendererAdapter');\n" +
+      "if (getLightmapRuntimeCapabilities().runtime !== 'node') throw new Error('expected node runtime');\n" +
+      "if (classifyRenderer('ANGLE (Intel, Intel(R) Iris(R) Xe Graphics, D3D11)') !== 'integrated') throw new Error('expected integrated gpu');\n",
   );
 
   execFileSync('node', [esmCheck], { cwd: tempDir, stdio: 'ignore' });
@@ -87,7 +103,7 @@ try {
 
   fs.writeFileSync(
     typesCheck,
-    "import { LightmapBaker, createRendererAdapter, type LightmapBakerOptions, type LightmapRendererAdapter } from 'three-lightmap-baker';\n" +
+    "import { LightmapBaker, createRendererAdapter, getLightmapRuntimeCapabilities, classifyRenderer, type LightmapBakerOptions, type LightmapRendererAdapter, type LightmapRuntimeCapabilities, type GPUTier } from 'three-lightmap-baker';\n" +
       'const opts: LightmapBakerOptions = { samples: 4, bounces: 1, resolution: 64 };\n' +
       'const baker = new LightmapBaker(opts);\n' +
       'baker.setRenderer;\n' +
@@ -95,7 +111,11 @@ try {
       'const renderer = {} as import("three").WebGLRenderer;\n' +
       'const adapter: LightmapRendererAdapter = createRendererAdapter(renderer, { label: "smoke" });\n' +
       'new LightmapBaker(adapter, opts);\n' +
-      'new LightmapBaker({ rendererAdapter: adapter, ...opts });\n',
+      'new LightmapBaker({ rendererAdapter: adapter, ...opts });\n' +
+      'const runtimeCaps: LightmapRuntimeCapabilities = getLightmapRuntimeCapabilities();\n' +
+      'runtimeCaps.canBake;\n' +
+      'const tier: GPUTier = classifyRenderer("Apple M2 Pro");\n' +
+      'tier;\n',
   );
   fs.writeFileSync(
     tsconfig,
@@ -121,4 +141,6 @@ try {
   if (fs.existsSync(tarballPath)) fs.unlinkSync(tarballPath);
 }
 
-console.log('[baker] exports resolve via ESM/CJS, tarball install, and TypeScript declarations');
+console.log(
+  '[baker] exports resolve via ESM/CJS, tarball install, runtime/GPU probes, and TypeScript declarations',
+);

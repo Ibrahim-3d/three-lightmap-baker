@@ -69,20 +69,8 @@ jobs:
       - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
 
-      - name: Detached/offscreen adapter runtime smoke
-        run: pnpm run test:adapter-runtime
-
-      - name: Cornell visual bake smoke
-        run: pnpm run test:visual-cornell
-
-      - name: Bake cancellation smoke
-        run: pnpm run test:bake-cancel
-
-      - name: Project save/load smoke
-        run: pnpm run test:project-save-load
-
-      - name: Outliner selection smoke
-        run: pnpm run test:selection
+      - name: Browser smoke suite
+        run: pnpm run test:browser-smoke
 
   pr-preview:
     name: PR preview artifact

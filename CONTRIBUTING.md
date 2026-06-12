@@ -7,7 +7,7 @@ classic baker is package-ready and the first npm publish is still pending.
 Launch screenshots and RTX 3050 Ti benchmark numbers are already committed in
 the README. Demo Project JSON save/load currently covers built-in presets,
 imported GLB/glTF payloads, bake/editor options, and asset-library additions;
-baked texture persistence is still future work.
+baked final lightmaps are persisted as raw Float32 atlas payloads.
 
 ## Current Layout
 

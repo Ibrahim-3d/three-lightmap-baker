@@ -147,7 +147,10 @@ pnpm run release:check
 That command runs typecheck, lint, format check, demo build, package build,
 example typecheck, demo bundle budget, tarball import smoke, and
 `npm publish --dry-run --access public`. The final publish still requires an
-authenticated npm session.
+authenticated npm session. For the first real registry publish, use the manual
+`npm Publish` GitHub Actions workflow after configuring npm trusted publishing
+or the `NPM_TOKEN` repository secret; the workflow verifies the requested
+version, reruns `pnpm run release:check`, and publishes with npm provenance.
 
 If you're working in this repo, the classic baker lives in `packages/baker-classic/`.
 
@@ -245,6 +248,20 @@ available, falls back to a detached browser canvas, and passes the baker a
 
 ```bash
 pnpm run test:adapter-runtime
+```
+
+### Runtime Capability Probe
+
+See [`examples/node-headless-status.ts`](./examples/node-headless-status.ts) for
+a Node-safe capability check. It does not bake in Node yet; it reports the
+current runtime, whether the current environment can bake, and the limitations
+blocking true Node headless baking.
+
+```typescript
+import { getLightmapRuntimeCapabilities } from 'three-lightmap-baker';
+
+const capabilities = getLightmapRuntimeCapabilities();
+console.log(capabilities.runtime, capabilities.canBake);
 ```
 
 ### React Three Fiber
@@ -462,9 +479,10 @@ Measured on the `cornell.advanced` scene only:
 The playground File menu can save and load a versioned Project JSON file. The
 current v1 format round-trips the active built-in scene preset or imported
 GLB/glTF payload, bake/editor options, and asset-library additions with
-transforms and basic material values. Baked lightmap texture blobs are not
-persisted yet; export a finished scene as GLB when you need to carry baked
-geometry/materials out of the demo.
+transforms and basic material values. It also persists baked final lightmaps as
+raw Float32 RGBA atlas payloads, so a saved project can restore baked lighting
+without forcing an immediate re-bake. Export a finished scene as GLB when you
+need to carry baked geometry/materials out of the demo.
 
 ---
 
@@ -544,16 +562,20 @@ Releases all GPU resources (textures, render targets).
   harness ownership of renderer setup and context-loss wiring.
 - **Offscreen-browser example:** implemented in `examples/offscreen-browser.ts`
   and covered by `pnpm run typecheck:examples`.
-- **Runtime adapter smoke:** implemented in
-  `tests/e2e/adapter-runtime.spec.ts` for detached/offscreen browser
-  orchestration and wired into CI as `pnpm run test:adapter-runtime`.
-- **Cornell visual bake smoke:** implemented in
-  `tests/e2e/bake-cornell-draft.spec.ts` and wired into CI as
-  `pnpm run test:visual-cornell`.
-- **Bake cancellation smoke:** implemented in `tests/e2e/bake-cancel.spec.ts`
-  and wired into CI as `pnpm run test:bake-cancel`.
+- **Runtime capability probe:** implemented as
+  `getLightmapRuntimeCapabilities()` with a Node-safe example in
+  `examples/node-headless-status.ts`. Node currently reports `canBake: false`.
+- **Browser smoke suite:** implemented as `pnpm run test:browser-smoke` and
+  wired into CI. It covers adapter runtime, Cornell visual bake, bake
+  cancellation, Project JSON save/load, outliner selection, editor history,
+  asset-library, and topbar/menu controls. Targeted scripts such as
+  `pnpm run test:adapter-runtime`, `pnpm run test:visual-cornell`, and
+  `pnpm run test:bake-cancel` remain available for focused runs.
 - **PR preview artifact:** pull requests build the demo and upload a static
   `dist/` artifact for review without changing the production Pages deploy.
+- **npm publish workflow:** implemented in `.github/workflows/npm-publish.yml`
+  as a manual workflow with version confirmation, dry-run mode, and npm
+  provenance support.
 - **Custom-room visual regression:** postponed until the custom room/showcase
   scene exists.
 - **Node.js true headless baking:** not implemented yet.

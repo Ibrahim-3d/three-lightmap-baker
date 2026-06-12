@@ -1,6 +1,6 @@
 import { getOrchestrator, layout, sceneTree, selectedId, type SceneNode } from 'shared';
 import { AssetLibrary } from './AssetLibrary';
-import { Eye, EyeOff, Layers, Lightbulb, Plus, Square } from './icons';
+import { Eye, EyeOff, Layers, Lightbulb, Square } from './icons';
 import { Splitter } from './Splitter';
 
 /**
@@ -17,19 +17,11 @@ export function Outliner() {
       class="relative bg-bg-1 border-r border-border flex flex-col text-[12px] pointer-events-auto"
       style={{ width: `${layout.value.outlinerW}px` }}
     >
-      <div class="flex items-center justify-between px-2 h-7 border-b border-border bg-bg-2">
+      <div class="flex items-center px-2 h-7 border-b border-border bg-bg-2">
         <div class="flex items-center gap-1.5 text-text-1">
           <Layers size={12} />
           <span class="font-medium text-text-0">Outliner</span>
         </div>
-        <button
-          type="button"
-          class="p-1 text-text-1 hover:bg-bg-3 hover:text-text-0 rounded disabled:opacity-50"
-          title="Add (T-D7)"
-          disabled
-        >
-          <Plus size={12} />
-        </button>
       </div>
 
       <div class="flex-1 overflow-auto">

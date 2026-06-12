@@ -10,6 +10,11 @@ type ProjectJson = {
     mimeType: string;
     dataBase64: string;
   };
+  bakedLightmaps?: Array<{
+    resolution: number;
+    meshIndexes: number[];
+    dataBase64: string;
+  }>;
   options: {
     lightMapSize: number;
     targetSamples: number;
@@ -208,6 +213,13 @@ test.describe('project save/load', () => {
         },
         options: { lightMapSize: 256, targetSamples: 32, layer: 'combined' },
         assets: [],
+        bakedLightmaps: [
+          {
+            resolution: 1,
+            meshIndexes: [0],
+            dataBase64: bytesToBase64(new Uint8Array(new Float32Array([1, 1, 1, 1]).buffer)),
+          },
+        ],
       };
 
       const baker = (
@@ -215,6 +227,7 @@ test.describe('project save/load', () => {
           __baker: {
             getMeshCount(): number;
             getSceneTree(): Array<{ name: string; kind: string }>;
+            meshes: Array<{ material: { lightMap: unknown; lightMapIntensity: number } }>;
             loadProject(project: ProjectJson): Promise<void>;
             serializeProject(): ProjectJson;
           };
@@ -224,16 +237,22 @@ test.describe('project save/load', () => {
       await baker.loadProject(project);
       return {
         meshCount: baker.getMeshCount(),
+        hasLightmap: !!baker.meshes[0]?.material.lightMap,
+        lightMapIntensity: baker.meshes[0]?.material.lightMapIntensity,
         tree: baker.getSceneTree(),
         project: baker.serializeProject(),
       };
     });
 
     expect(imported.meshCount).toBe(1);
+    expect(imported.hasLightmap).toBe(true);
+    expect(imported.lightMapIntensity).toBe(1);
     expect(imported.tree.filter((node) => node.kind === 'mesh')).toHaveLength(1);
     expect(imported.project.scenePresetId).toBe('imported.glb');
     expect(imported.project.importedModel?.kind).toBe('gltf');
     expect(imported.project.importedModel?.fileName).toBe('imported-project-triangle.gltf');
+    expect(imported.project.bakedLightmaps).toHaveLength(1);
+    expect(imported.project.bakedLightmaps?.[0].resolution).toBe(1);
 
     const restored = await page.evaluate(async (saved) => {
       const baker = (
@@ -241,6 +260,7 @@ test.describe('project save/load', () => {
           __baker: {
             getMeshCount(): number;
             getSceneTree(): Array<{ name: string; kind: string }>;
+            meshes: Array<{ material: { lightMap: unknown; lightMapIntensity: number } }>;
             loadScenePreset(id: string): Promise<void>;
             loadProject(project: ProjectJson): Promise<void>;
             serializeProject(): ProjectJson;
@@ -251,16 +271,21 @@ test.describe('project save/load', () => {
       await baker.loadProject(saved);
       return {
         meshCount: baker.getMeshCount(),
+        hasLightmap: !!baker.meshes[0]?.material.lightMap,
+        lightMapIntensity: baker.meshes[0]?.material.lightMapIntensity,
         tree: baker.getSceneTree(),
         project: baker.serializeProject(),
       };
     }, imported.project);
 
     expect(restored.meshCount).toBe(1);
+    expect(restored.hasLightmap).toBe(true);
+    expect(restored.lightMapIntensity).toBe(1);
     expect(restored.tree.filter((node) => node.kind === 'mesh')).toHaveLength(1);
     expect(restored.project.scenePresetId).toBe('imported.glb');
     expect(restored.project.importedModel?.dataBase64).toBe(
       imported.project.importedModel?.dataBase64,
     );
+    expect(restored.project.bakedLightmaps).toHaveLength(1);
   });
 });

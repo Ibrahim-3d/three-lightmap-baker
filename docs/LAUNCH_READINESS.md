@@ -16,11 +16,15 @@ architectural visualization. No Blender round-trip.
 - `pnpm run release:check` runs typecheck, example typecheck, lint, format
   check, demo build, bundle budget, package build, tarball import smoke, and
   npm publish dry run.
+- `.github/workflows/npm-publish.yml` provides the manual authenticated npm
+  publish path with version confirmation, dry-run mode, and npm provenance.
 - README install instructions distinguish pre-release tarball install from
   post-release `pnpm add three-lightmap-baker`.
 - Headless support is documented as planned, not shipped.
 - Public API examples match the dual constructor support and browser renderer
   requirement.
+- `getLightmapRuntimeCapabilities()` exposes a Node-safe runtime probe so
+  automation can fail clearly instead of attempting unsupported Node baking.
 - Offscreen/detached browser adapter orchestration is covered by
   `pnpm run test:adapter-runtime` and wired into CI with a conservative runtime
   budget (`BAKER_ADAPTER_RUNTIME_BUDGET_MS`, default 20000).
@@ -30,10 +34,17 @@ architectural visualization. No Blender round-trip.
 - In-flight bake cancellation is implemented in the demo/editor and covered by
   `pnpm run test:bake-cancel` in CI.
 - Project JSON save/load is implemented for built-in presets, imported GLB/glTF
-  payloads, bake/editor options, and asset-library additions, and is covered by
-  `pnpm run test:project-save-load` in CI.
+  payloads, bake/editor options, baked final lightmaps, and asset-library
+  additions, and is covered by `pnpm run test:project-save-load` in CI.
 - Outliner selection supports selected-row metadata, ArrowUp/ArrowDown stepping,
   and double-click frame-to-node, covered by `pnpm run test:selection` in CI.
+- Undo/redo command history is wired for add/remove/transform operations through
+  menu items and keyboard shortcuts; delete undo/redo is covered by
+  `pnpm run test:editor-history` in CI.
+- Asset Library and topbar/editor chrome smokes are covered by
+  `pnpm run test:asset-library` and `pnpm run test:topbar` in CI.
+- The CI browser gate runs these browser smokes through
+  `pnpm run test:browser-smoke` as one sequential Playwright invocation.
 - Pull requests build and upload a downloadable demo preview artifact without
   touching the production GitHub Pages deployment.
 - Launch capture automation exists in `scripts/capture-launch-assets.mjs`.
@@ -49,8 +60,9 @@ architectural visualization. No Blender round-trip.
 
 ## Still open before public launch
 
-- Publish the first npm release, then update install wording from "after
-  release" to the normal registry install flow.
+- Configure npm trusted publishing or the `NPM_TOKEN` repository secret, run the
+  manual `npm Publish` workflow for the `package.json` version, then update
+  install wording from "after release" to the normal registry install flow.
 - Use the committed Cornell advanced screenshots for the current launch proof.
   A stronger custom interior/architectural showcase is postponed until that room
   is designed.

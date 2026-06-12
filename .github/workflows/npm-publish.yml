@@ -1,0 +1,85 @@
+name: npm Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Package version to publish, must match package.json'
+        required: true
+        type: string
+      dry_run:
+        description: 'Run all release checks but skip the final npm publish'
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: npm-publish-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish ${{ inputs.version }}
+    runs-on: ubuntu-latest
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/three-lightmap-baker
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Verify requested version
+        shell: bash
+        run: |
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          if [ "$PACKAGE_VERSION" != "${{ inputs.version }}" ]; then
+            echo "::error::workflow version '${{ inputs.version }}' does not match package.json version '$PACKAGE_VERSION'"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Release check
+        run: pnpm run release:check
+
+      - name: Publish dry-run summary
+        if: inputs.dry_run
+        run: |
+          {
+            echo "## npm Publish"
+            echo ""
+            echo "Dry run completed for \`three-lightmap-baker@${{ inputs.version }}\`."
+            echo "No package was published."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish to npm
+        if: ${{ !inputs.dry_run }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance
+
+      - name: Publish summary
+        if: ${{ !inputs.dry_run }}
+        run: |
+          {
+            echo "## npm Publish"
+            echo ""
+            echo "Published \`three-lightmap-baker@${{ inputs.version }}\` to npm."
+            echo ""
+            echo "Update README install wording from pre-release/tarball guidance to normal registry install flow."
+          } >> "$GITHUB_STEP_SUMMARY"

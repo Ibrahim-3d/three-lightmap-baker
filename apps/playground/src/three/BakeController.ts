@@ -113,6 +113,7 @@ export type BakeTickResult = {
 export class BakeController {
   bakeGroups: BakeGroup[] = [];
   meshToGroup: Map<Mesh, BakeGroup> = new Map();
+  restoredLightmaps: Map<Mesh, Texture> = new Map();
   bakeResult: LightmapBakeResult | null = null;
 
   /** Set true on the RAF immediately after `runBake` returns - orchestrator instruments that frame. */
@@ -168,10 +169,34 @@ export class BakeController {
       g.refinement?.dispose();
       g.composite.dispose();
     }
+    const restored = new Set(this.restoredLightmaps.values());
+    for (const tex of restored) tex.dispose();
+    this.restoredLightmaps.clear();
     this.bakeGroups = [];
     this.meshToGroup.clear();
     this.bakeResult?.dispose();
     this.bakeResult = null;
+  }
+
+  restoreLightmaps(
+    entries: ReadonlyArray<{ meshes: ReadonlyArray<Mesh>; texture: Texture }>,
+  ): void {
+    this.disposeAllGroups();
+    for (const entry of entries) {
+      entry.texture.channel = 2;
+      for (const mesh of entry.meshes) {
+        const mat = mesh.material as MeshStandardMaterial;
+        if (!mat) continue;
+        mat.lightMap = entry.texture;
+        mat.lightMapIntensity = 1;
+        mat.needsUpdate = true;
+        this.restoredLightmaps.set(mesh, entry.texture);
+      }
+    }
+  }
+
+  getRestoredLightmap(mesh: Mesh): Texture | null {
+    return this.restoredLightmaps.get(mesh) ?? null;
   }
 
   /**

@@ -64,6 +64,7 @@ export type { BakeErrorPhase } from './errors';
 // --- High-level one-call API (Phase 3) ---
 export { LightmapBaker, LightmapBakeResult } from './LightmapBaker';
 export { createRendererAdapter, isLightmapRendererAdapter } from './rendererAdapter';
+export { getLightmapRuntimeCapabilities } from './runtimeCapabilities';
 export type {
   LightmapBakerInitOptions,
   LightmapBakerOptions,
@@ -80,6 +81,12 @@ export type {
   BakeFrameInfo,
   BakeGroupView,
 } from './LightmapBaker';
+export type {
+  LightmapRuntimeCapabilities,
+  LightmapRuntimeFeature,
+  LightmapRuntimeFeatureStatus,
+  LightmapRuntimeKind,
+} from './runtimeCapabilities';
 
 // --- GPU capability detection (Task 08) ---
 export { detectGPUCapabilities, classifyRenderer } from './gpu/Capabilities';

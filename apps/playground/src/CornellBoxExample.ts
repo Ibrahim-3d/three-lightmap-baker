@@ -1,14 +1,24 @@
 import {
   BoxGeometry,
+  ClampToEdgeWrapping,
+  DataTexture,
   DirectionalLight,
+  FloatType,
+  GLSL3,
+  LinearFilter,
   Matrix4,
   type Object3D,
+  NoBlending,
+  OrthographicCamera,
   MeshStandardMaterial,
   Mesh,
   PlaneGeometry,
+  RGBAFormat,
   Scene,
+  ShaderMaterial,
   type Texture,
   Vector3,
+  WebGLRenderTarget,
   WebGLRenderer,
 } from 'three';
 import {
@@ -104,12 +114,19 @@ type ProjectImportedModelV1 = {
   dataBase64: string;
 };
 
+type ProjectBakedLightmapV1 = {
+  resolution: number;
+  meshIndexes: number[];
+  dataBase64: string;
+};
+
 type ProjectV1 = {
   version: 1;
   scenePresetId: string;
   importedModel?: ProjectImportedModelV1;
   options: ProjectOptionsV1;
   assets: ProjectAssetV1[];
+  bakedLightmaps?: ProjectBakedLightmapV1[];
 };
 
 /**
@@ -239,6 +256,7 @@ export class CornellBoxExample implements BakerOrchestrator {
       getVisualLight: () => this.sceneController.visualLight,
       getLightMarker: () => this.sceneController.lightMarker,
       getDummyLightmap: () => this.bakeController.getDummyLightmap(),
+      getRestoredLightmap: (mesh) => this.bakeController.getRestoredLightmap(mesh),
     });
     this.bakeController.onProgress = (info) => this.onBakeFrame(info);
 
@@ -370,6 +388,136 @@ export class CornellBoxExample implements BakerOrchestrator {
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
     return bytes.buffer;
+  }
+
+  private readTextureFloatData(texture: Texture, resolution: number): Float32Array {
+    const renderer = this.sceneController.renderer;
+    const target = new WebGLRenderTarget(resolution, resolution, {
+      type: FloatType,
+      minFilter: LinearFilter,
+      magFilter: LinearFilter,
+    });
+    const material = new ShaderMaterial({
+      glslVersion: GLSL3,
+      blending: NoBlending,
+      depthWrite: false,
+      depthTest: false,
+      uniforms: { map: { value: texture } },
+      vertexShader: `
+        out vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D map;
+        in vec2 vUv;
+        out vec4 fragColor;
+        void main() {
+          fragColor = texture(map, vUv);
+        }
+      `,
+    });
+    const quad = new Mesh(new PlaneGeometry(2, 2), material);
+    const camera = new OrthographicCamera();
+    const previousTarget = renderer.getRenderTarget();
+    const previousAutoClear = renderer.autoClear;
+    const pixels = new Float32Array(resolution * resolution * 4);
+
+    try {
+      renderer.autoClear = true;
+      renderer.setRenderTarget(target);
+      renderer.render(quad, camera);
+      renderer.readRenderTargetPixels(target, 0, 0, resolution, resolution, pixels);
+    } finally {
+      renderer.setRenderTarget(previousTarget);
+      renderer.autoClear = previousAutoClear;
+      target.dispose();
+      material.dispose();
+      quad.geometry.dispose();
+    }
+
+    return pixels;
+  }
+
+  private textureImageResolution(texture: Texture): number {
+    const image = texture.image as { width?: number; height?: number } | undefined;
+    return Math.max(1, Number(image?.width ?? image?.height ?? this.options.lightMapSize));
+  }
+
+  private serializeBakedLightmaps(): ProjectBakedLightmapV1[] | undefined {
+    const meshIndex = new Map<Mesh, number>();
+    this.sceneController.meshes.forEach((mesh, index) => meshIndex.set(mesh as Mesh, index));
+    const entries: ProjectBakedLightmapV1[] = [];
+
+    if (this.bakeController.bakeGroups.length) {
+      for (const group of this.bakeController.bakeGroups) {
+        const texture = group.refinement?.texture ?? group.composite.texture;
+        const meshIndexes = group.meshes
+          .map((mesh) => meshIndex.get(mesh))
+          .filter((index): index is number => index !== undefined);
+        if (!meshIndexes.length) continue;
+        const pixels = this.readTextureFloatData(texture, this.options.lightMapSize);
+        entries.push({
+          resolution: this.options.lightMapSize,
+          meshIndexes,
+          dataBase64: CornellBoxExample.arrayBufferToBase64(pixels.buffer),
+        });
+      }
+    } else if (this.bakeController.restoredLightmaps.size) {
+      const byTexture = new Map<Texture, number[]>();
+      for (const [mesh, texture] of this.bakeController.restoredLightmaps) {
+        const index = meshIndex.get(mesh);
+        if (index === undefined) continue;
+        const bucket = byTexture.get(texture) ?? [];
+        bucket.push(index);
+        byTexture.set(texture, bucket);
+      }
+      for (const [texture, meshIndexes] of byTexture) {
+        const resolution = this.textureImageResolution(texture);
+        const pixels = this.readTextureFloatData(texture, resolution);
+        entries.push({
+          resolution,
+          meshIndexes,
+          dataBase64: CornellBoxExample.arrayBufferToBase64(pixels.buffer),
+        });
+      }
+    }
+
+    return entries.length ? entries : undefined;
+  }
+
+  private restoreProjectBakedLightmaps(lightmaps?: ProjectBakedLightmapV1[]): void {
+    if (!lightmaps?.length) return;
+    const entries = lightmaps
+      .map((lightmap) => {
+        const data = new Float32Array(CornellBoxExample.base64ToArrayBuffer(lightmap.dataBase64));
+        const texture = new DataTexture(
+          data,
+          lightmap.resolution,
+          lightmap.resolution,
+          RGBAFormat,
+          FloatType,
+        );
+        texture.minFilter = LinearFilter;
+        texture.magFilter = LinearFilter;
+        texture.wrapS = ClampToEdgeWrapping;
+        texture.wrapT = ClampToEdgeWrapping;
+        texture.needsUpdate = true;
+        texture.channel = 2;
+        const meshes: Mesh[] = [];
+        for (const index of lightmap.meshIndexes) {
+          const mesh = this.sceneController.meshes[index];
+          if (mesh) meshes.push(mesh as Mesh);
+        }
+        return { meshes, texture };
+      })
+      .filter((entry) => entry.meshes.length);
+
+    if (!entries.length) return;
+    this.bakeController.restoreLightmaps(entries);
+    this.renderModeRunner.apply();
   }
 
   private projectOptions(): ProjectOptionsV1 {
@@ -859,6 +1007,7 @@ export class CornellBoxExample implements BakerOrchestrator {
           : undefined,
       options: this.projectOptions(),
       assets: this.serializeProjectAssets(),
+      bakedLightmaps: this.serializeBakedLightmaps(),
     };
   }
 
@@ -883,8 +1032,9 @@ export class CornellBoxExample implements BakerOrchestrator {
       if (obj) this.applyProjectAsset(obj, asset);
     }
 
-    this.options.perMesh = {};
     this.bakeController.disposeAllGroups();
+    this.options.perMesh = {};
+    this.restoreProjectBakedLightmaps(project.bakedLightmaps);
     this.externalHooks.onSceneChanged?.();
     this.externalHooks.onStaleChange?.();
     this.startLoop();
