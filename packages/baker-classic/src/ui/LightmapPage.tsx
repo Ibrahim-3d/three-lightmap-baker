@@ -93,7 +93,7 @@ export function LightmapPage() {
         <>
           <Section title="Bake settings (per mesh)">
             <Row
-              label="Density ×"
+              label="Texel Density ×"
               hint="Multiplier on the global texels/m density for this mesh. Higher = more atlas area."
             >
               <RangeField

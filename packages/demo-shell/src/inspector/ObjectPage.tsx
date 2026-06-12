@@ -1,24 +1,36 @@
 import {
   BoolField,
   bumpObject,
+  bumpOptions,
+  isMesh,
   lookupSelected,
   markStale,
   NumberField,
   objectTick,
+  RangeField,
   refreshTreeFromScene,
   Row,
   Section,
   selectedId,
   TextField,
 } from 'shared';
+import { getBakerOrchestrator } from 'baker-classic/ui';
 
 /** Object tab: name + visible + transform numeric inputs. */
 export function ObjectPage() {
   void objectTick.value; // re-render on transform/visibility writes
+  const app = getBakerOrchestrator();
   const obj = lookupSelected(selectedId.value);
   if (!obj) {
     return <Empty />;
   }
+
+  const meshSelected = isMesh(obj);
+  const options = app?.options;
+  if (meshSelected && options && !options.perMesh[obj.uuid]) {
+    options.perMesh[obj.uuid] = { scaleInLightmap: 1.0, exclude: false };
+  }
+  const entry = meshSelected && options ? options.perMesh[obj.uuid]! : null;
 
   return (
     <div class="text-[12px]">
@@ -80,6 +92,40 @@ export function ObjectPage() {
           }}
         />
       </Section>
+
+      {entry && (
+        <Section title="Bake Settings">
+          <Row
+            label="Texel Density ×"
+            hint="Multiplier on the global texels/m density for this mesh. Higher = more atlas area."
+          >
+            <RangeField
+              value={entry.scaleInLightmap}
+              min={0.25}
+              max={4}
+              step={0.25}
+              onChange={(v) => {
+                entry.scaleInLightmap = v;
+                bumpOptions();
+                markStale();
+              }}
+            />
+          </Row>
+          <Row
+            label="Exclude"
+            hint="Skip this mesh during UV unwrap + bake. It still contributes to BVH (shadows/GI for other meshes)."
+          >
+            <BoolField
+              value={entry.exclude}
+              onChange={(v) => {
+                entry.exclude = v;
+                bumpOptions();
+                markStale();
+              }}
+            />
+          </Row>
+        </Section>
+      )}
     </div>
   );
 }
