@@ -85,6 +85,10 @@ export type BakeOptions = {
   denoiseKSigma: number;
 };
 
+export type RunBakeOptions = {
+  signal?: AbortSignal;
+};
+
 /** Returned each RAF tick during an active bake. */
 export type BakeTickResult = {
   /** True while a bake is in progress (groups exist + not done + not paused). */
@@ -181,6 +185,7 @@ export class BakeController {
     meshes: ReadonlyArray<Mesh>,
     lightPosition: Vector3,
     options: BakeOptions,
+    runOptions: RunBakeOptions = {},
   ): Promise<void> {
     if (!meshes.length) return;
 
@@ -264,6 +269,7 @@ export class BakeController {
     try {
       const baker = new LightmapBaker(this.renderer, opts);
       result = await baker.bake(this.scene, {
+        signal: runOptions.signal,
         onFrame: (info: BakeFrameInfo) => {
           // Refresh demo's per-group composites so view-time intensity sliders
           // see the latest accumulator state.

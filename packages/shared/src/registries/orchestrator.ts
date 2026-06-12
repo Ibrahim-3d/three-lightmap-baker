@@ -15,6 +15,7 @@ export interface Orchestrator {
   setSelection(id: string | null): void;
   setGizmoMode(mode: 'translate' | 'rotate' | 'scale'): void;
   setNodeVisible(id: string, visible: boolean): void;
+  frameNode?(id: string): void;
   getSceneTree(): SceneNode[];
   lookupObject(id: string | null): Object3D | null;
   loadScenePreset(id: string): Promise<void>;
@@ -26,6 +27,9 @@ export interface Orchestrator {
    * surfaces (`<StaleBanner/>`, generic menus) feature-detect.
    */
   requestBake?(): Promise<void>;
+  cancelBake?(): void;
+  saveProject?(): void;
+  openProjectFile?(): void;
   exportSceneGLB?(): Promise<void>;
 }
 

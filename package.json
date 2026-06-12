@@ -1,93 +1,104 @@
 {
-	"name": "three-lightmap-baker",
-	"version": "1.0.0",
-	"description": "Browser-based Three.js lightmap baker with path-traced global illumination, auto UV2, BVH ray tracing, AO, denoising, and progressive preview",
-	"type": "module",
-	"license": "MIT",
-	"author": "Ibrahim-3d",
-	"homepage": "https://github.com/Ibrahim-3d/three-lightmap-baker#readme",
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/Ibrahim-3d/three-lightmap-baker.git"
-	},
-	"bugs": {
-		"url": "https://github.com/Ibrahim-3d/three-lightmap-baker/issues"
-	},
-	"keywords": [
-		"threejs",
-		"three",
-		"webgl",
-		"lightmap",
-		"lightmapping",
-		"global-illumination",
-		"path-tracing",
-		"bvh",
-		"three-mesh-bvh",
-		"xatlas",
-		"r3f",
-		"react-three-fiber",
-		"3d",
-		"rendering",
-		"procedural-3d",
-		"architectural-visualization",
-		"configurator"
-	],
-	"sideEffects": false,
-	"main": "./dist/package/index.cjs",
-	"module": "./dist/package/index.js",
-	"types": "./dist/package/index.d.ts",
-	"exports": {
-		".": {
-			"types": "./dist/package/index.d.ts",
-			"import": "./dist/package/index.js",
-			"require": "./dist/package/index.cjs"
-		},
-		"./package.json": "./package.json"
-	},
-	"files": [
-		"dist/package",
-		"README.md",
-		"LICENSE",
-		"docs/API_STATUS.md",
-		"docs/ROADMAP.md"
-	],
-	"scripts": {
-		"start": "vite --mode dev --host",
-		"build:demo": "vite build",
-		"build:package": "node scripts/clean-package.mjs && vite build --config vite.lib.config.js && tsc -p tsconfig.lib.json",
-		"build": "npm run build:demo && npm run build:package",
-		"lint": "eslint packages/ apps/",
-		"lint:fix": "eslint packages/ apps/ --fix",
-		"format": "prettier --write packages/ apps/",
-		"format:check": "prettier --check packages/ apps/",
-		"typecheck": "tsc --noEmit",
-		"check": "npm run typecheck && npm run lint && npm run format:check",
-		"test": "playwright test",
-		"test:headed": "playwright test --headed",
-		"test:smoke": "playwright test smoke",
-		"test:api-import": "npm run build:package && node tests/api-import-smoke.mjs",
-		"capture:launch": "node scripts/capture-launch-assets.mjs"
-	},
-	"dependencies": {
-		"@preact/signals": "^1.3.0",
-		"@types/three": "^0.161.2",
-		"lucide-preact": "^0.460.0",
-		"preact": "^10.24.0",
-		"three": "^0.161.0",
-		"three-mesh-bvh": "^0.7.3",
-		"xatlas-three": "^0.2.0"
-	},
-	"devDependencies": {
-		"@playwright/test": "^1.60.0",
-		"@preact/preset-vite": "^2.9.0",
-		"@typescript-eslint/eslint-plugin": "^8.59.0",
-		"@typescript-eslint/parser": "^8.59.0",
-		"autoprefixer": "^10.4.0",
-		"eslint": "^10.2.1",
-		"postcss": "^8.4.0",
-		"prettier": "^3.8.3",
-		"tailwindcss": "^3.4.0",
-		"typescript": "^4.4.4",
-		"vite": "^2.6.13"
-	}
+  "name": "three-lightmap-baker",
+  "version": "1.0.0",
+  "description": "Browser-based Three.js lightmap baker with path-traced global illumination, auto UV2, BVH ray tracing, AO, denoising, and progressive preview",
+  "type": "module",
+  "packageManager": "pnpm@11.5.3",
+  "license": "MIT",
+  "author": "Ibrahim-3d",
+  "homepage": "https://github.com/Ibrahim-3d/three-lightmap-baker#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ibrahim-3d/three-lightmap-baker.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Ibrahim-3d/three-lightmap-baker/issues"
+  },
+  "keywords": [
+    "threejs",
+    "three",
+    "webgl",
+    "lightmap",
+    "lightmapping",
+    "global-illumination",
+    "path-tracing",
+    "bvh",
+    "three-mesh-bvh",
+    "xatlas",
+    "r3f",
+    "react-three-fiber",
+    "3d",
+    "rendering",
+    "procedural-3d",
+    "architectural-visualization",
+    "configurator"
+  ],
+  "sideEffects": false,
+  "main": "./dist/package/index.cjs",
+  "module": "./dist/package/index.js",
+  "types": "./dist/package/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/package/index.d.ts",
+      "import": "./dist/package/index.js",
+      "require": "./dist/package/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/package",
+    "README.md",
+    "LICENSE",
+    "docs/API_STATUS.md",
+    "docs/ROADMAP.md"
+  ],
+  "scripts": {
+    "start": "vite --mode dev --host",
+    "build:demo": "vite build",
+    "budget:bundle": "node scripts/check-bundle-budget.mjs",
+    "budget:runtime": "node scripts/check-runtime-budget.mjs",
+    "build:package": "node scripts/clean-package.mjs && vite build --config vite.lib.config.js && tsc -p tsconfig.lib.json",
+    "build": "vite build && node scripts/check-bundle-budget.mjs && node scripts/clean-package.mjs && vite build --config vite.lib.config.js && tsc -p tsconfig.lib.json",
+    "lint": "eslint packages/ apps/",
+    "lint:fix": "eslint packages/ apps/ --fix",
+    "format": "prettier --write packages/ apps/ examples/",
+    "format:check": "prettier --check packages/ apps/ examples/",
+    "typecheck": "tsc --noEmit",
+    "typecheck:examples": "tsc -p tsconfig.examples.json",
+    "check": "tsc --noEmit && tsc -p tsconfig.examples.json && eslint packages/ apps/ && prettier --check packages/ apps/ examples/",
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:smoke": "playwright test smoke",
+    "test:adapter-runtime": "playwright test tests/e2e/adapter-runtime.spec.ts",
+    "test:visual-cornell": "playwright test tests/e2e/bake-cornell-draft.spec.ts",
+    "test:bake-cancel": "playwright test tests/e2e/bake-cancel.spec.ts",
+    "test:project-save-load": "playwright test tests/e2e/project-save-load.spec.ts",
+    "test:selection": "playwright test tests/e2e/outliner-selection.spec.ts",
+    "test:api-import": "node scripts/clean-package.mjs && vite build --config vite.lib.config.js && tsc -p tsconfig.lib.json && node tests/api-import-smoke.mjs",
+    "release:check": "tsc --noEmit && tsc -p tsconfig.examples.json && eslint packages/ apps/ && prettier --check packages/ apps/ examples/ && vite build && node scripts/check-bundle-budget.mjs && node scripts/clean-package.mjs && vite build --config vite.lib.config.js && tsc -p tsconfig.lib.json && node tests/api-import-smoke.mjs && npm publish --dry-run --access public",
+    "capture:launch": "node scripts/capture-launch-assets.mjs",
+    "check:launch-benchmarks": "node scripts/check-runtime-budget.mjs"
+  },
+  "dependencies": {
+    "@preact/signals": "^1.3.0",
+    "@types/three": "^0.161.2",
+    "lucide-preact": "^0.460.0",
+    "preact": "^10.24.0",
+    "three": "^0.161.0",
+    "three-mesh-bvh": "^0.7.3",
+    "xatlas-three": "^0.2.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "@preact/preset-vite": "^2.9.0",
+    "@typescript-eslint/eslint-plugin": "^8.59.0",
+    "@typescript-eslint/parser": "^8.59.0",
+    "autoprefixer": "^10.4.0",
+    "eslint": "^10.2.1",
+    "postcss": "^8.4.0",
+    "prettier": "^3.8.3",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^4.4.4",
+    "vite": "^2.6.13"
+  }
 }

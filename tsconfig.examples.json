@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "paths": {
+      "three-lightmap-baker": ["packages/baker-classic/src/index.ts"]
+    }
+  },
+  "include": ["./examples/**/*.ts", "./packages/baker-classic/src/types/**/*.d.ts"]
+}

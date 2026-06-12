@@ -65,6 +65,9 @@ export interface BakerOrchestrator extends Orchestrator {
   options: BakerOptions;
   setQuality(q: BakerQualityPreset): void;
   requestBake(): Promise<void>;
+  cancelBake(): void;
+  saveProject(): void;
+  openProjectFile(): void;
   requestAORebake(): Promise<void>;
   exportFinal(): Promise<void>;
   exportSceneGLB(): Promise<void>;

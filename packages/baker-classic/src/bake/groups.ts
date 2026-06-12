@@ -120,96 +120,116 @@ export async function runGroupBake(
   hooks.onProgress?.('bake', groupIndex / totalGroups);
   checkAbort('bake');
 
-  const atlas = renderAtlas(renderer, groupMeshes, internalResolution, true);
-
-  const raycastOpts = buildRaycastOpts(opts, internalResolution, sceneLights, skyColor, matTex, tp);
-  const aoOpts = buildAORaycastOpts(opts, internalResolution, tp);
-
-  const lightmapper = generateLightmapper(
-    renderer,
-    atlas.positionTexture,
-    atlas.normalTexture,
-    bvh,
-    raycastOpts,
-  );
-  const aoMapper = generateAOMapper(
-    renderer,
-    atlas.positionTexture,
-    atlas.normalTexture,
-    bvh,
-    aoOpts,
-  );
-
-  // Composite is created BEFORE the mappers loop so its texture exists during
-  // accumulation - callers can mount `composite.texture` on materials
-  // immediately and watch it fade in via per-RAF refreshes inside the tile
-  // loop. Drives the `onFrame` hook contract.
-  const composite = runComposite(
-    renderer,
-    {
-      direct: lightmapper.textures.direct,
-      indirect: lightmapper.textures.indirect,
-      ao: aoMapper.texture,
-    },
-    internalResolution,
-    {
-      directIntensity: 1.0,
-      giIntensity: opts.gi.intensity,
-      aoEnabled: opts.ao.enabled,
-      aoIntensity: opts.ao.intensity,
-      aoExponent: opts.ao.exponent,
-    },
-  );
-
-  await runMappersWithTimeoutProtection(
-    lightmapper,
-    aoMapper,
-    composite,
-    opts.samples,
-    hooks,
-    ctxState,
-    tp,
-    groupIndex,
-    totalGroups,
-    (p) => hooks.onProgress?.('bake', (groupIndex + p) / totalGroups),
-  );
-
+  let atlas: ReturnType<typeof renderAtlas> | null = null;
+  let lightmapper: Lightmapper | null = null;
+  let aoMapper: AOMapper | null = null;
+  let composite: CompositeResult | null = null;
   let refinement: PostProcessResult | null = null;
-  if (opts.denoise || opts.refinementOptions.dilationIterations > 0) {
-    refinement = await runPostProcess(
-      renderer,
-      composite.texture,
-      atlas.positionTexture,
+  let downscale: ReturnType<typeof createDownscale> | null = null;
+  let returned = false;
+
+  try {
+    atlas = renderAtlas(renderer, groupMeshes, internalResolution, true);
+
+    const raycastOpts = buildRaycastOpts(
+      opts,
       internalResolution,
-      opts.refinementOptions,
+      sceneLights,
+      skyColor,
+      matTex,
+      tp,
     );
-  }
+    const aoOpts = buildAORaycastOpts(opts, internalResolution, tp);
 
-  // Final texture chosen by user options (refinement output, or raw composite).
-  // Still at INTERNAL resolution at this point. If superSample > 1, run a
-  // bilinear passthrough into a target-res RT - the result is what `mesh.lightMap`
-  // binds to. Hardware bilinear (source LinearFilter) does the anti-aliasing.
-  const finalInternalTex = refinement?.texture ?? composite.texture;
-  const downscale =
-    opts.superSample > 1 ? createDownscale(renderer, finalInternalTex, resolution) : null;
-  const finalTex = downscale?.texture ?? finalInternalTex;
+    lightmapper = generateLightmapper(
+      renderer,
+      atlas.positionTexture,
+      atlas.normalTexture,
+      bvh,
+      raycastOpts,
+    );
+    aoMapper = generateAOMapper(renderer, atlas.positionTexture, atlas.normalTexture, bvh, aoOpts);
 
-  return {
-    group: {
+    // Composite is created BEFORE the mappers loop so its texture exists during
+    // accumulation - callers can mount `composite.texture` on materials
+    // immediately and watch it fade in via per-RAF refreshes inside the tile
+    // loop. Drives the `onFrame` hook contract.
+    composite = runComposite(
+      renderer,
+      {
+        direct: lightmapper.textures.direct,
+        indirect: lightmapper.textures.indirect,
+        ao: aoMapper.texture,
+      },
+      internalResolution,
+      {
+        directIntensity: 1.0,
+        giIntensity: opts.gi.intensity,
+        aoEnabled: opts.ao.enabled,
+        aoIntensity: opts.ao.intensity,
+        aoExponent: opts.ao.exponent,
+      },
+    );
+
+    await runMappersWithTimeoutProtection(
       lightmapper,
       aoMapper,
       composite,
-      refinement,
-      atlasDispose: atlas.dispose,
-      resolution,
-      internalResolution,
-      downscale,
-      meshes: groupMeshes,
-      positionTex: atlas.positionTexture,
-      normalTex: atlas.normalTexture,
-    },
-    finalTex,
-  };
+      opts.samples,
+      hooks,
+      ctxState,
+      tp,
+      groupIndex,
+      totalGroups,
+      (p) => hooks.onProgress?.('bake', (groupIndex + p) / totalGroups),
+    );
+
+    if (opts.denoise || opts.refinementOptions.dilationIterations > 0) {
+      refinement = await runPostProcess(
+        renderer,
+        composite.texture,
+        atlas.positionTexture,
+        internalResolution,
+        opts.refinementOptions,
+      );
+    }
+
+    // Final texture chosen by user options (refinement output, or raw composite).
+    // Still at INTERNAL resolution at this point. If superSample > 1, run a
+    // bilinear passthrough into a target-res RT - the result is what `mesh.lightMap`
+    // binds to. Hardware bilinear (source LinearFilter) does the anti-aliasing.
+    const finalInternalTex = refinement?.texture ?? composite.texture;
+    downscale =
+      opts.superSample > 1 ? createDownscale(renderer, finalInternalTex, resolution) : null;
+    const finalTex = downscale?.texture ?? finalInternalTex;
+
+    returned = true;
+    return {
+      group: {
+        lightmapper,
+        aoMapper,
+        composite,
+        refinement,
+        atlasDispose: atlas.dispose,
+        resolution,
+        internalResolution,
+        downscale,
+        meshes: groupMeshes,
+        positionTex: atlas.positionTexture,
+        normalTex: atlas.normalTexture,
+      },
+      finalTex,
+    };
+  } finally {
+    if (!returned) {
+      downscale?.dispose();
+      refinement?.dispose();
+      composite?.dispose();
+      aoMapper?.dispose();
+      lightmapper?.dispose();
+      atlas?.dispose();
+    }
+  }
 }
 
 /**

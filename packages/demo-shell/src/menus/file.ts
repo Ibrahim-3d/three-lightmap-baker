@@ -16,6 +16,23 @@ function clickGlbInput(): void {
   input?.click();
 }
 
+function clickProjectInput(): void {
+  const app = getOrchestrator();
+  app?.openProjectFile?.();
+}
+
+menuRegistry.register('File', {
+  id: 'file.save-project',
+  label: 'Save Project JSON',
+  action: () => getOrchestrator()?.saveProject?.(),
+});
+
+menuRegistry.register('File', {
+  id: 'file.open-project',
+  label: 'Open Project JSON...',
+  action: clickProjectInput,
+});
+
 menuRegistry.register('File', {
   id: 'file.gallery',
   label: 'Open Gallery…',

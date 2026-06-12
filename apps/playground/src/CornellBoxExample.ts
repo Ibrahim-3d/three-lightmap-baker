@@ -1,8 +1,28 @@
-import { Matrix4, type Object3D, MeshStandardMaterial, Mesh, type Texture, Vector3 } from 'three';
-import { AtlasViewer, BakeFrameInfo, exportLightmap, ExportFormat } from 'baker-classic';
+import {
+  BoxGeometry,
+  DirectionalLight,
+  Matrix4,
+  type Object3D,
+  MeshStandardMaterial,
+  Mesh,
+  PlaneGeometry,
+  Scene,
+  type Texture,
+  Vector3,
+  WebGLRenderer,
+} from 'three';
+import {
+  AtlasViewer,
+  BakeFrameInfo,
+  createRendererAdapter,
+  exportLightmap,
+  ExportFormat,
+  LightmapBaker,
+  type LightmapContextLossTarget,
+} from 'baker-classic';
 import type { BakerOrchestrator } from 'baker-classic/ui';
 import type { AssetSpec } from 'shared';
-import { atlasViewerVisible, bakeProgress, bakeStatus, dirtyMeshIds } from 'shared';
+import { activeSceneId, atlasViewerVisible, bakeProgress, bakeStatus, dirtyMeshIds } from 'shared';
 import { LAYERS } from './three/modes';
 import { BakeController } from './three/BakeController';
 import { FlyController } from './three/FlyController';
@@ -30,6 +50,67 @@ const QUALITY_PRESETS = {
   Final: { lightMapSize: 2048, casts: 8, targetSamples: 512 },
 } as const;
 type QualityPresetName = keyof typeof QUALITY_PRESETS;
+
+type Vec3Tuple = [number, number, number];
+
+type ProjectAssetV1 = {
+  spec: AssetSpec;
+  name: string;
+  visible: boolean;
+  position: Vec3Tuple;
+  rotation: Vec3Tuple;
+  scale: Vec3Tuple;
+  material?: {
+    color: number;
+    roughness: number;
+    metalness: number;
+  };
+};
+
+type ProjectOptionsV1 = {
+  quality: QualityPresetName;
+  layer: string;
+  lightMapSize: number;
+  casts: number;
+  targetSamples: number;
+  bounces: number;
+  safeMode: boolean;
+  filterMode: string;
+  directLightEnabled: boolean;
+  indirectLightEnabled: boolean;
+  ambientLightEnabled: boolean;
+  ambientDistance: number;
+  aoIntensity: number;
+  aoExponent: number;
+  aoSamples: number;
+  texelsPerMeter: number;
+  directIntensity: number;
+  giIntensity: number;
+  skyColor: string;
+  skyIntensity: number;
+  autoApplyRefinement: boolean;
+  dilationIterations: number;
+  denoiseEnabled: boolean;
+  denoiseSigma: number;
+  denoiseThreshold: number;
+  denoiseKSigma: number;
+  exportFormat: ExportFormat;
+};
+
+type ProjectImportedModelV1 = {
+  kind: 'glb' | 'gltf';
+  fileName: string;
+  mimeType: string;
+  dataBase64: string;
+};
+
+type ProjectV1 = {
+  version: 1;
+  scenePresetId: string;
+  importedModel?: ProjectImportedModelV1;
+  options: ProjectOptionsV1;
+  assets: ProjectAssetV1[];
+};
 
 /**
  * Demo orchestrator (T-D12: tweakpane fully removed). Owns the options bag,
@@ -102,8 +183,13 @@ export class CornellBoxExample implements BakerOrchestrator {
   // --- RAF + ETA window ---
   private looping = false;
   private glbFileInput!: HTMLInputElement;
+  private projectFileInput!: HTMLInputElement;
+  private currentScenePresetId = 'cornell.advanced';
+  private currentImportedModel: ProjectImportedModelV1 | null = null;
   private bakeStartTime = 0;
   private bakeBatchHistory: { samples: number; t: number }[] = [];
+  private bakeInFlight = false;
+  private activeBakeAbort: AbortController | null = null;
   private static readonly BAKE_ETA_WINDOW = 16;
 
   /** Optional callbacks the orchestrator forwards to the Preact shell. */
@@ -163,6 +249,7 @@ export class CornellBoxExample implements BakerOrchestrator {
     this.atlasViewer.visible = false;
 
     this.initGLBInput();
+    this.initProjectInput();
     this.rebuildScene();
 
     // Init PT viewport (async, resolves before user can switch mode).
@@ -196,6 +283,7 @@ export class CornellBoxExample implements BakerOrchestrator {
   /** Hidden file input for GLB imports - clicked by the File menu. */
   private initGLBInput(): void {
     this.glbFileInput = document.createElement('input');
+    this.glbFileInput.id = 'baker-glb-input';
     this.glbFileInput.type = 'file';
     this.glbFileInput.accept = '.glb,.gltf';
     this.glbFileInput.style.display = 'none';
@@ -206,6 +294,20 @@ export class CornellBoxExample implements BakerOrchestrator {
     document.body.appendChild(this.glbFileInput);
   }
 
+  /** Hidden file input for Project JSON imports - clicked by the File menu. */
+  private initProjectInput(): void {
+    this.projectFileInput = document.createElement('input');
+    this.projectFileInput.id = 'baker-project-input';
+    this.projectFileInput.type = 'file';
+    this.projectFileInput.accept = 'application/json,.json';
+    this.projectFileInput.style.display = 'none';
+    this.projectFileInput.addEventListener('change', () => {
+      const f = this.projectFileInput.files?.[0];
+      if (f) void this.importProjectFile(f);
+    });
+    document.body.appendChild(this.projectFileInput);
+  }
+
   updateSize(): void {
     this.sceneController.updateSize();
   }
@@ -214,6 +316,7 @@ export class CornellBoxExample implements BakerOrchestrator {
   //  Scene rebuild / GLB import.
   // ──────────────────────────────────────────────────────────────────────────
   private async rebuildScene(): Promise<void> {
+    this.currentImportedModel = null;
     this.sceneController.rebuildScene(this.options.preset as ScenePreset);
     if (this.options.autoBake) await this.bake();
     this.startLoop();
@@ -221,10 +324,155 @@ export class CornellBoxExample implements BakerOrchestrator {
 
   private async importGLB(file: File): Promise<void> {
     this.externalHooks.onSceneLoad?.();
-    await this.sceneController.importGLB(file);
+    const buffer = await file.arrayBuffer();
+    this.currentScenePresetId = 'imported.glb';
+    this.currentImportedModel = {
+      kind: file.name.toLowerCase().endsWith('.gltf') ? 'gltf' : 'glb',
+      fileName: file.name || 'scene.glb',
+      mimeType: file.type || 'model/gltf-binary',
+      dataBase64: CornellBoxExample.arrayBufferToBase64(buffer),
+    };
+    await this.sceneController.importGLBBuffer(buffer);
     this.options.perMesh = {};
     if (this.options.autoBake) await this.bake();
     this.startLoop();
+  }
+
+  private async loadImportedProjectModel(model: ProjectImportedModelV1): Promise<void> {
+    this.externalHooks.onSceneLoad?.();
+    const buffer = CornellBoxExample.base64ToArrayBuffer(model.dataBase64);
+    this.currentScenePresetId = 'imported.glb';
+    this.currentImportedModel = { ...model };
+    await this.sceneController.importGLBBuffer(buffer);
+    this.options.perMesh = {};
+    this.startLoop();
+  }
+
+  private async importProjectFile(file: File): Promise<void> {
+    const text = await file.text();
+    const project = JSON.parse(text) as ProjectV1;
+    await this.loadProject(project);
+  }
+
+  private static arrayBufferToBase64(buffer: ArrayBuffer): string {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, i + chunkSize);
+      binary += String.fromCharCode(...chunk);
+    }
+    return btoa(binary);
+  }
+
+  private static base64ToArrayBuffer(base64: string): ArrayBuffer {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes.buffer;
+  }
+
+  private projectOptions(): ProjectOptionsV1 {
+    return {
+      quality: this.options.quality,
+      layer: this.options.layer,
+      lightMapSize: this.options.lightMapSize,
+      casts: this.options.casts,
+      targetSamples: this.options.targetSamples,
+      bounces: this.options.bounces,
+      safeMode: this.options.safeMode,
+      filterMode: this.options.filterMode,
+      directLightEnabled: this.options.directLightEnabled,
+      indirectLightEnabled: this.options.indirectLightEnabled,
+      ambientLightEnabled: this.options.ambientLightEnabled,
+      ambientDistance: this.options.ambientDistance,
+      aoIntensity: this.options.aoIntensity,
+      aoExponent: this.options.aoExponent,
+      aoSamples: this.options.aoSamples,
+      texelsPerMeter: this.options.texelsPerMeter,
+      directIntensity: this.options.directIntensity,
+      giIntensity: this.options.giIntensity,
+      skyColor: this.options.skyColor,
+      skyIntensity: this.options.skyIntensity,
+      autoApplyRefinement: this.options.autoApplyRefinement,
+      dilationIterations: this.options.dilationIterations,
+      denoiseEnabled: this.options.denoiseEnabled,
+      denoiseSigma: this.options.denoiseSigma,
+      denoiseThreshold: this.options.denoiseThreshold,
+      denoiseKSigma: this.options.denoiseKSigma,
+      exportFormat: this.options.exportFormat,
+    };
+  }
+
+  private serializeProjectAssets(): ProjectAssetV1[] {
+    const roots: Object3D[] = [];
+    const cornellRoot = this.sceneController.cornellRoot;
+
+    if (cornellRoot) {
+      for (const child of cornellRoot.children) {
+        if (child.userData.assetSpec) roots.push(child);
+      }
+    }
+
+    for (const child of this.sceneController.scene.children) {
+      if (child === cornellRoot) continue;
+      if (child.userData.assetSpec) roots.push(child);
+    }
+
+    return roots.map((obj) => {
+      const spec = obj.userData.assetSpec as AssetSpec;
+      return {
+        spec: { ...spec },
+        name: obj.name,
+        visible: obj.visible,
+        position: [obj.position.x, obj.position.y, obj.position.z],
+        rotation: [obj.rotation.x, obj.rotation.y, obj.rotation.z],
+        scale: [obj.scale.x, obj.scale.y, obj.scale.z],
+        material: this.projectMaterial(obj),
+      };
+    });
+  }
+
+  private projectMaterial(obj: Object3D): ProjectAssetV1['material'] | undefined {
+    const stack = [obj];
+    while (stack.length) {
+      const child = stack.pop();
+      if (!child) continue;
+      if (child instanceof Mesh) {
+        const mat = child.material;
+        if (mat instanceof MeshStandardMaterial) {
+          return {
+            color: mat.color.getHex(),
+            roughness: mat.roughness,
+            metalness: mat.metalness,
+          };
+        }
+      }
+      stack.push(...child.children);
+    }
+
+    return undefined;
+  }
+
+  private applyProjectAsset(obj: Object3D, asset: ProjectAssetV1): void {
+    obj.name = asset.name;
+    obj.visible = asset.visible;
+    obj.position.set(asset.position[0], asset.position[1], asset.position[2]);
+    obj.rotation.set(asset.rotation[0], asset.rotation[1], asset.rotation[2]);
+    obj.scale.set(asset.scale[0], asset.scale[1], asset.scale[2]);
+    obj.userData.assetSpec = { ...asset.spec };
+
+    if (!asset.material) return;
+    const material = asset.material;
+    obj.traverse((child) => {
+      if (!(child instanceof Mesh)) return;
+      const mat = child.material;
+      if (!(mat instanceof MeshStandardMaterial)) return;
+      mat.color.setHex(material.color);
+      mat.roughness = material.roughness;
+      mat.metalness = material.metalness;
+      mat.needsUpdate = true;
+    });
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -232,9 +480,14 @@ export class CornellBoxExample implements BakerOrchestrator {
   // ──────────────────────────────────────────────────────────────────────────
   private async bake(): Promise<void> {
     if (!this.sceneController.meshes.length) return;
+    if (this.bakeInFlight) return;
 
     this.bakeStartTime = performance.now();
     this.bakeBatchHistory = [];
+    this.bakeInFlight = true;
+    this.activeBakeAbort = new AbortController();
+    this.options.pause = false;
+    bakeStatus.value = 'baking';
 
     // Note: the default area light is now a regular asset-library light edited
     // directly through SceneLightPage (no options-mirror), so we no longer
@@ -245,15 +498,31 @@ export class CornellBoxExample implements BakerOrchestrator {
         this.sceneController.meshes,
         this.sceneController.lightDummy.position,
         this.options,
+        { signal: this.activeBakeAbort.signal },
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      this.bakeInFlight = false;
+      this.activeBakeAbort = null;
+      this.bakeController.disposeAllGroups();
+      this.options.samples = 0;
+      this.options.spp = 0;
+      this.options.etaSec = 0;
+      this.options.pause = true;
+
+      if (msg.includes('aborted by signal')) {
+        console.info('[baker] bake cancelled');
+        this.externalHooks.onStaleChange?.();
+        return;
+      }
+
       console.error('[baker] bake failed:', err);
       this.externalHooks.onBakeError?.(msg);
-      this.options.pause = true;
       return;
     }
 
+    this.bakeInFlight = false;
+    this.activeBakeAbort = null;
     this.options.refinementStatus = 'idle';
     this.options.samples = this.options.targetSamples;
     this.options.spp = this.options.targetSamples * this.options.casts;
@@ -575,6 +844,69 @@ export class CornellBoxExample implements BakerOrchestrator {
     return this.bake();
   }
 
+  cancelBake(): void {
+    if (!this.bakeInFlight) return;
+    this.activeBakeAbort?.abort();
+  }
+
+  serializeProject(): ProjectV1 {
+    return {
+      version: 1,
+      scenePresetId: this.currentScenePresetId,
+      importedModel:
+        this.currentScenePresetId === 'imported.glb' && this.currentImportedModel
+          ? { ...this.currentImportedModel }
+          : undefined,
+      options: this.projectOptions(),
+      assets: this.serializeProjectAssets(),
+    };
+  }
+
+  async loadProject(project: ProjectV1): Promise<void> {
+    if (!project || project.version !== 1) {
+      throw new Error('Unsupported project file version');
+    }
+
+    if (project.scenePresetId === 'imported.glb') {
+      if (!project.importedModel) throw new Error('Imported GLB project is missing model data');
+      await this.loadImportedProjectModel(project.importedModel);
+    } else {
+      await this.loadScenePreset(project.scenePresetId);
+      this.currentImportedModel = null;
+    }
+    Object.assign(this.options, project.options);
+    activeSceneId.value = project.scenePresetId;
+
+    for (const asset of project.assets) {
+      const id = this.addAsset(asset.spec, asset.position);
+      const obj = this.lookupObject(id);
+      if (obj) this.applyProjectAsset(obj, asset);
+    }
+
+    this.options.perMesh = {};
+    this.bakeController.disposeAllGroups();
+    this.externalHooks.onSceneChanged?.();
+    this.externalHooks.onStaleChange?.();
+    this.startLoop();
+  }
+
+  saveProject(): void {
+    const blob = new Blob([JSON.stringify(this.serializeProject(), null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'three-lightmap-baker-project.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  openProjectFile(): void {
+    this.projectFileInput.value = '';
+    this.projectFileInput.click();
+  }
+
   requestAORebake(): Promise<void> {
     return this.rebakeAO();
   }
@@ -619,6 +951,7 @@ export class CornellBoxExample implements BakerOrchestrator {
 
   /** Coarse bake state from live fields. Stays consistent across N bakes. */
   getBakeStatus(): 'idle' | 'baking' | 'done' | 'error' {
+    if (this.bakeInFlight) return 'baking';
     if (!this.bakeController.bakeGroups.length) return 'idle';
     if (this.options.pause) return 'done';
     return 'baking';
@@ -666,6 +999,11 @@ export class CornellBoxExample implements BakerOrchestrator {
     this.sceneController.setVisible(id, visible);
   }
 
+  frameNode(id: string): void {
+    const obj = this.lookupObject(id);
+    if (obj) this.sceneController.frameObject(obj);
+  }
+
   applyRefinementNow(): Promise<void> {
     return this.applyRefinement();
   }
@@ -700,6 +1038,86 @@ export class CornellBoxExample implements BakerOrchestrator {
     };
   }
 
+  async runAdapterRuntimeSmoke(): Promise<{
+    rendererLabel: string;
+    elapsedMs: number;
+    meshCount: number;
+    groupCount: number;
+    lightmapCount: number;
+    texelCount: number;
+  }> {
+    const startedAt = performance.now();
+    const width = 128;
+    const height = 128;
+    const hasOffscreen = typeof OffscreenCanvas !== 'undefined';
+    const canvas = hasOffscreen
+      ? new OffscreenCanvas(width, height)
+      : document.createElement('canvas');
+    const renderer = new WebGLRenderer({
+      canvas,
+      antialias: false,
+      powerPreference: 'high-performance',
+      failIfMajorPerformanceCaveat: false,
+    });
+    renderer.setSize(width, height, false);
+
+    const scene = new Scene();
+    const mesh = new Mesh(
+      new BoxGeometry(1, 1, 1),
+      new MeshStandardMaterial({ color: 0xd7dde8, roughness: 0.7 }),
+    );
+    mesh.position.y = 0.5;
+    scene.add(mesh);
+
+    const ground = new Mesh(
+      new PlaneGeometry(4, 4),
+      new MeshStandardMaterial({ color: 0x596579, roughness: 0.9 }),
+    );
+    ground.rotation.x = -Math.PI / 2;
+    scene.add(ground);
+
+    const light = new DirectionalLight(0xffffff, 2.4);
+    light.position.set(2, 4, 1.5);
+    scene.add(light);
+
+    const rendererLabel = hasOffscreen ? 'offscreen-browser' : 'detached-browser-canvas';
+    const adapter = createRendererAdapter(renderer, {
+      contextLossTarget: canvas as unknown as LightmapContextLossTarget,
+      label: rendererLabel,
+    });
+    const baker = new LightmapBaker({
+      rendererAdapter: adapter,
+      resolution: 64,
+      samples: 1,
+      castsPerFrame: 1,
+      bounces: 1,
+      denoise: false,
+      ao: false,
+      timeoutProtection: { safeMode: true },
+    });
+
+    let result = null as Awaited<ReturnType<LightmapBaker['bake']>> | null;
+    try {
+      result = await baker.bake(scene);
+      result.apply();
+      return {
+        rendererLabel,
+        elapsedMs: performance.now() - startedAt,
+        meshCount: result.stats.meshCount,
+        groupCount: result.groups.length,
+        lightmapCount: result.lightmaps.size,
+        texelCount: result.stats.texelCount,
+      };
+    } finally {
+      result?.dispose();
+      renderer.dispose();
+      mesh.geometry.dispose();
+      ground.geometry.dispose();
+      (mesh.material as MeshStandardMaterial).dispose();
+      (ground.material as MeshStandardMaterial).dispose();
+    }
+  }
+
   async loadScenePreset(id: string): Promise<void> {
     this.externalHooks.onSceneLoad?.();
     // Deactivate PT during load to avoid rendering a half-built scene.
@@ -707,6 +1125,9 @@ export class CornellBoxExample implements BakerOrchestrator {
     this.ptController?.deactivate();
 
     await this.sceneController.loadPresetById(id);
+    this.currentScenePresetId = id;
+    this.currentImportedModel = null;
+    activeSceneId.value = id;
     this.options.perMesh = {};
 
     if (this.ptController) {

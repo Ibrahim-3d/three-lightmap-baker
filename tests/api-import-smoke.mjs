@@ -29,6 +29,9 @@ const assertExports = (label, mod) => {
   if (typeof mod?.loadXAtlasThree !== 'function') {
     throw new Error(`${label}: loadXAtlasThree export is missing`);
   }
+  if (typeof mod?.createRendererAdapter !== 'function') {
+    throw new Error(`${label}: createRendererAdapter export is missing`);
+  }
 };
 
 const esmLocal = await import('three-lightmap-baker');
@@ -66,15 +69,17 @@ try {
   const tsconfig = path.join(tempDir, 'tsconfig.json');
   fs.writeFileSync(
     esmCheck,
-    "import { LightmapBaker, loadXAtlasThree } from 'three-lightmap-baker';\n" +
+    "import { LightmapBaker, loadXAtlasThree, createRendererAdapter } from 'three-lightmap-baker';\n" +
       "if (typeof LightmapBaker !== 'function') throw new Error('missing LightmapBaker');\n" +
-      "if (typeof loadXAtlasThree !== 'function') throw new Error('missing loadXAtlasThree');\n",
+      "if (typeof loadXAtlasThree !== 'function') throw new Error('missing loadXAtlasThree');\n" +
+      "if (typeof createRendererAdapter !== 'function') throw new Error('missing createRendererAdapter');\n",
   );
   fs.writeFileSync(
     cjsCheck,
-    "const { LightmapBaker, loadXAtlasThree } = require('three-lightmap-baker');\n" +
+    "const { LightmapBaker, loadXAtlasThree, createRendererAdapter } = require('three-lightmap-baker');\n" +
       "if (typeof LightmapBaker !== 'function') throw new Error('missing LightmapBaker');\n" +
-      "if (typeof loadXAtlasThree !== 'function') throw new Error('missing loadXAtlasThree');\n",
+      "if (typeof loadXAtlasThree !== 'function') throw new Error('missing loadXAtlasThree');\n" +
+      "if (typeof createRendererAdapter !== 'function') throw new Error('missing createRendererAdapter');\n",
   );
 
   execFileSync('node', [esmCheck], { cwd: tempDir, stdio: 'ignore' });
@@ -82,10 +87,15 @@ try {
 
   fs.writeFileSync(
     typesCheck,
-    "import { LightmapBaker, type LightmapBakerOptions } from 'three-lightmap-baker';\n" +
+    "import { LightmapBaker, createRendererAdapter, type LightmapBakerOptions, type LightmapRendererAdapter } from 'three-lightmap-baker';\n" +
       'const opts: LightmapBakerOptions = { samples: 4, bounces: 1, resolution: 64 };\n' +
       'const baker = new LightmapBaker(opts);\n' +
-      'baker.setRenderer;\n',
+      'baker.setRenderer;\n' +
+      'baker.setRendererAdapter;\n' +
+      'const renderer = {} as import("three").WebGLRenderer;\n' +
+      'const adapter: LightmapRendererAdapter = createRendererAdapter(renderer, { label: "smoke" });\n' +
+      'new LightmapBaker(adapter, opts);\n' +
+      'new LightmapBaker({ rendererAdapter: adapter, ...opts });\n',
   );
   fs.writeFileSync(
     tsconfig,

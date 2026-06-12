@@ -117,10 +117,30 @@ function wireSelectionEffects(app: CornellBoxExample): void {
   });
 }
 
+function orderedSceneNodeIds(): string[] {
+  const tree = sceneTree.value;
+  return tree
+    .filter((n) => n.kind === 'light')
+    .concat(tree.filter((n) => n.kind === 'mesh'))
+    .map((n) => n.id);
+}
+
+function selectSceneNodeRelative(delta: -1 | 1): void {
+  const ids = orderedSceneNodeIds();
+  if (!ids.length) return;
+
+  const current = selectedId.value;
+  const index = current ? ids.indexOf(current) : -1;
+  const nextIndex =
+    index === -1 ? (delta > 0 ? 0 : ids.length - 1) : (index + delta + ids.length) % ids.length;
+  const next = ids[nextIndex];
+  if (next) selectedId.value = next;
+}
+
 /** W/E/R = translate/rotate/scale. Escape = deselect. Delete = remove node.
  *  B = re-bake when stale. A = toggle atlas viewer. 1/3/7/0 = view orbits
  *  (front / right / top / persp - Blender numpad convention; Shift+ = back/
- *  left/bottom). */
+ *  left/bottom). ArrowUp/ArrowDown steps through outliner selection. */
 function wireHotkeys(app: CornellBoxExample): void {
   window.addEventListener('keydown', (e) => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
@@ -144,7 +164,13 @@ function wireHotkeys(app: CornellBoxExample): void {
     ) {
       return;
     }
-    if (k === 'w') gizmoMode.value = 'translate';
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      selectSceneNodeRelative(1);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      selectSceneNodeRelative(-1);
+    } else if (k === 'w') gizmoMode.value = 'translate';
     else if (k === 'e') gizmoMode.value = 'rotate';
     else if (k === 'r') gizmoMode.value = 'scale';
     else if (e.key === 'Escape') selectedId.value = null;

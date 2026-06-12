@@ -76,11 +76,20 @@ function TreeRow(props: { node: SceneNode }) {
   const selected = selectedId.value === props.node.id;
   return (
     <li
+      data-scene-node-id={props.node.id}
+      data-scene-node-kind={props.node.kind}
+      data-selected={selected ? 'true' : 'false'}
+      role="treeitem"
+      aria-selected={selected ? 'true' : 'false'}
+      tabIndex={selected ? 0 : -1}
       class={`group flex items-center gap-1.5 px-2 h-[22px] cursor-pointer select-none ${
         selected ? 'bg-accent/20 text-text-0' : 'text-text-1 hover:bg-bg-3 hover:text-text-0'
       }`}
       onClick={() => {
         selectedId.value = props.node.id;
+      }}
+      onDblClick={() => {
+        getOrchestrator()?.frameNode?.(props.node.id);
       }}
     >
       <span class={`flex-shrink-0 ${selected ? 'text-accent' : 'text-text-2'}`}>

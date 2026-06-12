@@ -560,6 +560,10 @@ export class SceneController {
    */
   async importGLB(file: File): Promise<void> {
     const buffer = await file.arrayBuffer();
+    await this.importGLBBuffer(buffer);
+  }
+
+  async importGLBBuffer(buffer: ArrayBuffer): Promise<void> {
     const loader = new GLTFLoader();
     let gltf: GLTF;
     try {
@@ -925,6 +929,7 @@ export class SceneController {
       console.warn('[baker] addAsset: unknown or disabled asset spec', spec);
       return '';
     }
+    node.userData.assetSpec = { ...spec };
     node.position.copy(worldPos);
 
     if (spec.kind === 'primitive') {

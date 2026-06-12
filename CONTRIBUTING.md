@@ -1,230 +1,134 @@
 # Contributing - three-lightmap-baker
 
-## Architecture Rule: Two-Pass Bake (Non-Negotiable)
+## Project State
 
-Pass 1: UV-space rasterization → world position texture + normal texture (+ any MRT targets)
-Pass 2: Ray tracing from texel world positions via BVH
+This repo is currently a browser/WebGL-first Three.js lightmap baker. The
+classic baker is package-ready and the first npm publish is still pending.
+Launch screenshots and RTX 3050 Ti benchmark numbers are already committed in
+the README. Demo Project JSON save/load currently covers built-in presets,
+imported GLB/glTF payloads, bake/editor options, and asset-library additions;
+baked texture persistence is still future work.
 
-These passes are SEPARATE. Never combine UV-space rasterization and ray tracing into a single shader. The prior codebase attempted this and produced 12 integration bugs. The two-pass architecture exists to prevent that class of bug from recurring.
+## Current Layout
 
-## Contributor License Agreement (CLA)
+```text
+packages/baker-classic/src/       Published classic lightmap baker
+  LightmapBaker.ts                Public entrypoint
+  bake/                           Bake orchestration, result lifecycle, validation
+  atlas/                          xatlas UV2 generation and UV-space rasterization
+  lightmap/                       GI, AO, composite, refinement, downscale passes
+  gpu/                            Capability detection and timeout defaults
+  utils/                          Geometry/material extraction and export helpers
+  ui/                             Demo/editor controls for the classic baker
+packages/pt-renderer/src/         Real-time path-tracing preview renderer
+packages/pt-baker/src/            Experimental PT baker path
+packages/demo-shell/src/          Shared editor shell, menus, panels, layout
+packages/shared/src/              Shared registries, signals, history, UI helpers
+apps/playground/                  Main live demo/editor
+apps/pt-preview/                  Standalone PT preview app
+apps/pt-baked/                    PT preview vs baked comparison app
+examples/                         Minimal browser usage examples
+tests/                            API import smoke and Playwright e2e tests
+docs/                             Architecture, roadmap, launch/API status
+```
 
-All contributions require signing the CLA at [`/CLA.md`](./CLA.md) via the hosted
-CLA Assistant app. The bot will comment on new pull requests with a signing link.
-PRs cannot be merged until the CLA is signed.
+## Architecture Rule: Two-Pass Bake
 
-Maintainers: enable the CLA Assistant app for this repo and point it at the
-current CLA text.
+Pass 1: UV-space rasterization to world-position and normal textures.
+Pass 2: ray tracing from texel world positions through the scene BVH.
+
+These passes are separate by design. Do not combine UV-space rasterization and
+ray tracing into a single shader; prior attempts produced renderer-state and
+matrix propagation bugs.
+
+## Critical Invariants
+
+- `MeshBVH` reorders the merged index buffer. Material extraction must run after
+  BVH construction so per-triangle material data matches shader face indices.
+- Scene materials must keep the dummy 1x1 `lightMap` path that pins the
+  `USE_LIGHTMAP` shader variant before heavy bake work.
+- `LightmapBaker.bake()` must keep context-loss handling and GPU queue drain
+  behavior intact.
+- Generated textures/render targets are owned by `LightmapBakeResult` or must be
+  disposed before returning.
+- Public API examples must stay aligned with both supported constructors:
+  `new LightmapBaker(renderer, options?)` and
+  `new LightmapBaker({ renderer, ...options })`.
+
+## Contributor License Agreement
+
+All contributions require signing the CLA at [`/CLA.md`](./CLA.md) via the
+hosted CLA Assistant app. PRs cannot be merged until the CLA is signed.
 
 ## Shader Rules
 
-- All shaders MUST be GLSL 3.0 ES (`#version 300 es`)
-- Use MRT (Multiple Render Targets) where multiple outputs are needed - do NOT render the same geometry twice to write position and normal separately
-- Every shader uniform MUST have a JSDoc comment explaining its unit and range
-- Every shader MUST have a comment block at the top explaining: what it does, what its inputs are, what its outputs are
-- NO magic numbers in shaders. Use `#define` or uniforms with documented names
-- Floating-point constants MUST have explicit decimal points (`1.0` not `1`)
-- Guard against NaN/Inf: clamp PRNG output, check vector lengths before normalize, validate varyings at fragment entry
-- Do NOT use `texture2D` - use `texture()` (GLSL 3.0)
+- Use GLSL 3.0 ES where the pass requires WebGL2 features.
+- Use MRT where multiple outputs are needed; do not render the same geometry
+  twice just to write position and normal separately.
+- Every shader should explain its inputs and outputs at the top.
+- Avoid magic numbers. Use documented constants, uniforms, or helper functions.
+- Floating-point constants should use explicit decimal points.
+- Guard against NaN/Inf in random sampling and normalization paths.
 
 ## TypeScript Rules
 
-- Strict mode always (`"strict": true` in tsconfig)
-- No `any` - use `unknown` and narrow, or define a proper type
-- No `as` type assertions except at FFI boundaries (WebGL calls, WASM interop) - and those MUST have a `// SAFETY:` comment explaining why the assertion is valid
-- Exported functions MUST have JSDoc with `@param` and `@returns`
-- Internal functions SHOULD have a one-line comment explaining purpose
-- Prefer `interface` over `type` for object shapes (interfaces give better error messages and are extendable)
-- Use `readonly` on properties that should not be mutated after construction
-- Enum values: use string enums (`enum Phase { Unwrapping = 'unwrapping' }`) not numeric
+- Keep strict mode clean.
+- Avoid `any`; use explicit types or `unknown` with narrowing.
+- Keep assertions near FFI/WebGL/WASM boundaries and document why they are safe.
+- Exported public APIs should have JSDoc when their behavior is not obvious.
+- Prefer local helpers over growing already-large controller files.
 
-## Naming Conventions
+## Resource Management
 
-| Thing | Convention | Example |
-|---|---|---|
-| Files | kebab-case | `gap-flood.ts`, `bake-shader.ts` |
-| Classes | PascalCase | `LightmapBaker`, `BakeResult` |
-| Interfaces | PascalCase, no I-prefix | `BakeOptions`, NOT `IBakeOptions` |
-| Functions | camelCase | `runGapFlood`, `buildSceneBvh` |
-| Constants | UPPER_SNAKE | `MAX_BOUNCES`, `DEFAULT_SAMPLES` |
-| Shader uniforms | uCamelCase | `uSampleIndex`, `uAlbedoTex` |
-| Shader varyings/in/out | vCamelCase | `vWorldPos`, `vWorldNormal` |
-| Private class members | underscore prefix | `_accumRT`, `_disposed` |
-| Type parameters | single capital letter | `T`, `K` |
+WebGL resources leak if not explicitly disposed.
 
-## File Organization
+1. A function that creates a `WebGLRenderTarget` must either return ownership or
+   dispose it before returning.
+2. Long-lived classes should track disposable resources and release them in
+   `dispose()`.
+3. Renderer state changes belong in `try/finally` blocks.
+4. `dispose()` should be idempotent.
+5. Public methods should reject work after disposal when applicable.
 
-```
-src/
-├── lib/                    # The library (published to npm)
-│   ├── core/               # Orchestrator, options, result types
-│   │   ├── baker.ts        # LightmapBaker class - single entry point
-│   │   ├── options.ts      # BakeOptions interface + defaults + validation
-│   │   ├── result.ts       # BakeResult class - lightmaps, AO maps, probes, dispose()
-│   │   └── types.ts        # Shared type definitions (NO implementation)
-│   ├── uv/                 # UV unwrapping (xatlas integration)
-│   │   └── unwrap.ts
-│   ├── passes/             # Render passes
-│   │   ├── world-pos.ts    # Pass 1: UV-space → position+normal textures
-│   │   ├── ray-trace.ts    # Pass 2: BVH ray tracing from texel positions
-│   │   ├── gap-flood.ts    # Post: edge dilation
-│   │   ├── denoise.ts      # Post: bilateral filter
-│   │   └── downscale.ts    # Post: supersample reduction
-│   ├── shaders/            # GLSL source (imported as strings)
-│   │   ├── world-pos.vert
-│   │   ├── world-pos.frag
-│   │   ├── ray-trace.frag
-│   │   ├── gap-flood.frag
-│   │   ├── denoise.frag
-│   │   └── common.glsl     # Shared functions (PRNG, cosine hemisphere, etc.)
-│   ├── scene/              # Scene analysis (BVH, material packing)
-│   │   ├── bvh-builder.ts
-│   │   └── material-pack.ts
-│   ├── lights/             # Light collection and packing
-│   │   └── light-data.ts
-│   ├── probes/             # SH light probe generation
-│   │   └── probe-grid.ts
-│   └── index.ts            # Public API surface (re-exports)
-├── demo/                   # Demo app (NOT published)
-│   ├── scenes/
-│   │   └── cornell-box.ts
-│   ├── ui/
-│   │   └── controls.ts
-│   └── main.ts
-└── __tests__/              # Tests
-```
+## Diagnostics
 
-## Resource Management (CRITICAL for WebGL)
-
-WebGL resources (textures, render targets, shader materials, geometries) leak if not explicitly disposed. Rules:
-
-1. **Every function that creates a WebGLRenderTarget MUST either return it (caller owns it) or dispose it before returning.** No middle ground.
-2. **Track allocations.** Use a `Disposable[]` array in long-lived classes. `dispose()` method iterates and disposes all.
-3. **Try/finally for render passes.** If a function changes renderer state (setRenderTarget, setClearColor, autoClear), wrap in try/finally that restores previous state.
-
-```typescript
-// PATTERN: safe render target usage
-const prevTarget = renderer.getRenderTarget();
-const prevClear = renderer.getClearColor(new THREE.Color());
-const prevAlpha = renderer.getClearAlpha();
-try {
-  renderer.setRenderTarget(myRT);
-  renderer.setClearColor(0x000000, 0);
-  renderer.clear();
-  renderer.render(scene, camera);
-} finally {
-  renderer.setRenderTarget(prevTarget);
-  renderer.setClearColor(prevClear, prevAlpha);
-}
-```
-
-4. **dispose() is idempotent.** Calling it twice must not throw. Guard with a `_disposed` flag.
-5. **After dispose, methods throw.** Check `_disposed` at entry of public methods.
-
-## Error Handling
-
-- Use custom error class: `BakeError extends Error` with `phase: string` and `meshName?: string`
-- Never swallow errors silently - log and rethrow, or log and continue with documented degradation
-- Validate all options at entry (`baker.bake()`) BEFORE allocating GPU resources
-- Validate scene (has meshes, has at least one light source) BEFORE starting UV unwrap
-
-## Performance Constraints
-
-- Bake operations MUST yield to the browser event loop at least every 100ms (requestAnimationFrame / setTimeout)
-- No synchronous loops longer than 50ms without a yield point
-- DataTexture uploads MUST use `texture.needsUpdate = true` exactly once, not per-pixel
-- Measure and log bake duration per phase in debug mode
-
-## Debug Mode
-
-All diagnostic code behind a `DEBUG` constant:
-
-```typescript
-const DEBUG = import.meta.env.DEV;
-
-if (DEBUG) {
-  console.log('[baker] phase timing:', { unwrap: t1 - t0, bake: t2 - t1 });
-}
-```
-
-Console logs prefixed with `[baker]`. No `console.log` without the prefix. No `console.log` in production builds.
+- Console diagnostics should be behind dev/debug paths.
+- Logs should be prefixed with `[baker]` or a specific package prefix.
+- Prefer `console.info`, `console.warn`, and `console.error`; avoid stray
+  `console.log` in production paths.
 
 ## Git Conventions
 
-- Commit messages: `task-XX: short description` for task work, `fix: description` for bugfixes, `refactor: description` for cleanup
-- Each task is one or more commits. Squash is fine.
-- Do NOT commit debug screenshots to main - they go in a `.gitignore`d `screenshots/` directory
-- Do NOT commit `node_modules/`, `dist/`, or IDE config
+- Keep commits focused by concern.
+- Do not commit `node_modules/`, generated package output, or IDE config.
+- Do not commit ad-hoc debug screenshots. Curated README/launch assets may live
+  under `screenshots/`; rerunnable raw capture output belongs in ignored
+  `launch-artifacts/`.
+- Do not revert unrelated local changes while working on a task.
 
-## Code Modularity Rules
+## Modularity Guidance
 
-### File Size Limits
+- New files should have one nameable responsibility.
+- Several legacy/editor files exceed ideal size already. Do not make them harder
+  to split; when touching them substantively, prefer extracting cohesive helpers.
+- Avoid circular imports.
+- Avoid module-level mutable state unless the value is immutable after
+  initialization or explicitly shared by design.
+- Keep package boundaries clear: library code must not depend on app/demo code.
 
-- **Hard limit: 300 lines per file.** If a file exceeds 300 lines, it must be split before the next commit.
-- **Target: 150-250 lines per file.** This is the sweet spot where a file does one thing completely without scrolling.
-- **Shader files (.glsl): 200 lines max.** Extract shared functions into `common.glsl` and `#include` or import them.
-- **The only exception:** auto-generated files (type definitions from codegen, WASM bindings). These can exceed limits but must be marked with `// AUTO-GENERATED - DO NOT EDIT` at the top.
+## Before Opening A PR
 
-### How to Split a File
-
-When a file exceeds 300 lines, split by responsibility, not by arbitrary line count:
-
-```
-// BAD: split baker.ts into baker-part1.ts and baker-part2.ts
-
-// GOOD: split baker.ts into:
-//   baker.ts        - orchestration (calls phases in order, handles errors)
-//   options.ts      - option validation and defaults
-//   result.ts       - BakeResult class and disposal
-//   progress.ts     - progress reporting and timing
-```
-
-Each extracted file must:
-1. Have a single, nameable responsibility
-2. Export a clear interface (not a grab bag of functions)
-3. Be testable in isolation
-4. Not create circular imports
-
-### Function Size Limits
-
-- **Hard limit: 50 lines per function.** If a function exceeds 50 lines, extract helper functions.
-- **Target: 15-30 lines per function.** A function should fit on one screen.
-- **Exception: shader main() functions** can go to 80 lines because GLSL doesn't support function extraction as cleanly. But prefer helper functions even in GLSL.
-
-### Coupling Rules
-
-- **No file imports from more than 5 other project files.** If it does, it's a god-file that knows too much. Split it or introduce an interface boundary.
-- **No circular imports.** If A imports B and B imports A, extract the shared dependency into C.
-- **Types live in types.ts, not in implementation files.** If two files need the same interface, it belongs in types.ts, not duplicated or re-exported.
-- **Passes are independent.** Each file in `src/lib/passes/` must work given only its input types. It must NOT reach into another pass's internals. Communication between passes happens through the orchestrator (`baker.ts`) via typed data, not through shared mutable state.
-
-### Dependency Direction
-
-```
-core/ (types, options, result)
-  ↑
-passes/ (each pass depends on core types, nothing else)
-  ↑
-scene/ (BVH, materials - depends on core types)
-  ↑
-baker.ts (orchestrator - depends on everything above)
-  ↑
-demo/ (depends on lib/ - never the other way)
-```
-
-A file may only import from files ABOVE it in this diagram, or from the same directory. Never downward.
-
-### State Management
-
-- **No module-level mutable state.** No `let sharedRT = null` at file scope. All state lives in class instances or is passed as function arguments.
-- **No singletons.** Multiple LightmapBaker instances must be able to coexist (different scenes, different settings) without interfering.
-- **Render targets are owned, not shared.** The function that creates an RT either returns it (caller owns) or disposes it (creator owns). Never "this RT lives in module scope and multiple functions write to it."
-
-### Before Every Commit - Modularity Checklist
-
-- [ ] No file exceeds 300 lines
-- [ ] No function exceeds 50 lines
-- [ ] No file imports from more than 5 project files
-- [ ] No circular imports
-- [ ] No module-level mutable state
-- [ ] Dependency direction is respected (no downward imports)
+- Run typecheck, example typecheck, lint, build, API import smoke, adapter
+  runtime smoke, Cornell visual smoke, and bake cancellation smoke when touching
+  renderer setup, bake lifecycle, or automation paths.
+- `pnpm run build` and `pnpm run release:check` enforce the demo bundle budget.
+  If a change intentionally adds substantial JS/CSS or copied launch assets,
+  update `scripts/check-bundle-budget.mjs` in the same change and explain the
+  new ceiling.
+- Pull requests upload a static demo preview artifact from CI. Use it for
+  review without pushing ad-hoc screenshots or modifying the production Pages
+  deployment.
+- Check whether formatting baseline/tooling is expected to be green for the
+  branch before treating format failures as regressions.
+- For visual or GPU-sensitive changes, include GPU renderer info, bake settings,
+  and before/after screenshots or capture artifacts.

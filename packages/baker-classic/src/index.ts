@@ -63,9 +63,13 @@ export type { BakeErrorPhase } from './errors';
 
 // --- High-level one-call API (Phase 3) ---
 export { LightmapBaker, LightmapBakeResult } from './LightmapBaker';
+export { createRendererAdapter, isLightmapRendererAdapter } from './rendererAdapter';
 export type {
   LightmapBakerInitOptions,
   LightmapBakerOptions,
+  LightmapContextLossTarget,
+  LightmapRendererAdapter,
+  LightmapRendererAdapterOptions,
   LightOptions,
   GIOptions,
   AOOptions,

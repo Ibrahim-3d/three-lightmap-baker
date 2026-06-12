@@ -1,11 +1,13 @@
 # Architecture - Three Lightmap Baker
 
-Current as of 2026-06-04.
+Current as of 2026-06-10.
 
 ## Repository layout (relevant paths)
 
 ```text
 apps/playground/                    Live browser demo/editor
+apps/pt-preview/                    Standalone real-time PT preview
+apps/pt-baked/                      PT preview vs baked comparison
 packages/baker-classic/src/         Classic lightmap baker library
   LightmapBaker.ts                  Public entrypoint (constructor + bake orchestration)
   bake/                             Pipeline orchestration + result lifecycle
@@ -13,6 +15,10 @@ packages/baker-classic/src/         Classic lightmap baker library
   lightmap/                         Path-traced passes, AO, composite, refinement
   gpu/                              Capability detection + timeout defaults
   utils/                            Geometry/material extraction + export helpers
+packages/pt-renderer/src/           Real-time path-tracing preview renderer
+packages/pt-baker/src/              Experimental path-traced bake path
+packages/demo-shell/src/            Shared editor shell
+packages/shared/src/                Shared registries, signals, UI helpers
 docs/                               Product docs, status, roadmap
 ```
 
@@ -70,4 +76,4 @@ A renderer is required before calling `bake()`.
 
 - Current implementation is **WebGL browser-first**.
 - True Node.js headless baking is **not yet implemented**.
-- Existing architecture keeps renderer ownership explicit to enable a future adapter layer (offscreen/headless context providers) without changing bake-core interfaces.
+- Existing architecture keeps renderer ownership explicit. `LightmapRendererAdapter` is the current offscreen/test-harness boundary for renderer setup and context-loss wiring, with Playwright runtime smoke coverage for the detached/offscreen browser path. True Node-compatible baking is still future work.

@@ -23,25 +23,110 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
+          cache: pnpm
+
+      - name: Enable Corepack
+        run: corepack enable
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: TypeScript
-        run: npm run typecheck
+        run: pnpm run typecheck
+
+      - name: TypeScript examples
+        run: pnpm run typecheck:examples
 
       - name: ESLint
-        run: npm run lint
+        run: pnpm run lint
 
       - name: Prettier
-        run: npm run format:check
+        run: pnpm run format:check
 
       - name: Vite build
-        run: npm run build
+        run: pnpm run build
 
       - name: Package API import smoke test
-        run: npm run test:api-import
+        run: pnpm run test:api-import
+
+  browser-smoke:
+    name: Browser runtime smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Detached/offscreen adapter runtime smoke
+        run: pnpm run test:adapter-runtime
+
+      - name: Cornell visual bake smoke
+        run: pnpm run test:visual-cornell
+
+      - name: Bake cancellation smoke
+        run: pnpm run test:bake-cancel
+
+      - name: Project save/load smoke
+        run: pnpm run test:project-save-load
+
+      - name: Outliner selection smoke
+        run: pnpm run test:selection
+
+  pr-preview:
+    name: PR preview artifact
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build demo preview
+        run: pnpm run build:demo
+
+      - name: Check bundle budget
+        run: pnpm run budget:bundle
+
+      - name: Create .nojekyll
+        run: touch dist/.nojekyll
+
+      - name: Upload PR preview artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-${{ github.event.pull_request.number }}-demo-preview
+          path: dist
+          retention-days: 7
+
+      - name: Preview summary
+        run: |
+          {
+            echo "## PR Preview"
+            echo ""
+            echo "Built demo preview artifact: \`pr-${{ github.event.pull_request.number }}-demo-preview\`"
+            echo ""
+            echo "Download it from this workflow run's artifacts and serve the extracted directory with any static file server."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   modularity:
     name: Modularity (advisory)
@@ -52,15 +137,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
+          cache: pnpm
+
+      - name: Enable Corepack
+        run: corepack enable
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Circular imports (madge)
         run: |
           set +e
-          npx -y madge --circular --extensions ts,tsx packages/ apps/
+          pnpm dlx madge --circular --extensions ts,tsx packages/ apps/
           if [ $? -ne 0 ]; then
             echo "::warning::Circular imports detected - see log above. CLAUDE.md forbids cycles; this job will flip to hard-fail once existing oversized files are split."
           fi

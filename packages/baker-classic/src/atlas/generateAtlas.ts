@@ -28,8 +28,8 @@ export const loadXAtlasThree = async (): Promise<void> => {
   };
   await unwrapper.loadLibrary(
     onProgress,
-    'https://cdn.jsdelivr.net/npm/xatlasjs@0.1.0/dist/xatlas.wasm',
-    'https://cdn.jsdelivr.net/npm/xatlasjs@0.1.0/dist/xatlas.js',
+    'https://cdn.jsdelivr.net/npm/xatlasjs@0.2.0/dist/xatlas.wasm',
+    'https://cdn.jsdelivr.net/npm/xatlasjs@0.2.0/dist/xatlas.js',
   );
 
   if (DEBUG) console.info('[baker] xatlas loaded');
