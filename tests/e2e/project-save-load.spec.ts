@@ -30,6 +30,11 @@ type ProjectJson = {
       roughness: number;
       metalness: number;
     };
+    materials?: Array<{
+      color: number;
+      roughness: number;
+      metalness: number;
+    }>;
   }>;
 };
 
@@ -98,7 +103,7 @@ test.describe('project save/load', () => {
     expect(project.options.targetSamples).toBe(96);
     expect(project.assets).toHaveLength(1);
     expect(project.assets[0].name).toBe('Saved Cube');
-    expect(project.assets[0].material?.color).toBe(0x3366cc);
+    expect(project.assets[0].materials?.[0].color).toBe(0x3366cc);
 
     await page.evaluate(async (saved) => {
       const baker = (
@@ -138,8 +143,8 @@ test.describe('project save/load', () => {
     expect(restored.project.assets[0].name).toBe('Saved Cube');
     expect(restored.project.assets[0].position).toEqual([1.25, 1.5, -0.75]);
     expect(restored.project.assets[0].scale).toEqual([1.4, 0.8, 1.1]);
-    expect(restored.project.assets[0].material?.roughness).toBeCloseTo(0.42, 5);
-    expect(restored.project.assets[0].material?.metalness).toBeCloseTo(0.15, 5);
+    expect(restored.project.assets[0].materials?.[0].roughness).toBeCloseTo(0.42, 5);
+    expect(restored.project.assets[0].materials?.[0].metalness).toBeCloseTo(0.15, 5);
   });
 
   test('round-trips an imported glTF scene embedded in Project JSON', async ({ page }) => {
