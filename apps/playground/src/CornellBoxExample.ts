@@ -1119,7 +1119,7 @@ export class CornellBoxExample implements BakerOrchestrator {
   getBakeStatus(): 'idle' | 'baking' | 'done' | 'error' {
     if (this.bakeInFlight) return 'baking';
     if (!this.bakeController.bakeGroups.length) return 'idle';
-    if (this.options.pause) return 'done';
+    if (this.options.pause || this.options.samples >= this.options.targetSamples) return 'done';
     return 'baking';
   }
 
