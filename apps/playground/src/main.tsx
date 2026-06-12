@@ -19,6 +19,7 @@ import {
   gizmoMode,
   inspectorTab,
   isStale,
+  optionsTick,
   panelRegistry,
   renderMode,
   sceneTree,
@@ -90,6 +91,12 @@ function wireSelectionEffects(app: CornellBoxExample): void {
   });
   effect(() => {
     app.setLayer(renderMode.value);
+  });
+  effect(() => {
+    void optionsTick.value;
+    // When global or per-mesh options change (like texelsPerMeter), refresh
+    // the active layer. Specifically needed for Texel Density real-time preview.
+    app.setLayer(renderMode.peek());
   });
   effect(() => {
     app.sceneController.gridHelper.visible = showGrid.value;

@@ -73,6 +73,7 @@ export function BakePage() {
             onChange={(v) => {
               o.texelsPerMeter = v;
               bumpOptions();
+              markStale();
             }}
           />
         </Row>
