@@ -69,6 +69,14 @@ export class TexelDensityMaterial extends ShaderMaterial {
                     vec3 dWdx = dFdx(vWorldPos);
                     vec3 dWdy = dFdy(vWorldPos);
 
+                    // Checker in WORLD space - one square = CHECKER_TEXELS target
+                    // texels wide. Decoupled from the actual texel size so the
+                    // pattern stays readable as density slides up. Triplanar
+                    // XOR sum covers all axes - squares stay UNIFORMLY square
+                    // across the scene if density is on-target.
+                    const float CHECKER_TEXELS = 4.0;
+                    float worldPerSquare = CHECKER_TEXELS / max(uTexelsPerMeter, 1e-6);
+
                     // Detect missing uv2 attribute (pre-bake state). xatlas
                     // writes uv2 only after the bake completes; before that,
                     // the attribute is absent → vUv2 reads as zero across the
@@ -78,8 +86,7 @@ export class TexelDensityMaterial extends ShaderMaterial {
                     float uvLen = length(dUVdx) + length(dUVdy);
                     if (uvLen < 1e-6) {
                         // Magenta checker = "bake first to see real density".
-                        const float NOATLAS_SQUARE = 0.5;
-                        vec3 wc = floor(vWorldPos / NOATLAS_SQUARE);
+                        vec3 wc = floor(vWorldPos / worldPerSquare);
                         float k = mod(wc.x + wc.y + wc.z, 2.0);
                         fragColor = vec4(vec3(1.0, 0.0, 1.0) * (k > 0.5 ? 1.0 : 0.55), 1.0);
                         return;
@@ -100,13 +107,6 @@ export class TexelDensityMaterial extends ShaderMaterial {
                     else if (ratio < 1.5) c = vec3(0.0, 1.0, 1.0);
                     else                  c = vec3(0.0, 0.0, 1.0);
 
-                    // Checker in WORLD space - one square = CHECKER_TEXELS target
-                    // texels wide. Decoupled from the actual texel size so the
-                    // pattern stays readable as density slides up. Triplanar
-                    // XOR sum covers all axes - squares stay UNIFORMLY square
-                    // across the scene if density is on-target.
-                    const float CHECKER_TEXELS = 4.0;
-                    float worldPerSquare = CHECKER_TEXELS / max(uTexelsPerMeter, 1e-6);
                     vec3 wcell = floor(vWorldPos / worldPerSquare);
                     float check = mod(wcell.x + wcell.y + wcell.z, 2.0);
                     float bright = check > 0.5 ? 1.0 : 0.6;
