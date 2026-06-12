@@ -13,13 +13,21 @@ import {
   Section,
   selectedId,
   TextField,
+  getOrchestrator,
 } from 'shared';
-import { getBakerOrchestrator } from 'baker-classic/ui';
+
+interface BakerOrchestratorLike {
+  options: {
+    perMesh: Record<string, { scaleInLightmap: number; exclude: boolean }>;
+  };
+}
 
 /** Object tab: name + visible + transform numeric inputs. */
 export function ObjectPage() {
   void objectTick.value; // re-render on transform/visibility writes
-  const app = getBakerOrchestrator();
+  // Cast to a structural interface to access options without importing the specific
+  // BakerOrchestrator interface from baker-classic, avoiding a circular dependency.
+  const app = getOrchestrator() as unknown as BakerOrchestratorLike;
   const obj = lookupSelected(selectedId.value);
   if (!obj) {
     return <Empty />;
