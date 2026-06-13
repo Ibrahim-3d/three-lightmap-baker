@@ -65,8 +65,14 @@ export class DilationMaterial extends ShaderMaterial {
                             if (dx == 0 && dy == 0) continue;
                             vec2 uv2 = vUv + vec2(float(dx), float(dy)) * texel;
                             vec4 s = texture(map, uv2);
-                            // "non-empty" = either inside the chart or already dilated.
-                            float w = step(DILATION_EMPTY_EPS, s.r + s.g + s.b);
+                            float chartNeighbour = texture(positions, uv2).a;
+                            // "non-empty" = valid chart/halo texel OR a texel filled by
+                            // an earlier dilation pass. Do not use color alone: a valid
+                            // shadowed texel can be nearly black.
+                            float w = max(
+                                step(DILATION_EMPTY_EPS, chartNeighbour),
+                                step(DILATION_EMPTY_EPS, s.r + s.g + s.b)
+                            );
                             sum += s.rgb * w;
                             n   += w;
                         }

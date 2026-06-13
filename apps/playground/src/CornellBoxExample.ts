@@ -692,13 +692,17 @@ export class CornellBoxExample implements BakerOrchestrator {
 
     this.bakeInFlight = false;
     this.activeBakeAbort = null;
-    this.options.refinementStatus = 'idle';
     this.options.samples = this.options.targetSamples;
     this.options.spp = this.options.targetSamples * this.options.casts;
     this.options.etaSec = 0;
     this.options.pause = false;
 
-    this.renderModeRunner.apply();
+    if (this.shouldApplyRefinement()) {
+      await this.applyRefinement();
+    } else {
+      this.options.refinementStatus = 'skipped';
+      this.renderModeRunner.apply();
+    }
     this.bakeController.diag.snap('after applyRenderMode (lightmaps mounted)');
 
     // Unreal-style dirty tracking: snapshot the world matrix of every baked
@@ -787,6 +791,10 @@ export class CornellBoxExample implements BakerOrchestrator {
     this.renderModeRunner.apply();
   }
 
+  private shouldApplyRefinement(): boolean {
+    return this.options.dilationIterations > 0 || this.options.denoiseEnabled;
+  }
+
   private showUnrefined(): void {
     this.bakeController.clearRefinement();
     this.options.refinementStatus = 'idle';
@@ -800,6 +808,7 @@ export class CornellBoxExample implements BakerOrchestrator {
       distance: this.options.ambientDistance,
       targetSamples: this.options.targetSamples,
     });
+    if (this.shouldApplyRefinement()) await this.applyRefinement();
     this.options.pause = false;
   }
 
@@ -921,7 +930,6 @@ export class CornellBoxExample implements BakerOrchestrator {
             console.info(
               `[baker] done in ${elapsed.toFixed(2)}s (${this.bakeController.bakeGroups.length} atlas${this.bakeController.bakeGroups.length === 1 ? '' : 'es'})`,
             );
-            if (this.options.autoApplyRefinement) void this.applyRefinement();
           } else {
             const totalSamples = this.options.targetSamples;
             const tNow = performance.now();
@@ -1235,6 +1243,9 @@ export class CornellBoxExample implements BakerOrchestrator {
     aoExponent?: number;
   }): void {
     this.bakeController.refreshAllComposites(overrides);
+    if (this.bakeController.bakeGroups.some((group) => group.refinement)) {
+      void this.applyRefinement();
+    }
   }
 
   /** Switch between rasterisation ('combined' etc.) and PT ('pathtraced') mode. */

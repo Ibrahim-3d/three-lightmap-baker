@@ -1,4 +1,4 @@
-import { BufferAttribute, Mesh, Vector3 } from 'three';
+import { BufferAttribute, type BufferGeometry, Mesh, Vector3 } from 'three';
 import { UVUnwrapper } from 'xatlas-three';
 import { computeMeshSurfaceArea } from '../utils/Packing';
 
@@ -49,6 +49,46 @@ function getUv2Bounds(meshs: Mesh[]): { min: number; max: number; valid: boolean
     valid:
       Number.isFinite(min) && Number.isFinite(max) && min >= -UV_EPSILON && max <= 1 + UV_EPSILON,
   };
+}
+
+type GeometrySnapshot = {
+  attributes: Record<string, BufferAttribute>;
+  index: BufferAttribute | null;
+  xAtlasSubMeshes: unknown;
+  hadXAtlasSubMeshes: boolean;
+};
+
+function snapshotGeometry(geometry: BufferGeometry): GeometrySnapshot {
+  const attributes: Record<string, BufferAttribute> = {};
+  for (const [name, attribute] of Object.entries(geometry.attributes)) {
+    attributes[name] = attribute.clone() as BufferAttribute;
+  }
+  return {
+    attributes,
+    index: geometry.index ? (geometry.index.clone() as BufferAttribute) : null,
+    xAtlasSubMeshes: geometry.userData.xAtlasSubMeshes
+      ? structuredClone(geometry.userData.xAtlasSubMeshes)
+      : undefined,
+    hadXAtlasSubMeshes: Object.prototype.hasOwnProperty.call(geometry.userData, 'xAtlasSubMeshes'),
+  };
+}
+
+function restoreGeometry(geometry: BufferGeometry, snapshot: GeometrySnapshot): void {
+  for (const name of Object.keys(geometry.attributes)) {
+    geometry.deleteAttribute(name);
+  }
+  for (const [name, attribute] of Object.entries(snapshot.attributes)) {
+    geometry.setAttribute(name, attribute.clone() as BufferAttribute);
+  }
+  geometry.setIndex(snapshot.index ? (snapshot.index.clone() as BufferAttribute) : null);
+
+  if (snapshot.hadXAtlasSubMeshes) {
+    geometry.userData.xAtlasSubMeshes = snapshot.xAtlasSubMeshes
+      ? structuredClone(snapshot.xAtlasSubMeshes)
+      : snapshot.xAtlasSubMeshes;
+  } else {
+    delete geometry.userData.xAtlasSubMeshes;
+  }
 }
 
 export const loadXAtlasThree = async (): Promise<void> => {
@@ -136,7 +176,14 @@ export const generateAtlas = async (
     // downstream renderer expects each bake group to be one 0-1 atlas target,
     // so retry with a lower resolved density until xatlas agrees.
     const maxAttempts = densityMode ? MAX_DENSITY_PACK_ATTEMPTS : 1;
+    const snapshots = densityMode ? geometry.map(snapshotGeometry) : [];
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (attempt > 0) {
+        for (let i = 0; i < geometry.length; i++) {
+          const snapshot = snapshots[i];
+          if (snapshot) restoreGeometry(geometry[i]!, snapshot);
+        }
+      }
       unwrapper.packOptions.texelsPerUnit = densityMode ? texelsPerUnit : undefined;
       const atlas = await unwrapper.packAtlas(geometry, 'uv2', 'uv');
       const uvBounds = getUv2Bounds(meshs);
