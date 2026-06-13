@@ -85,6 +85,10 @@ export type BakeOptions = {
   denoiseKSigma: number;
 };
 
+export type RunBakeOptions = {
+  signal?: AbortSignal;
+};
+
 /** Returned each RAF tick during an active bake. */
 export type BakeTickResult = {
   /** True while a bake is in progress (groups exist + not done + not paused). */
@@ -109,6 +113,7 @@ export type BakeTickResult = {
 export class BakeController {
   bakeGroups: BakeGroup[] = [];
   meshToGroup: Map<Mesh, BakeGroup> = new Map();
+  restoredLightmaps: Map<Mesh, Texture> = new Map();
   bakeResult: LightmapBakeResult | null = null;
 
   /** Set true on the RAF immediately after `runBake` returns - orchestrator instruments that frame. */
@@ -164,10 +169,38 @@ export class BakeController {
       g.refinement?.dispose();
       g.composite.dispose();
     }
+    const restored = new Set(this.restoredLightmaps.values());
+    for (const tex of restored) tex.dispose();
+    this.restoredLightmaps.clear();
     this.bakeGroups = [];
     this.meshToGroup.clear();
     this.bakeResult?.dispose();
     this.bakeResult = null;
+  }
+
+  restoreLightmaps(
+    entries: ReadonlyArray<{ meshes: ReadonlyArray<Mesh>; texture: Texture }>,
+  ): void {
+    this.disposeAllGroups();
+    for (const entry of entries) {
+      entry.texture.channel = 2;
+      for (const mesh of entry.meshes) {
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const mat of mats) {
+          if (mat && 'lightMap' in mat) {
+            const m = mat as MeshStandardMaterial;
+            m.lightMap = entry.texture;
+            m.lightMapIntensity = 1;
+            m.needsUpdate = true;
+          }
+        }
+        this.restoredLightmaps.set(mesh, entry.texture);
+      }
+    }
+  }
+
+  getRestoredLightmap(mesh: Mesh): Texture | null {
+    return this.restoredLightmaps.get(mesh) ?? null;
   }
 
   /**
@@ -181,6 +214,7 @@ export class BakeController {
     meshes: ReadonlyArray<Mesh>,
     lightPosition: Vector3,
     options: BakeOptions,
+    runOptions: RunBakeOptions = {},
   ): Promise<void> {
     if (!meshes.length) return;
 
@@ -264,6 +298,7 @@ export class BakeController {
     try {
       const baker = new LightmapBaker(this.renderer, opts);
       result = await baker.bake(this.scene, {
+        signal: runOptions.signal,
         onFrame: (info: BakeFrameInfo) => {
           // Refresh demo's per-group composites so view-time intensity sliders
           // see the latest accumulator state.

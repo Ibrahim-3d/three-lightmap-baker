@@ -66,12 +66,6 @@ export type ViewLayerDescriptor = {
 export const viewLayers = signal<ReadonlyArray<ViewLayerDescriptor>>([]);
 
 /**
- * Multi-atlas viewer overlay visibility. Driven by View → Toggle Atlas Viewer.
- * Renderer reads this each RAF to decide whether to call AtlasViewer.render().
- */
-export const atlasViewerVisible = signal<boolean>(false);
-
-/**
  * Viewport fly-camera state. `flySpeed` is metres per second (range 0.1..50).
  * `flyActive` flips true while the user is holding right-mouse on the canvas -
  * read by the hotkey layer to suppress W/E/R gizmo shortcuts during fly mode.
@@ -79,6 +73,7 @@ export const atlasViewerVisible = signal<boolean>(false);
  */
 export const flySpeed = signal<number>(5);
 export const flyActive = signal<boolean>(false);
+export const cameraFOV = signal<number>(50);
 
 /**
  * Viewport editor helpers - Blender-style ground grid + RGB world axes.

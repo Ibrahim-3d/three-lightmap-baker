@@ -6,7 +6,7 @@
 | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | <img src="screenshots/before-solid-viewport.png" alt="Cornell advanced scene before lightmap baking" width="260" /> | <img src="screenshots/after-preview-baked-combined.png" alt="Cornell advanced scene after Preview lightmap bake" width="260" /> | <img src="screenshots/after-production-baked-combined.png" alt="Cornell advanced scene after Production lightmap bake" width="260" /> |
 
-> Important GPU note: this baker is GPU-bound. Chrome and Edge must have **Use graphics acceleration when available** enabled, and `chrome://gpu` should report WebGL/WebGL2 as hardware accelerated. Launch capture uses installed Chrome and, on Windows, prefers ANGLE D3D11 because that is the backend that selected the NVIDIA RTX GPU in testing. The app reports the renderer it actually received, and launch automation can reject captures from the wrong GPU with `BAKER_EXPECT_GPU="RTX 3050" npm run capture:launch`.
+> Important GPU note: this baker is GPU-bound. Chrome and Edge must have **Use graphics acceleration when available** enabled, and `chrome://gpu` should report WebGL/WebGL2 as hardware accelerated. Launch capture uses installed Chrome and, on Windows, prefers ANGLE D3D11 because that is the backend that selected the NVIDIA RTX GPU in testing. The app reports the renderer it actually received, and launch automation can reject captures from the wrong GPU with `BAKER_EXPECT_GPU="RTX 3050" pnpm run capture:launch`.
 
 <h1 align="center">🔆 Three Lightmap Baker</h1>
 
@@ -65,7 +65,7 @@ So I'm building it. This fork keeps the proven two-pass architecture, adds multi
 
 Every AI coding agent (Claude Code, Cursor, Devin, Copilot Workspace) can build and manipulate 3D scenes programmatically. What they can't do is bake lighting without spawning Blender and writing a Python script to drive it.
 
-A JavaScript-native lightmap baker that runs in Node.js or the browser is infrastructure for the agentic wave. An AI agent that assembles a room from a furniture catalog needs to light that room without opening a DCC tool.
+A JavaScript-native lightmap baker that runs in the browser today, with a planned headless/Node path, is infrastructure for the agentic wave. An AI agent that assembles a room from a furniture catalog needs to light that room without opening a DCC tool.
 
 If you're building anything where 3D scenes are constructed programmatically - architectural configurators, AI interior design, procedural environments, digital twins - and you need those scenes to look lit, you're the target user.
 
@@ -112,11 +112,15 @@ git clone https://github.com/Ibrahim-3d/three-lightmap-baker.git
 cd three-lightmap-baker
 
 # Install
-npm install
+corepack enable
+pnpm install
 
 # Run the Cornell Box demo
-npm run start # opens http://localhost:5173
+pnpm run start # opens http://localhost:5173
 ```
+
+This repo uses pnpm via Corepack. The checked-in `pnpm-lock.yaml` is the
+authoritative dependency lockfile.
 
 Click **Bake** and watch the lightmap converge. Color bleeding should be visible on the sphere within seconds.
 
@@ -126,13 +130,27 @@ The npm package name is reserved for release, but it is **not published yet**.
 
 ```bash
 # After the first npm release:
-npm install three-lightmap-baker
+pnpm add three-lightmap-baker
 
 # Until then, install from a generated tarball:
-npm run build:package
-npm pack
-npm install ./three-lightmap-baker-1.0.0.tgz
+pnpm run build:package
+pnpm pack
+pnpm add ./three-lightmap-baker-1.0.0.tgz
 ```
+
+Before publishing, run the full package gate:
+
+```bash
+pnpm run release:check
+```
+
+That command runs typecheck, lint, format check, demo build, package build,
+example typecheck, demo bundle budget, tarball import smoke, and
+`npm publish --dry-run --access public`. The final publish still requires an
+authenticated npm session. For the first real registry publish, use the manual
+`npm Publish` GitHub Actions workflow after configuring npm trusted publishing
+or the `NPM_TOKEN` repository secret; the workflow verifies the requested
+version, reruns `pnpm run release:check`, and publishes with npm provenance.
 
 If you're working in this repo, the classic baker lives in `packages/baker-classic/`.
 
@@ -202,6 +220,16 @@ const baker = new LightmapBaker(renderer, { samples: 64, bounces: 2, resolution:
 const result = await baker.bake(scene);
 ```
 
+Advanced automation can pass a renderer adapter when renderer/context setup is
+owned outside the baker:
+
+```typescript
+import { LightmapBaker, createRendererAdapter } from 'three-lightmap-baker';
+
+const adapter = createRendererAdapter(renderer, { label: 'playwright-chrome' });
+const baker = new LightmapBaker({ rendererAdapter: adapter, samples: 64 });
+```
+
 ---
 
 ## Examples
@@ -209,6 +237,32 @@ const result = await baker.bake(scene);
 ### Minimal Browser
 
 See [`examples/minimal-browser.ts`](./examples/minimal-browser.ts) for a copy-pasteable browser scene with a renderer, camera, `MeshStandardMaterial` geometry, direct light, and both supported constructor styles.
+
+### Offscreen Browser / Automation
+
+See [`examples/offscreen-browser.ts`](./examples/offscreen-browser.ts) for a
+compiled automation harness that creates a renderer for `OffscreenCanvas` when
+available, falls back to a detached browser canvas, and passes the baker a
+`LightmapRendererAdapter`. The same non-UI path is covered by
+`tests/e2e/adapter-runtime.spec.ts`.
+
+```bash
+pnpm run test:adapter-runtime
+```
+
+### Runtime Capability Probe
+
+See [`examples/node-headless-status.ts`](./examples/node-headless-status.ts) for
+a Node-safe capability check. It does not bake in Node yet; it reports the
+current runtime, whether the current environment can bake, and the limitations
+blocking true Node headless baking.
+
+```typescript
+import { getLightmapRuntimeCapabilities } from 'three-lightmap-baker';
+
+const capabilities = getLightmapRuntimeCapabilities();
+console.log(capabilities.runtime, capabilities.canBake);
+```
 
 ### React Three Fiber
 
@@ -258,15 +312,15 @@ Keep the button outside the `<Canvas>` if you prefer native DOM controls; the im
 
 ### Interior / Architectural Demo
 
-The launch demo target is a small interior scene, not only a Cornell Box:
+The current launch proof uses the committed `cornell.advanced` before/after
+captures above plus the measured benchmark table below. A dedicated
+interior/architectural scene is still useful as a stronger showcase, but it is
+postponed until the custom room is designed. It is not the source of the current
+README screenshots, benchmark numbers, or CI visual gate.
 
-1. Start with a flat Three.js room/configurator scene.
-2. Click **Bake**.
-3. Show progressive convergence, color bleeding, and soft contact shadows.
-4. Show the generated lightmap atlas.
-5. Apply the exported result back onto the same scene.
-
-This section is intentionally a checklist until the final visual asset is captured.
+Target flow for that future showcase: start with a flat Three.js
+room/configurator scene, click **Bake**, show progressive convergence, show
+the generated atlas, and apply the baked result back onto the same scene.
 
 ---
 
@@ -277,21 +331,32 @@ Measured on Windows with installed Chrome, ANGLE D3D11, and an NVIDIA GeForce RT
 Run the local capture and benchmark helper with:
 
 ```bash
-npm run capture:launch
+pnpm run capture:launch
 ```
 
 It writes `launch-artifacts/before-solid-viewport.png`, `launch-artifacts/after-preview-baked-combined.png`, `launch-artifacts/after-production-baked-combined.png`, `launch-artifacts/benchmark.json`, and `launch-artifacts/benchmark.md`. The output directory is ignored by git so you can rerun it on the real launch machine and copy only the numbers/assets you want to publish.
 
+After capture, validate the measured launch benchmark against runtime budgets:
+
+```bash
+pnpm run budget:runtime
+```
+
+Defaults are conservative for the RTX 3050 Ti launch baseline. Tighten a preset
+on a known target machine with `BAKER_RUNTIME_BUDGET_DRAFT_MS`,
+`BAKER_RUNTIME_BUDGET_PREVIEW_MS`, `BAKER_RUNTIME_BUDGET_PRODUCTION_MS`, or
+`BAKER_RUNTIME_BUDGET_FINAL_MS`.
+
 For launch numbers, enforce the expected renderer so a dual-GPU laptop cannot accidentally publish integrated-GPU results:
 
 ```bash
-BAKER_EXPECT_GPU="RTX 3050" npm run capture:launch
+BAKER_EXPECT_GPU="RTX 3050" pnpm run capture:launch
 ```
 
 On Windows PowerShell:
 
 ```powershell
-$env:BAKER_EXPECT_GPU="RTX 3050"; npm run capture:launch
+$env:BAKER_EXPECT_GPU="RTX 3050"; pnpm run capture:launch
 ```
 
 The capture helper uses installed Chrome by default. To intentionally use Playwright's bundled Chromium instead, set `BAKER_CAPTURE_BROWSER_CHANNEL=bundled`.
@@ -299,7 +364,7 @@ The capture helper uses installed Chrome by default. To intentionally use Playwr
 On Windows the helper tries ANGLE backends in this order when `BAKER_EXPECT_GPU` is set: `d3d11`, `d3d11on12`, then `gl`. Override that list when debugging:
 
 ```powershell
-$env:BAKER_CAPTURE_ANGLE="d3d11,d3d11on12,gl"; $env:BAKER_EXPECT_GPU="RTX 3050"; npm run capture:launch
+$env:BAKER_CAPTURE_ANGLE="d3d11,d3d11on12,gl"; $env:BAKER_EXPECT_GPU="RTX 3050"; pnpm run capture:launch
 ```
 
 | Device                 |            Scene |     Preset | Resolution |                   Samples | Bounces | Denoise | Bake Time |
@@ -409,6 +474,18 @@ Measured on the `cornell.advanced` scene only:
 
 ---
 
+## Demo Project Files
+
+The playground File menu can save and load a versioned Project JSON file. The
+current v1 format round-trips the active built-in scene preset or imported
+GLB/glTF payload, bake/editor options, and asset-library additions with
+transforms and basic material values. It also persists baked final lightmaps as
+raw Float32 RGBA atlas payloads, so a saved project can restore baked lighting
+without forcing an immediate re-bake. Export a finished scene as GLB when you
+need to carry baked geometry/materials out of the demo.
+
+---
+
 ## API Reference
 
 ### `LightmapBaker`
@@ -481,9 +558,30 @@ Releases all GPU resources (textures, render targets).
 ## Headless / Automation Status
 
 - **Browser + injected renderer:** implemented now.
+- **Renderer adapter boundary:** implemented for browser/offscreen-browser test
+  harness ownership of renderer setup and context-loss wiring.
+- **Offscreen-browser example:** implemented in `examples/offscreen-browser.ts`
+  and covered by `pnpm run typecheck:examples`.
+- **Runtime capability probe:** implemented as
+  `getLightmapRuntimeCapabilities()` with a Node-safe example in
+  `examples/node-headless-status.ts`. Node currently reports `canBake: false`.
+- **Browser smoke suite:** implemented as `pnpm run test:browser-smoke` and
+  wired into CI. It covers adapter runtime, Cornell visual bake, bake
+  cancellation, Project JSON save/load, outliner selection, editor history,
+  asset-library, and topbar/menu controls. Targeted scripts such as
+  `pnpm run test:adapter-runtime`, `pnpm run test:visual-cornell`, and
+  `pnpm run test:bake-cancel` remain available for focused runs.
+- **PR preview artifact:** pull requests build the demo and upload a static
+  `dist/` artifact for review without changing the production Pages deploy.
+- **npm publish workflow:** implemented in `.github/workflows/npm-publish.yml`
+  as a manual workflow with version confirmation, dry-run mode, and npm
+  provenance support.
+- **Custom-room visual regression:** postponed until the custom room/showcase
+  scene exists.
 - **Node.js true headless baking:** not implemented yet.
 - Current pipeline depends on WebGL renderer/context, RAF-driven progressive passes, and browser-side texture export/download paths.
-- Planned direction: keep renderer-injected API stable, then add optional adapter layers for offscreen/headless contexts.
+- Planned direction: keep renderer-injected API stable and prototype a
+  Node-compatible runtime path.
 
 ---
 
@@ -513,10 +611,12 @@ Built on top of:
 
 This is actively developed. Contributions welcome - especially:
 
-- **Test scenes** - complex interiors, outdoor scenes, edge cases
-- **Performance benchmarks** - bake times across GPU generations
+- **Test scenes** - complex interiors, outdoor scenes, and edge cases beyond
+  the current Cornell advanced launch proof
+- **Performance benchmarks** - bake times across additional GPU generations
 - **Bug reports** - screenshots + GPU info + sample count + resolution
-- **Light type implementations** - spot lights, IES profiles, textured area lights
+- **Lighting coverage** - IES profiles, textured area lights, light probes, and
+  material edge cases
 
 Open an issue before starting a PR so we can coordinate. All contributions
 require signing the [CLA](./CLA.md) via CLA Assistant.

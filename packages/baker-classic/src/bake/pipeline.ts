@@ -1,7 +1,7 @@
 import { Mesh, Object3D, Scene, Texture, WebGLRenderer } from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
 import { collectLightsFromScene, type PackedLight } from '../lightmap';
-import { generateAtlas } from '../atlas/generateAtlas';
+import { generateAtlas, generateAtlases } from '../atlas/generateAtlas';
 import {
   buildMaterialTextures,
   extractPerTriangleMaterials,
@@ -9,6 +9,7 @@ import {
   partitionByDensity,
   partitionByResolution,
 } from '../utils';
+import { resolveDensityTexelsPerMeter } from '../utils/Packing';
 import type { BakeErrorPhase } from '../errors';
 import {
   LightmapBakeResult,
@@ -85,23 +86,51 @@ export async function runBakePipeline(args: BakePipelineArgs): Promise<LightmapB
   // keyed by resolution, one mesh per `perMesh.resolution` override). The
   // two strategies are orthogonal; validateOptions surfaces a DEV warning
   // when the caller mixes them.
-  const tpm = opts.texelsPerMeter;
+  const densityMultiplier = opts.texelsPerMeter;
+  const perMeshScale: Record<string, number> = {};
+  for (const [uuid, override] of Object.entries(opts.perMesh)) {
+    if (override.density !== undefined) perMeshScale[uuid] = override.density;
+  }
+  const densityTexelsPerMeter =
+    densityMultiplier > 0
+      ? resolveDensityTexelsPerMeter(
+          allMeshes.filter((mesh) => opts.perMesh[mesh.uuid]?.exclude !== true),
+          {
+            atlasResolution: opts.resolution,
+            densityMultiplier,
+            perMeshScale,
+          },
+        )
+      : 0;
   const partition =
-    tpm > 0
-      ? partitionByDensity(allMeshes, opts.perMesh, opts.resolution, tpm)
+    densityTexelsPerMeter > 0
+      ? partitionByDensity(allMeshes, opts.perMesh, opts.resolution, densityTexelsPerMeter)
       : partitionByResolution(allMeshes, opts.perMesh, opts.resolution);
   const { excluded, groups } = partition;
   // In density mode, group keys are atlas indices and ALL groups bake at
   // `partition.resolution`. In resolution mode, the group key IS the per-group
   // resolution. The downstream loop uses `groupResolution(key)` to abstract this.
-  const groupResolution = (key: number): number => (tpm > 0 ? partition.resolution : key);
+  const groupResolution = (key: number): number =>
+    densityTexelsPerMeter > 0 ? partition.resolution : key;
 
   // --- 1. UV unwrap (only non-excluded meshes need UV2) ---
   const tUV0 = performance.now();
   hooks.onProgress?.('uv-unwrap', 0);
-  // Unwrap all groups at once so xatlas sees the full non-excluded set.
-  const bakeMeshes = [...groups.values()].flat();
-  await generateAtlas(bakeMeshes);
+  const meshesByGroup = [...groups.values()];
+  if (densityTexelsPerMeter > 0) {
+    // Density mode creates one render target per atlas group. Each group must
+    // receive its own full 0-1 UV2 layout, otherwise separate atlas targets
+    // still contain UVs from a global pack and density appears to do nothing.
+    await generateAtlases(meshesByGroup, {
+      resolution: opts.resolution,
+      texelsPerUnit: densityTexelsPerMeter,
+      perMeshScale,
+    });
+  } else {
+    // Resolution mode preserves the legacy behavior: all non-excluded meshes
+    // sharing a resolution are unwrapped together.
+    await generateAtlas(meshesByGroup.flat());
+  }
   hooks.onProgress?.('uv-unwrap', 1);
   checkAbort('unwrap');
   const tUV1 = performance.now();
@@ -203,7 +232,7 @@ export async function runBakePipeline(args: BakePipelineArgs): Promise<LightmapB
     return s + r * r;
   }, 0);
   const stats: BakeStats = {
-    meshCount: bakeMeshes.length,
+    meshCount: meshesByGroup.flat().length,
     texelCount: totalTexels,
     raysTraced: opts.samples * opts.castsPerFrame * totalTexels,
     duration: {

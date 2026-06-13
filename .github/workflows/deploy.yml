@@ -6,12 +6,10 @@ on:
       - master
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
-  group: "pages"
+  group: 'pages'
   cancel-in-progress: true
 
 jobs:
@@ -22,17 +20,24 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
+          node-version: 24
+          cache: pnpm
 
       - name: Install dependencies
-        run: npm install --legacy-peer-deps
+        run: pnpm install --frozen-lockfile
 
       - name: Build project
-        run: npm run build
+        env:
+          VITE_BASE_PATH: /three-lightmap-baker/
+        run: pnpm run build
 
       - name: Create .nojekyll
         run: touch dist/.nojekyll
@@ -40,22 +45,11 @@ jobs:
       - name: Debug build output
         run: ls -R dist
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+      - name: Publish production site
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: './dist'
-
-  deploy:
-    name: Deploy
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./dist
+          keep_files: true
+          full_commit_message: Deploy production site from ${{ github.sha }}

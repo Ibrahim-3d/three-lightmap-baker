@@ -1,13 +1,12 @@
 import {
   Color,
-  type Material,
   type Mesh,
   MeshBasicMaterial,
   type MeshStandardMaterial,
   type RectAreaLight,
   type Texture,
 } from 'three';
-import { TexelDensityMaterial } from 'baker-classic';
+import { resolveDensityTexelsPerMeter, TexelDensityMaterial } from 'baker-classic';
 import type { BakeGroup } from './BakeController';
 import type { RenderModeOptions, SceneObj } from './types';
 
@@ -131,6 +130,7 @@ export type RenderModeRunnerDeps = {
   getVisualLight(): RectAreaLight;
   getLightMarker(): Mesh;
   getDummyLightmap(): Texture;
+  getRestoredLightmap(mesh: Mesh): Texture | null;
 };
 
 /**
@@ -143,9 +143,31 @@ export type RenderModeRunnerDeps = {
 export class RenderModeRunner {
   private texelDensityMats: Map<Mesh, TexelDensityMaterial> = new Map();
   private albedoUnlitMats: Map<Mesh, MeshBasicMaterial> = new Map();
-  private originalMaterials = new WeakMap<Mesh, Material>();
+  private originalMaterials = new WeakMap<Mesh, Mesh['material']>();
 
   constructor(private deps: RenderModeRunnerDeps) {}
+
+  restoreSwappedMaterials(): void {
+    const meshes = this.deps.getMeshes();
+    for (const m of meshes) {
+      const orig = this.originalMaterials.get(m);
+      if (orig && m.material !== orig) m.material = orig as SceneObj['material'];
+    }
+  }
+
+  prepareForBake(): void {
+    const opts = this.deps.getOptions();
+    this.restoreSwappedMaterials();
+    this.deps.getVisualLight().visible = opts.directLightEnabled;
+    const dummy = this.deps.getDummyLightmap();
+    for (const m of this.deps.getMeshes()) {
+      for (const mat of this.standardMaterials(m)) {
+        mat.map = mat._originalMap ?? null;
+        mat.lightMap = dummy;
+        mat.lightMapIntensity = 0;
+      }
+    }
+  }
 
   apply(): void {
     const opts = this.deps.getOptions();
@@ -179,9 +201,7 @@ export class RenderModeRunner {
       }
       for (const m of meshes) {
         if (!this.originalMaterials.has(m)) this.originalMaterials.set(m, m.material);
-        const origStd = this.originalMaterials.get(m) as
-          | (MeshStandardMaterial & { _originalMap?: Texture | null })
-          | undefined;
+        const origStd = this.standardMaterialsFrom(this.originalMaterials.get(m))[0];
         let basic = this.albedoUnlitMats.get(m);
         if (!basic) {
           basic = new MeshBasicMaterial({ color: 0xffffff });
@@ -197,31 +217,36 @@ export class RenderModeRunner {
     }
 
     // Restore originals if we just left a swap layer.
-    for (const m of meshes) {
-      const orig = this.originalMaterials.get(m);
-      if (orig && m.material !== orig) m.material = orig as SceneObj['material'];
-    }
+    this.restoreSwappedMaterials();
 
     let mounted = 0;
     let nullLM = 0;
     const dummy = this.deps.getDummyLightmap();
     for (const m of meshes) {
-      const mat = m.material as MeshStandardMaterial & { _originalMap?: Texture | null };
-      mat.map = layer.showAlbedo ? (mat._originalMap ?? null) : null;
-
       // Excluded mesh OR no group yet (pre-bake): keep dummy lightmap with
       // intensity=0 instead of mat.lightMap=null. Setting null removes the
       // USE_LIGHTMAP define → forces a shader recompile → NVIDIA D3D11 TDR.
       const group = meshToGroup.get(m);
-      const lm = group ? layer.getLightMap({ group }) : null;
+      const restored =
+        !group && (layer.id === 'combined' || layer.id === 'combinedPost')
+          ? this.deps.getRestoredLightmap(m)
+          : null;
+      const lm = group ? layer.getLightMap({ group }) : restored;
+      const mats = this.standardMaterials(m);
+      for (const mat of mats) {
+        mat.map = layer.showAlbedo ? (mat._originalMap ?? null) : null;
+        if (lm) {
+          mat.lightMap = lm;
+          mat.lightMap.channel = 2;
+          mat.lightMapIntensity = 1;
+        } else {
+          mat.lightMap = dummy;
+          mat.lightMapIntensity = 0;
+        }
+      }
       if (lm) {
-        mat.lightMap = lm;
-        mat.lightMap.channel = 2;
-        mat.lightMapIntensity = 1;
         mounted++;
       } else {
-        mat.lightMap = dummy;
-        mat.lightMapIntensity = 0;
         nullLM++;
       }
       // Intentionally NOT setting mat.needsUpdate - variant pinned at scene init.
@@ -252,14 +277,25 @@ export class RenderModeRunner {
 
   /**
    * Sync per-mesh TexelDensityMaterial cache with current mesh list + options.
-   * Each mesh's effective target = global texelsPerMeter × per-mesh scale.
+   * Density is scene-relative: 1 fills one atlas, then per-mesh scale adjusts
+   * local allocation.
    * Cheap - uniform writes only. Triggered on Texel Density layer activation,
-   * per-mesh density slider, global texelsPerMeter, and lightMapSize changes.
+   * per-mesh density slider, global density multiplier, and lightMapSize changes.
    */
   refreshTexelDensityMaterials(): void {
     const opts = this.deps.getOptions();
     const meshes = this.deps.getMeshes();
     const live = new Set<Mesh>(meshes);
+    const perMeshScale: Record<string, number> = {};
+    for (const m of meshes) {
+      const scale = opts.perMesh[m.uuid]?.scaleInLightmap ?? 1.0;
+      if (scale !== 1.0) perMeshScale[m.uuid] = scale;
+    }
+    const resolvedTexelsPerMeter = resolveDensityTexelsPerMeter(meshes, {
+      atlasResolution: opts.lightMapSize,
+      densityMultiplier: opts.texelsPerMeter,
+      perMeshScale,
+    });
 
     for (const m of this.texelDensityMats.keys()) {
       if (!live.has(m)) {
@@ -269,7 +305,7 @@ export class RenderModeRunner {
     }
     for (const m of meshes) {
       const scale = opts.perMesh[m.uuid]?.scaleInLightmap ?? 1.0;
-      const target = opts.texelsPerMeter * scale;
+      const target = resolvedTexelsPerMeter * scale;
       let mat = this.texelDensityMats.get(m);
       if (!mat) {
         mat = new TexelDensityMaterial({
@@ -287,5 +323,20 @@ export class RenderModeRunner {
   dispose(): void {
     for (const mat of this.texelDensityMats.values()) mat.dispose();
     this.texelDensityMats.clear();
+  }
+
+  private standardMaterials(
+    mesh: Mesh,
+  ): Array<MeshStandardMaterial & { _originalMap?: Texture | null }> {
+    return this.standardMaterialsFrom(mesh.material);
+  }
+
+  private standardMaterialsFrom(
+    raw: Mesh['material'] | undefined,
+  ): Array<MeshStandardMaterial & { _originalMap?: Texture | null }> {
+    const mats = Array.isArray(raw) ? raw : raw ? [raw] : [];
+    return mats.filter((mat): mat is MeshStandardMaterial & { _originalMap?: Texture | null } => {
+      return !!mat && 'lightMap' in mat && 'map' in mat;
+    });
   }
 }

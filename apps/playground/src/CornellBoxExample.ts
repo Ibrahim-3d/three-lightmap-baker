@@ -1,8 +1,38 @@
-import { Matrix4, type Object3D, MeshStandardMaterial, Mesh, type Texture, Vector3 } from 'three';
-import { AtlasViewer, BakeFrameInfo, exportLightmap, ExportFormat } from 'baker-classic';
+import {
+  BoxGeometry,
+  ClampToEdgeWrapping,
+  DataTexture,
+  DirectionalLight,
+  FloatType,
+  GLSL3,
+  LinearFilter,
+  Matrix4,
+  type Object3D,
+  NoBlending,
+  OrthographicCamera,
+  MeshStandardMaterial,
+  Mesh,
+  PlaneGeometry,
+  RGBAFormat,
+  Scene,
+  ShaderMaterial,
+  type Texture,
+  Vector3,
+  Vector4,
+  WebGLRenderTarget,
+  WebGLRenderer,
+} from 'three';
+import {
+  BakeFrameInfo,
+  createRendererAdapter,
+  exportLightmap,
+  ExportFormat,
+  LightmapBaker,
+  type LightmapContextLossTarget,
+} from 'baker-classic';
 import type { BakerOrchestrator } from 'baker-classic/ui';
 import type { AssetSpec } from 'shared';
-import { atlasViewerVisible, bakeProgress, bakeStatus, dirtyMeshIds } from 'shared';
+import { activeSceneId, bakeProgress, bakeStatus, cameraFOV, dirtyMeshIds } from 'shared';
 import { LAYERS } from './three/modes';
 import { BakeController } from './three/BakeController';
 import { FlyController } from './three/FlyController';
@@ -31,6 +61,78 @@ const QUALITY_PRESETS = {
 } as const;
 type QualityPresetName = keyof typeof QUALITY_PRESETS;
 
+type Vec3Tuple = [number, number, number];
+
+type ProjectMaterialV1 = {
+  color: number;
+  roughness: number;
+  metalness: number;
+};
+
+type ProjectAssetV1 = {
+  spec: AssetSpec;
+  name: string;
+  visible: boolean;
+  position: Vec3Tuple;
+  rotation: Vec3Tuple;
+  scale: Vec3Tuple;
+  /** @deprecated use materials */
+  material?: ProjectMaterialV1;
+  materials?: ProjectMaterialV1[];
+};
+
+type ProjectOptionsV1 = {
+  quality: QualityPresetName;
+  layer: string;
+  lightMapSize: number;
+  casts: number;
+  targetSamples: number;
+  bounces: number;
+  safeMode: boolean;
+  filterMode: string;
+  directLightEnabled: boolean;
+  indirectLightEnabled: boolean;
+  ambientLightEnabled: boolean;
+  ambientDistance: number;
+  aoIntensity: number;
+  aoExponent: number;
+  aoSamples: number;
+  texelsPerMeter: number;
+  directIntensity: number;
+  giIntensity: number;
+  skyColor: string;
+  skyIntensity: number;
+  autoApplyRefinement: boolean;
+  dilationIterations: number;
+  denoiseEnabled: boolean;
+  denoiseSigma: number;
+  denoiseThreshold: number;
+  denoiseKSigma: number;
+  exportFormat: ExportFormat;
+};
+
+type ProjectImportedModelV1 = {
+  kind: 'glb' | 'gltf';
+  fileName: string;
+  mimeType: string;
+  dataBase64: string;
+};
+
+type ProjectBakedLightmapV1 = {
+  resolution: number;
+  meshIndexes: number[];
+  dataBase64: string;
+};
+
+type ProjectV1 = {
+  version: 1;
+  scenePresetId: string;
+  importedModel?: ProjectImportedModelV1;
+  options: ProjectOptionsV1;
+  assets: ProjectAssetV1[];
+  bakedLightmaps?: ProjectBakedLightmapV1[];
+};
+
 /**
  * Demo orchestrator (T-D12: tweakpane fully removed). Owns the options bag,
  * the RAF loop, lightmap/scene-GLB export, and a thin public surface that
@@ -44,7 +146,13 @@ export class CornellBoxExample implements BakerOrchestrator {
   renderModeRunner: RenderModeRunner;
   ptController: PTController | null = null;
   flyController!: FlyController;
-  atlasViewer: AtlasViewer;
+  private atlasPreviewTarget: WebGLRenderTarget | null = null;
+  private atlasPreviewMaterial: ShaderMaterial | null = null;
+  private atlasPreviewBuffer: Uint8Array | null = null;
+  private atlasPreviewScene: Scene | null = null;
+  private atlasPreviewCamera: OrthographicCamera | null = null;
+  private atlasPreviewQuad: Mesh | null = null;
+  private atlasPreviewSize = 0;
 
   options = {
     preset: 'advanced' as 'classic' | 'advanced',
@@ -63,7 +171,7 @@ export class CornellBoxExample implements BakerOrchestrator {
     aoIntensity: 1.0,
     aoExponent: 1.5,
     aoSamples: 5,
-    texelsPerMeter: 10,
+    texelsPerMeter: 1,
     lightSize: 2.9,
     lightIntensity: 2.0,
     lightColor: '#ffffff',
@@ -102,8 +210,13 @@ export class CornellBoxExample implements BakerOrchestrator {
   // --- RAF + ETA window ---
   private looping = false;
   private glbFileInput!: HTMLInputElement;
+  private projectFileInput!: HTMLInputElement;
+  private currentScenePresetId = 'cornell.advanced';
+  private currentImportedModel: ProjectImportedModelV1 | null = null;
   private bakeStartTime = 0;
   private bakeBatchHistory: { samples: number; t: number }[] = [];
+  private bakeInFlight = false;
+  private activeBakeAbort: AbortController | null = null;
   private static readonly BAKE_ETA_WINDOW = 16;
 
   /** Optional callbacks the orchestrator forwards to the Preact shell. */
@@ -148,21 +261,18 @@ export class CornellBoxExample implements BakerOrchestrator {
         layer: this.options.layer,
         texelsPerMeter: this.options.texelsPerMeter,
         lightMapSize: this.options.lightMapSize,
+        directLightEnabled: this.options.directLightEnabled,
         perMesh: this.options.perMesh,
       }),
       getVisualLight: () => this.sceneController.visualLight,
       getLightMarker: () => this.sceneController.lightMarker,
       getDummyLightmap: () => this.bakeController.getDummyLightmap(),
+      getRestoredLightmap: (mesh) => this.bakeController.getRestoredLightmap(mesh),
     });
     this.bakeController.onProgress = (info) => this.onBakeFrame(info);
 
-    // Multi-atlas overlay: corner panel that mirrors active layer's textures.
-    // Hidden by default; View → Toggle Atlas Viewer flips it on.
-    this.atlasViewer = new AtlasViewer({ size: 256, margin: 16, corner: 'br', sRGB: true });
-    this.atlasViewer.attachHeader(document.body);
-    this.atlasViewer.visible = false;
-
     this.initGLBInput();
+    this.initProjectInput();
     this.rebuildScene();
 
     // Init PT viewport (async, resolves before user can switch mode).
@@ -196,6 +306,7 @@ export class CornellBoxExample implements BakerOrchestrator {
   /** Hidden file input for GLB imports - clicked by the File menu. */
   private initGLBInput(): void {
     this.glbFileInput = document.createElement('input');
+    this.glbFileInput.id = 'baker-glb-input';
     this.glbFileInput.type = 'file';
     this.glbFileInput.accept = '.glb,.gltf';
     this.glbFileInput.style.display = 'none';
@@ -206,6 +317,20 @@ export class CornellBoxExample implements BakerOrchestrator {
     document.body.appendChild(this.glbFileInput);
   }
 
+  /** Hidden file input for Project JSON imports - clicked by the File menu. */
+  private initProjectInput(): void {
+    this.projectFileInput = document.createElement('input');
+    this.projectFileInput.id = 'baker-project-input';
+    this.projectFileInput.type = 'file';
+    this.projectFileInput.accept = 'application/json,.json';
+    this.projectFileInput.style.display = 'none';
+    this.projectFileInput.addEventListener('change', () => {
+      const f = this.projectFileInput.files?.[0];
+      if (f) void this.importProjectFile(f);
+    });
+    document.body.appendChild(this.projectFileInput);
+  }
+
   updateSize(): void {
     this.sceneController.updateSize();
   }
@@ -214,6 +339,7 @@ export class CornellBoxExample implements BakerOrchestrator {
   //  Scene rebuild / GLB import.
   // ──────────────────────────────────────────────────────────────────────────
   private async rebuildScene(): Promise<void> {
+    this.currentImportedModel = null;
     this.sceneController.rebuildScene(this.options.preset as ScenePreset);
     if (this.options.autoBake) await this.bake();
     this.startLoop();
@@ -221,10 +347,297 @@ export class CornellBoxExample implements BakerOrchestrator {
 
   private async importGLB(file: File): Promise<void> {
     this.externalHooks.onSceneLoad?.();
-    await this.sceneController.importGLB(file);
+    const buffer = await file.arrayBuffer();
+    this.currentScenePresetId = 'imported.glb';
+    this.currentImportedModel = {
+      kind: file.name.toLowerCase().endsWith('.gltf') ? 'gltf' : 'glb',
+      fileName: file.name || 'scene.glb',
+      mimeType: file.type || 'model/gltf-binary',
+      dataBase64: CornellBoxExample.arrayBufferToBase64(buffer),
+    };
+    await this.sceneController.importGLBBuffer(buffer);
     this.options.perMesh = {};
     if (this.options.autoBake) await this.bake();
     this.startLoop();
+  }
+
+  private async loadImportedProjectModel(model: ProjectImportedModelV1): Promise<void> {
+    this.externalHooks.onSceneLoad?.();
+    const buffer = CornellBoxExample.base64ToArrayBuffer(model.dataBase64);
+    this.currentScenePresetId = 'imported.glb';
+    this.currentImportedModel = { ...model };
+    await this.sceneController.importGLBBuffer(buffer);
+    this.options.perMesh = {};
+    this.startLoop();
+  }
+
+  private async importProjectFile(file: File): Promise<void> {
+    const text = await file.text();
+    const project = JSON.parse(text) as ProjectV1;
+    await this.loadProject(project);
+  }
+
+  private static arrayBufferToBase64(buffer: ArrayBuffer): string {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    // Reduced chunk size (0x8000 -> 0x1000) to prevent 'Maximum call stack size
+    // exceeded' on browsers with strict stack limits during String.fromCharCode.
+    const chunkSize = 0x1000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, i + chunkSize);
+      binary += String.fromCharCode(...chunk);
+    }
+    return btoa(binary);
+  }
+
+  private static base64ToArrayBuffer(base64: string): ArrayBuffer {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes.buffer;
+  }
+
+  private readTextureFloatData(texture: Texture, resolution: number): Float32Array {
+    const renderer = this.sceneController.renderer;
+    const target = new WebGLRenderTarget(resolution, resolution, {
+      type: FloatType,
+      minFilter: LinearFilter,
+      magFilter: LinearFilter,
+    });
+    const material = new ShaderMaterial({
+      glslVersion: GLSL3,
+      blending: NoBlending,
+      depthWrite: false,
+      depthTest: false,
+      uniforms: { map: { value: texture } },
+      vertexShader: `
+        out vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D map;
+        in vec2 vUv;
+        out vec4 fragColor;
+        void main() {
+          fragColor = texture(map, vUv);
+        }
+      `,
+    });
+    const quad = new Mesh(new PlaneGeometry(2, 2), material);
+    const camera = new OrthographicCamera();
+    const previousTarget = renderer.getRenderTarget();
+    const previousAutoClear = renderer.autoClear;
+    const pixels = new Float32Array(resolution * resolution * 4);
+
+    try {
+      renderer.autoClear = true;
+      renderer.setRenderTarget(target);
+      renderer.render(quad, camera);
+      renderer.readRenderTargetPixels(target, 0, 0, resolution, resolution, pixels);
+    } finally {
+      renderer.setRenderTarget(previousTarget);
+      renderer.autoClear = previousAutoClear;
+      target.dispose();
+      material.dispose();
+      quad.geometry.dispose();
+    }
+
+    return pixels;
+  }
+
+  private textureImageResolution(texture: Texture): number {
+    const image = texture.image as { width?: number; height?: number } | undefined;
+    return Math.max(1, Number(image?.width ?? image?.height ?? this.options.lightMapSize));
+  }
+
+  private serializeBakedLightmaps(): ProjectBakedLightmapV1[] | undefined {
+    const meshIndex = new Map<Mesh, number>();
+    this.sceneController.meshes.forEach((mesh, index) => meshIndex.set(mesh as Mesh, index));
+    const entries: ProjectBakedLightmapV1[] = [];
+
+    if (this.bakeController.bakeGroups.length) {
+      for (const group of this.bakeController.bakeGroups) {
+        const texture = group.refinement?.texture ?? group.composite.texture;
+        const meshIndexes = group.meshes
+          .map((mesh) => meshIndex.get(mesh))
+          .filter((index): index is number => index !== undefined);
+        if (!meshIndexes.length) continue;
+        const pixels = this.readTextureFloatData(texture, this.options.lightMapSize);
+        entries.push({
+          resolution: this.options.lightMapSize,
+          meshIndexes,
+          dataBase64: CornellBoxExample.arrayBufferToBase64(pixels.buffer),
+        });
+      }
+    } else if (this.bakeController.restoredLightmaps.size) {
+      const byTexture = new Map<Texture, number[]>();
+      for (const [mesh, texture] of this.bakeController.restoredLightmaps) {
+        const index = meshIndex.get(mesh);
+        if (index === undefined) continue;
+        const bucket = byTexture.get(texture) ?? [];
+        bucket.push(index);
+        byTexture.set(texture, bucket);
+      }
+      for (const [texture, meshIndexes] of byTexture) {
+        const resolution = this.textureImageResolution(texture);
+        const pixels = this.readTextureFloatData(texture, resolution);
+        entries.push({
+          resolution,
+          meshIndexes,
+          dataBase64: CornellBoxExample.arrayBufferToBase64(pixels.buffer),
+        });
+      }
+    }
+
+    return entries.length ? entries : undefined;
+  }
+
+  private restoreProjectBakedLightmaps(lightmaps?: ProjectBakedLightmapV1[]): void {
+    if (!lightmaps?.length) return;
+    const entries = lightmaps
+      .map((lightmap) => {
+        const data = new Float32Array(CornellBoxExample.base64ToArrayBuffer(lightmap.dataBase64));
+        const texture = new DataTexture(
+          data,
+          lightmap.resolution,
+          lightmap.resolution,
+          RGBAFormat,
+          FloatType,
+        );
+        texture.minFilter = LinearFilter;
+        texture.magFilter = LinearFilter;
+        texture.wrapS = ClampToEdgeWrapping;
+        texture.wrapT = ClampToEdgeWrapping;
+        texture.needsUpdate = true;
+        texture.channel = 2;
+        const meshes: Mesh[] = [];
+        for (const index of lightmap.meshIndexes) {
+          const mesh = this.sceneController.meshes[index];
+          if (mesh) meshes.push(mesh as Mesh);
+        }
+        return { meshes, texture };
+      })
+      .filter((entry) => entry.meshes.length);
+
+    if (!entries.length) return;
+    this.bakeController.restoreLightmaps(entries);
+    this.renderModeRunner.apply();
+  }
+
+  private projectOptions(): ProjectOptionsV1 {
+    return {
+      quality: this.options.quality,
+      layer: this.options.layer,
+      lightMapSize: this.options.lightMapSize,
+      casts: this.options.casts,
+      targetSamples: this.options.targetSamples,
+      bounces: this.options.bounces,
+      safeMode: this.options.safeMode,
+      filterMode: this.options.filterMode,
+      directLightEnabled: this.options.directLightEnabled,
+      indirectLightEnabled: this.options.indirectLightEnabled,
+      ambientLightEnabled: this.options.ambientLightEnabled,
+      ambientDistance: this.options.ambientDistance,
+      aoIntensity: this.options.aoIntensity,
+      aoExponent: this.options.aoExponent,
+      aoSamples: this.options.aoSamples,
+      texelsPerMeter: this.options.texelsPerMeter,
+      directIntensity: this.options.directIntensity,
+      giIntensity: this.options.giIntensity,
+      skyColor: this.options.skyColor,
+      skyIntensity: this.options.skyIntensity,
+      autoApplyRefinement: this.options.autoApplyRefinement,
+      dilationIterations: this.options.dilationIterations,
+      denoiseEnabled: this.options.denoiseEnabled,
+      denoiseSigma: this.options.denoiseSigma,
+      denoiseThreshold: this.options.denoiseThreshold,
+      denoiseKSigma: this.options.denoiseKSigma,
+      exportFormat: this.options.exportFormat,
+    };
+  }
+
+  private serializeProjectAssets(): ProjectAssetV1[] {
+    const roots: Object3D[] = [];
+    const cornellRoot = this.sceneController.cornellRoot;
+
+    if (cornellRoot) {
+      for (const child of cornellRoot.children) {
+        if (child.userData.assetSpec) roots.push(child);
+      }
+    }
+
+    for (const child of this.sceneController.scene.children) {
+      if (child === cornellRoot) continue;
+      if (child.userData.assetSpec) roots.push(child);
+    }
+
+    return roots.map((obj) => {
+      const spec = obj.userData.assetSpec as AssetSpec;
+      return {
+        spec: { ...spec },
+        name: obj.name,
+        visible: obj.visible,
+        position: [obj.position.x, obj.position.y, obj.position.z],
+        rotation: [obj.rotation.x, obj.rotation.y, obj.rotation.z],
+        scale: [obj.scale.x, obj.scale.y, obj.scale.z],
+        materials: this.projectMaterials(obj),
+      };
+    });
+  }
+
+  private projectMaterials(obj: Object3D): ProjectMaterialV1[] | undefined {
+    const stack = [obj];
+    while (stack.length) {
+      const child = stack.pop();
+      if (!child) continue;
+      if (child instanceof Mesh) {
+        const mats = Array.isArray(child.material) ? child.material : [child.material];
+        const results: ProjectMaterialV1[] = [];
+        for (const mat of mats) {
+          if (mat instanceof MeshStandardMaterial) {
+            results.push({
+              color: mat.color.getHex(),
+              roughness: mat.roughness,
+              metalness: mat.metalness,
+            });
+          }
+        }
+        if (results.length) return results;
+      }
+      stack.push(...child.children);
+    }
+
+    return undefined;
+  }
+
+  private applyProjectAsset(obj: Object3D, asset: ProjectAssetV1): void {
+    obj.name = asset.name;
+    obj.visible = asset.visible;
+    obj.position.set(asset.position[0], asset.position[1], asset.position[2]);
+    obj.rotation.set(asset.rotation[0], asset.rotation[1], asset.rotation[2]);
+    obj.scale.set(asset.scale[0], asset.scale[1], asset.scale[2]);
+    obj.userData.assetSpec = { ...asset.spec };
+
+    const materials = asset.materials ?? (asset.material ? [asset.material] : null);
+    if (!materials) return;
+
+    obj.traverse((child) => {
+      if (!(child instanceof Mesh)) return;
+      const mats = Array.isArray(child.material) ? child.material : [child.material];
+      for (let i = 0; i < mats.length; i++) {
+        const mat = mats[i];
+        const spec = materials[i] ?? materials[0];
+        if (mat instanceof MeshStandardMaterial && spec) {
+          mat.color.setHex(spec.color);
+          mat.roughness = spec.roughness;
+          mat.metalness = spec.metalness;
+          mat.needsUpdate = true;
+        }
+      }
+    });
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -232,9 +645,19 @@ export class CornellBoxExample implements BakerOrchestrator {
   // ──────────────────────────────────────────────────────────────────────────
   private async bake(): Promise<void> {
     if (!this.sceneController.meshes.length) return;
+    if (this.bakeInFlight) return;
 
     this.bakeStartTime = performance.now();
     this.bakeBatchHistory = [];
+    this.bakeInFlight = true;
+    this.activeBakeAbort = new AbortController();
+    this.options.pause = false;
+    bakeStatus.value = 'baking';
+
+    // If the user starts a bake from a debug material-swap layer (Texel Density
+    // or Albedo Unlit), restore real scene materials before LightmapBaker reads
+    // material colors/textures. The selected layer is re-applied after bake.
+    this.renderModeRunner.prepareForBake();
 
     // Note: the default area light is now a regular asset-library light edited
     // directly through SceneLightPage (no options-mirror), so we no longer
@@ -245,15 +668,33 @@ export class CornellBoxExample implements BakerOrchestrator {
         this.sceneController.meshes,
         this.sceneController.lightDummy.position,
         this.options,
+        { signal: this.activeBakeAbort.signal },
       );
     } catch (err) {
+      const aborted =
+        this.activeBakeAbort?.signal.aborted || (err instanceof Error && err.name === 'AbortError');
       const msg = err instanceof Error ? err.message : String(err);
+      this.bakeInFlight = false;
+      this.activeBakeAbort = null;
+      this.bakeController.disposeAllGroups();
+      this.options.samples = 0;
+      this.options.spp = 0;
+      this.options.etaSec = 0;
+      this.options.pause = true;
+
+      if (aborted || msg.includes('aborted by signal')) {
+        console.info('[baker] bake cancelled');
+        this.externalHooks.onStaleChange?.();
+        return;
+      }
+
       console.error('[baker] bake failed:', err);
       this.externalHooks.onBakeError?.(msg);
-      this.options.pause = true;
       return;
     }
 
+    this.bakeInFlight = false;
+    this.activeBakeAbort = null;
     this.options.refinementStatus = 'idle';
     this.options.samples = this.options.targetSamples;
     this.options.spp = this.options.targetSamples * this.options.casts;
@@ -517,39 +958,177 @@ export class CornellBoxExample implements BakerOrchestrator {
       } else {
         // PT mode: PTController owns the render loop - skip normal Three.js render.
         if (!this.ptController?.isActive) {
-          // renderFrame() runs the EffectComposer if postFX.master is on,
-          // otherwise a plain renderer.render. Either way the default
-          // framebuffer is updated before the atlas-viewer scissor pass.
           this.sceneController.renderFrame();
         }
-      }
-
-      // Atlas viewer overlay (toggled from View → Toggle Atlas Viewer).
-      // Skipped during PT to avoid clobbering the PT framebuffer.
-      this.atlasViewer.visible = atlasViewerVisible.value && !this.ptController?.isActive;
-      if (this.atlasViewer.visible) {
-        this.syncAtlasViewerTextures();
-        this.atlasViewer.render(this.sceneController.renderer);
       }
     };
     tick();
   }
 
-  /**
-   * Pull each bake group's texture for the current view layer and feed the
-   * atlas viewer. Texel-density and albedo layers have no per-group texture -
-   * fall back to the composite (or hide if pre-bake).
-   */
-  private syncAtlasViewerTextures(): void {
-    const layer = LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0]!;
+  private getAtlasPreviewTextures(
+    layer = LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0]!,
+  ): Texture[] {
     const groups = this.bakeController.bakeGroups;
     const texs: Texture[] = [];
     for (const g of groups) {
       const t = layer.getLightMap({ group: g }) ?? g.composite.texture;
       if (t) texs.push(t);
     }
-    this.atlasViewer.setTextures(texs);
-    this.atlasViewer.setLayerLabel(layer.label);
+    return texs;
+  }
+
+  getAtlasPreviewInfo(): { layer: string; count: number; resolution: number } {
+    const layer = LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0]!;
+    return {
+      layer: layer.label,
+      count: this.getAtlasPreviewTextures(layer).length,
+      resolution: this.options.lightMapSize,
+    };
+  }
+
+  renderAtlasPreview(canvas: HTMLCanvasElement): boolean {
+    const layer = LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0]!;
+    const textures = this.getAtlasPreviewTextures(layer);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return false;
+
+    const cssSize = Math.max(1, Math.floor(canvas.getBoundingClientRect().width || 256));
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    const size = Math.max(128, Math.floor(cssSize * dpr));
+    if (canvas.width !== size || canvas.height !== size) {
+      canvas.width = size;
+      canvas.height = size;
+    }
+
+    ctx.fillStyle = '#0b0d10';
+    ctx.fillRect(0, 0, size, size);
+    if (!textures.length) {
+      ctx.fillStyle = '#7d8794';
+      ctx.font = `${Math.max(11, Math.floor(size / 28))}px monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Bake to view atlas', size / 2, size / 2);
+      return false;
+    }
+
+    const cols = Math.ceil(Math.sqrt(textures.length));
+    const rows = Math.ceil(textures.length / cols);
+    const cell = Math.max(1, Math.floor(size / Math.max(cols, rows)));
+
+    for (let i = 0; i < textures.length; i++) {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = col * cell;
+      const y = row * cell;
+      this.paintTextureToCanvas(ctx, textures[i]!, x, y, cell);
+    }
+    return true;
+  }
+
+  private ensureAtlasPreviewResources(size: number): void {
+    if (!this.atlasPreviewTarget || this.atlasPreviewSize !== size) {
+      this.atlasPreviewTarget?.dispose();
+      this.atlasPreviewTarget = new WebGLRenderTarget(size, size, {
+        format: RGBAFormat,
+        minFilter: LinearFilter,
+        magFilter: LinearFilter,
+      });
+      this.atlasPreviewSize = size;
+    }
+    if (this.atlasPreviewMaterial) return;
+    this.atlasPreviewMaterial = new ShaderMaterial({
+      glslVersion: GLSL3,
+      blending: NoBlending,
+      depthWrite: false,
+      depthTest: false,
+      uniforms: {
+        map: { value: null as Texture | null },
+      },
+      vertexShader: `
+        out vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D map;
+        in vec2 vUv;
+        out vec4 fragColor;
+        void main() {
+          vec3 c = max(texture(map, vUv).rgb, vec3(0.0));
+          c = pow(c, vec3(1.0 / 2.2));
+          fragColor = vec4(c, 1.0);
+        }
+      `,
+    });
+    this.atlasPreviewScene = new Scene();
+    this.atlasPreviewCamera = new OrthographicCamera();
+    this.atlasPreviewQuad = new Mesh(new PlaneGeometry(2, 2), this.atlasPreviewMaterial);
+    this.atlasPreviewQuad.frustumCulled = false;
+    this.atlasPreviewScene.add(this.atlasPreviewQuad);
+  }
+
+  private paintTextureToCanvas(
+    ctx: CanvasRenderingContext2D,
+    texture: Texture,
+    x: number,
+    y: number,
+    size: number,
+  ): void {
+    this.ensureAtlasPreviewResources(size);
+    const renderer = this.sceneController.renderer;
+    const target = this.atlasPreviewTarget!;
+    const material = this.atlasPreviewMaterial!;
+    const scene = this.atlasPreviewScene!;
+    const camera = this.atlasPreviewCamera!;
+    const previousTarget = renderer.getRenderTarget();
+    const previousAutoClear = renderer.autoClear;
+    const previousScissorTest = renderer.getScissorTest();
+    const previousScissor = renderer.getScissor(new Vector4());
+    const previousViewport = renderer.getViewport(new Vector4());
+
+    if (!this.atlasPreviewBuffer || this.atlasPreviewBuffer.length !== size * size * 4) {
+      this.atlasPreviewBuffer = new Uint8Array(size * size * 4);
+    }
+    const pixels = this.atlasPreviewBuffer;
+
+    try {
+      material.uniforms.map!.value = texture;
+      renderer.autoClear = true;
+      renderer.setScissorTest(false);
+      renderer.setRenderTarget(target);
+      renderer.render(scene, camera);
+      renderer.readRenderTargetPixels(target, 0, 0, size, size, pixels);
+    } finally {
+      renderer.setRenderTarget(previousTarget);
+      renderer.setScissor(
+        previousScissor.x,
+        previousScissor.y,
+        previousScissor.z,
+        previousScissor.w,
+      );
+      renderer.setViewport(
+        previousViewport.x,
+        previousViewport.y,
+        previousViewport.z,
+        previousViewport.w,
+      );
+      renderer.setScissorTest(previousScissorTest);
+      renderer.autoClear = previousAutoClear;
+    }
+
+    const image = ctx.createImageData(size, size);
+    const rowBytes = size * 4;
+    for (let row = 0; row < size; row++) {
+      const src = (size - row - 1) * rowBytes;
+      const dst = row * rowBytes;
+      image.data.set(pixels.subarray(src, src + rowBytes), dst);
+    }
+    ctx.putImageData(image, x, y);
+    ctx.strokeStyle = '#d7dde6';
+    ctx.lineWidth = Math.max(1, Math.floor(size / 128));
+    ctx.strokeRect(x + 0.5, y + 0.5, size - 1, size - 1);
   }
 
   /** Bake gate for slider/input change events. Skips mid-drag + auto-bake disabled. */
@@ -573,6 +1152,71 @@ export class CornellBoxExample implements BakerOrchestrator {
 
   requestBake(): Promise<void> {
     return this.bake();
+  }
+
+  cancelBake(): void {
+    if (!this.bakeInFlight) return;
+    this.activeBakeAbort?.abort();
+  }
+
+  serializeProject(): ProjectV1 {
+    return {
+      version: 1,
+      scenePresetId: this.currentScenePresetId,
+      importedModel:
+        this.currentScenePresetId === 'imported.glb' && this.currentImportedModel
+          ? { ...this.currentImportedModel }
+          : undefined,
+      options: this.projectOptions(),
+      assets: this.serializeProjectAssets(),
+      bakedLightmaps: this.serializeBakedLightmaps(),
+    };
+  }
+
+  async loadProject(project: ProjectV1): Promise<void> {
+    if (!project || project.version !== 1) {
+      throw new Error('Unsupported project file version');
+    }
+
+    if (project.scenePresetId === 'imported.glb') {
+      if (!project.importedModel) throw new Error('Imported GLB project is missing model data');
+      await this.loadImportedProjectModel(project.importedModel);
+    } else {
+      await this.loadScenePreset(project.scenePresetId);
+      this.currentImportedModel = null;
+    }
+    Object.assign(this.options, project.options);
+    activeSceneId.value = project.scenePresetId;
+
+    for (const asset of project.assets) {
+      const id = this.addAsset(asset.spec, asset.position);
+      const obj = this.lookupObject(id);
+      if (obj) this.applyProjectAsset(obj, asset);
+    }
+
+    this.bakeController.disposeAllGroups();
+    this.options.perMesh = {};
+    this.restoreProjectBakedLightmaps(project.bakedLightmaps);
+    this.externalHooks.onSceneChanged?.();
+    this.externalHooks.onStaleChange?.();
+    this.startLoop();
+  }
+
+  saveProject(): void {
+    const blob = new Blob([JSON.stringify(this.serializeProject(), null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'three-lightmap-baker-project.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  openProjectFile(): void {
+    this.projectFileInput.value = '';
+    this.projectFileInput.click();
   }
 
   requestAORebake(): Promise<void> {
@@ -619,8 +1263,9 @@ export class CornellBoxExample implements BakerOrchestrator {
 
   /** Coarse bake state from live fields. Stays consistent across N bakes. */
   getBakeStatus(): 'idle' | 'baking' | 'done' | 'error' {
+    if (this.bakeInFlight) return 'baking';
     if (!this.bakeController.bakeGroups.length) return 'idle';
-    if (this.options.pause) return 'done';
+    if (this.options.pause || this.options.samples >= this.options.targetSamples) return 'done';
     return 'baking';
   }
 
@@ -666,6 +1311,11 @@ export class CornellBoxExample implements BakerOrchestrator {
     this.sceneController.setVisible(id, visible);
   }
 
+  frameNode(id: string): void {
+    const obj = this.lookupObject(id);
+    if (obj) this.sceneController.frameObject(obj);
+  }
+
   applyRefinementNow(): Promise<void> {
     return this.applyRefinement();
   }
@@ -700,6 +1350,86 @@ export class CornellBoxExample implements BakerOrchestrator {
     };
   }
 
+  async runAdapterRuntimeSmoke(): Promise<{
+    rendererLabel: string;
+    elapsedMs: number;
+    meshCount: number;
+    groupCount: number;
+    lightmapCount: number;
+    texelCount: number;
+  }> {
+    const startedAt = performance.now();
+    const width = 128;
+    const height = 128;
+    const hasOffscreen = typeof OffscreenCanvas !== 'undefined';
+    const canvas = hasOffscreen
+      ? new OffscreenCanvas(width, height)
+      : document.createElement('canvas');
+    const renderer = new WebGLRenderer({
+      canvas,
+      antialias: false,
+      powerPreference: 'high-performance',
+      failIfMajorPerformanceCaveat: false,
+    });
+    renderer.setSize(width, height, false);
+
+    const scene = new Scene();
+    const mesh = new Mesh(
+      new BoxGeometry(1, 1, 1),
+      new MeshStandardMaterial({ color: 0xd7dde8, roughness: 0.7 }),
+    );
+    mesh.position.y = 0.5;
+    scene.add(mesh);
+
+    const ground = new Mesh(
+      new PlaneGeometry(4, 4),
+      new MeshStandardMaterial({ color: 0x596579, roughness: 0.9 }),
+    );
+    ground.rotation.x = -Math.PI / 2;
+    scene.add(ground);
+
+    const light = new DirectionalLight(0xffffff, 2.4);
+    light.position.set(2, 4, 1.5);
+    scene.add(light);
+
+    const rendererLabel = hasOffscreen ? 'offscreen-browser' : 'detached-browser-canvas';
+    const adapter = createRendererAdapter(renderer, {
+      contextLossTarget: canvas as unknown as LightmapContextLossTarget,
+      label: rendererLabel,
+    });
+    const baker = new LightmapBaker({
+      rendererAdapter: adapter,
+      resolution: 64,
+      samples: 1,
+      castsPerFrame: 1,
+      bounces: 1,
+      denoise: false,
+      ao: false,
+      timeoutProtection: { safeMode: true },
+    });
+
+    let result = null as Awaited<ReturnType<LightmapBaker['bake']>> | null;
+    try {
+      result = await baker.bake(scene);
+      result.apply();
+      return {
+        rendererLabel,
+        elapsedMs: performance.now() - startedAt,
+        meshCount: result.stats.meshCount,
+        groupCount: result.groups.length,
+        lightmapCount: result.lightmaps.size,
+        texelCount: result.stats.texelCount,
+      };
+    } finally {
+      result?.dispose();
+      renderer.dispose();
+      mesh.geometry.dispose();
+      ground.geometry.dispose();
+      (mesh.material as MeshStandardMaterial).dispose();
+      (ground.material as MeshStandardMaterial).dispose();
+    }
+  }
+
   async loadScenePreset(id: string): Promise<void> {
     this.externalHooks.onSceneLoad?.();
     // Deactivate PT during load to avoid rendering a half-built scene.
@@ -707,7 +1437,13 @@ export class CornellBoxExample implements BakerOrchestrator {
     this.ptController?.deactivate();
 
     await this.sceneController.loadPresetById(id);
+    this.currentScenePresetId = id;
+    this.currentImportedModel = null;
+    activeSceneId.value = id;
     this.options.perMesh = {};
+
+    // Sync camera FOV signal after preset load (preset might have defined an override).
+    cameraFOV.value = this.sceneController.camera.fov;
 
     if (this.ptController) {
       await this.ptController.setScene(this.sceneController.scene, this.sceneController.camera);

@@ -1,5 +1,5 @@
 import '../menus/index';
-import { compareMode, type MenuId } from 'shared';
+import { compareMode, inspectorTab, layout, type MenuId } from 'shared';
 import { GitCompareArrows, Settings } from './icons';
 import { MenuButton } from './MenuButton';
 
@@ -7,6 +7,13 @@ const MENUS: MenuId[] = ['File', 'Edit', 'View', 'Render', 'Help'];
 
 function toggleCompare(): void {
   compareMode.value = !compareMode.value;
+}
+
+function openSettings(): void {
+  if (layout.value.inspectorW === 0) {
+    layout.value = { ...layout.value, inspectorW: 320 };
+  }
+  inspectorTab.value = 'postfx';
 }
 
 /**
@@ -49,7 +56,8 @@ export function Topbar() {
           type="button"
           class="p-1.5 text-text-1 hover:bg-bg-3 hover:text-text-0 rounded"
           title="Settings"
-          disabled
+          data-testid="settings-toggle"
+          onClick={openSettings}
         >
           <Settings size={14} />
         </button>

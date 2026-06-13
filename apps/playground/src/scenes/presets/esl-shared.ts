@@ -72,7 +72,8 @@ export function eulerToTarget(
   pos: [number, number, number],
   euler: [number, number, number],
   distance = 5,
-): { position: [number, number, number]; target: [number, number, number] } {
+  fov?: number,
+): { position: [number, number, number]; target: [number, number, number]; fov?: number } {
   const e = new Euler(euler[0], euler[1], euler[2], 'YXZ');
   const forward = new Vector3(0, 0, -1).applyEuler(e).normalize();
   return {
@@ -82,6 +83,7 @@ export function eulerToTarget(
       pos[1] + forward.y * distance,
       pos[2] + forward.z * distance,
     ],
+    fov,
   };
 }
 

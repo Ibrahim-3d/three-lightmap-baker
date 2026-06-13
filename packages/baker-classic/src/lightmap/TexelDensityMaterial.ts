@@ -75,7 +75,7 @@ export class TexelDensityMaterial extends ShaderMaterial {
                     // XOR sum covers all axes - squares stay UNIFORMLY square
                     // across the scene if density is on-target.
                     const float CHECKER_TEXELS = 4.0;
-                    float worldPerSquare = CHECKER_TEXELS / max(uTexelsPerMeter, 1e-6);
+                    float worldPerSquare = CHECKER_TEXELS / max(uTexelsPerMeter, 1.0e-6);
 
                     // Detect missing uv2 attribute (pre-bake state). xatlas
                     // writes uv2 only after the bake completes; before that,
@@ -84,7 +84,7 @@ export class TexelDensityMaterial extends ShaderMaterial {
                     // density viz is stuck on red and looks like an undersample
                     // bug rather than "atlas not built yet".
                     float uvLen = length(dUVdx) + length(dUVdy);
-                    if (uvLen < 1e-6) {
+                    if (uvLen < 1.0e-6) {
                         // Magenta checker = "bake first to see real density".
                         vec3 wc = floor(vWorldPos / worldPerSquare);
                         float k = mod(wc.x + wc.y + wc.z, 2.0);
@@ -92,12 +92,12 @@ export class TexelDensityMaterial extends ShaderMaterial {
                         return;
                     }
 
-                    float texelsPerWorldX = length(dUVdx) / max(length(dWdx), 1e-6);
-                    float texelsPerWorldY = length(dUVdy) / max(length(dWdy), 1e-6);
+                    float texelsPerWorldX = length(dUVdx) / max(length(dWdx), 1.0e-6);
+                    float texelsPerWorldY = length(dUVdy) / max(length(dWdy), 1.0e-6);
                     // Geometric mean is robust to anisotropic stretching.
                     float texelDensity = sqrt(texelsPerWorldX * texelsPerWorldY);
 
-                    float ratio = texelDensity / max(uTexelsPerMeter, 1e-6);
+                    float ratio = texelDensity / max(uTexelsPerMeter, 1.0e-6);
 
                     // Color band selection.
                     vec3 c;

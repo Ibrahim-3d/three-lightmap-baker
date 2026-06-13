@@ -38,8 +38,12 @@ export type { PerTriangleMaterials } from './utils/GeometryUtils';
 export { buildMaterialTextures } from './utils/MaterialTextures';
 
 // --- Density-aware atlas bin-packing (Stage 1 - multiple-atlas pipeline) ---
-export { computeMeshSurfaceArea, binPackMeshes } from './utils/Packing';
-export type { BinPackOptions, BinAssignment } from './utils/Packing';
+export {
+  computeMeshSurfaceArea,
+  binPackMeshes,
+  resolveDensityTexelsPerMeter,
+} from './utils/Packing';
+export type { BinPackOptions, BinAssignment, DensityTexelsPerMeterOptions } from './utils/Packing';
 
 // --- Export (PNG / EXR / Float32 dump) ---
 export { exportLightmap, exportPNG, exportEXR, exportRaw } from './utils/exportLightmap';
@@ -63,9 +67,14 @@ export type { BakeErrorPhase } from './errors';
 
 // --- High-level one-call API (Phase 3) ---
 export { LightmapBaker, LightmapBakeResult } from './LightmapBaker';
+export { createRendererAdapter, isLightmapRendererAdapter } from './rendererAdapter';
+export { getLightmapRuntimeCapabilities } from './runtimeCapabilities';
 export type {
   LightmapBakerInitOptions,
   LightmapBakerOptions,
+  LightmapContextLossTarget,
+  LightmapRendererAdapter,
+  LightmapRendererAdapterOptions,
   LightOptions,
   GIOptions,
   AOOptions,
@@ -76,6 +85,12 @@ export type {
   BakeFrameInfo,
   BakeGroupView,
 } from './LightmapBaker';
+export type {
+  LightmapRuntimeCapabilities,
+  LightmapRuntimeFeature,
+  LightmapRuntimeFeatureStatus,
+  LightmapRuntimeKind,
+} from './runtimeCapabilities';
 
 // --- GPU capability detection (Task 08) ---
 export { detectGPUCapabilities, classifyRenderer } from './gpu/Capabilities';

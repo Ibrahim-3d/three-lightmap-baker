@@ -6,6 +6,11 @@ import { LightmapBakeResult } from './bake/result';
 import { collectBakeMeshes, runBakePipeline } from './bake/pipeline';
 import type { BakeHooks, LightmapBakerOptions, ResolvedBakerOptions } from './bake/types';
 import type { ContextLossState } from './bake/internals';
+import {
+  createRendererAdapter,
+  isLightmapRendererAdapter,
+  type LightmapRendererAdapter,
+} from './rendererAdapter';
 
 // LightmapBakeResult lives in `./bake/result` to keep this file under the
 // 300-LOC modularity cap. Re-exported here so the public barrel can pull it
@@ -27,6 +32,11 @@ export type {
   AOOptions,
   BakeGroupView,
 } from './bake/types';
+export type {
+  LightmapContextLossTarget,
+  LightmapRendererAdapter,
+  LightmapRendererAdapterOptions,
+} from './rendererAdapter';
 
 export type LightmapBakerInitOptions = LightmapBakerOptions & {
   /**
@@ -37,6 +47,11 @@ export type LightmapBakerInitOptions = LightmapBakerOptions & {
    * `new LightmapBaker(renderer, opts)`.
    */
   renderer?: WebGLRenderer;
+  /**
+   * Optional renderer adapter for offscreen-browser/test harness ownership of
+   * renderer setup and context-loss wiring.
+   */
+  rendererAdapter?: LightmapRendererAdapter;
 };
 
 function resolveGIOptions(gi: LightmapBakerInitOptions['gi']): ResolvedBakerOptions['gi'] {
@@ -88,7 +103,9 @@ function resolveAOOptions(
  *  1. A WebGLRenderer is required before `bake()`, either via:
  *       - `new LightmapBaker(renderer, opts)`
  *       - `new LightmapBaker({ renderer, ...opts })`
+ *       - `new LightmapBaker({ rendererAdapter, ...opts })`
  *       - `baker.setRenderer(renderer)`
+ *       - `baker.setRendererAdapter(adapter)`
  *  2. `result.lightmaps` returns a `Map<Mesh, Texture>` where each mesh maps to its
  *     group's atlas texture. With `perMesh` grouping, meshes in different resolution
  *     groups get different textures. Without `perMesh`, all entries share one texture.
@@ -99,13 +116,14 @@ function resolveAOOptions(
  *     directories. With per-mesh grouping each group is exported as a separate file.
  */
 export class LightmapBaker {
-  private _renderer: WebGLRenderer | null = null;
+  private _rendererAdapter: LightmapRendererAdapter | null = null;
   private opts: ResolvedBakerOptions;
 
   constructor(renderer: WebGLRenderer, opts?: LightmapBakerOptions);
+  constructor(rendererAdapter: LightmapRendererAdapter, opts?: LightmapBakerOptions);
   constructor(opts?: LightmapBakerInitOptions);
   constructor(
-    rendererOrOptions: WebGLRenderer | LightmapBakerInitOptions = {},
+    rendererOrOptions: WebGLRenderer | LightmapRendererAdapter | LightmapBakerInitOptions = {},
     maybeOptions: LightmapBakerOptions = {},
   ) {
     // We intentionally rely on `isWebGLRenderer === true` (Three.js runtime tag)
@@ -117,12 +135,16 @@ export class LightmapBaker {
       (('isWebGLRenderer' in v && (v as { isWebGLRenderer?: boolean }).isWebGLRenderer === true) ||
         ('getContext' in v && 'domElement' in v));
 
-    const rawOptions: LightmapBakerInitOptions = usesRendererArg(rendererOrOptions)
-      ? { ...maybeOptions, renderer: rendererOrOptions }
-      : { ...rendererOrOptions, ...maybeOptions };
+    const rawOptions: LightmapBakerInitOptions = isLightmapRendererAdapter(rendererOrOptions)
+      ? { ...maybeOptions, rendererAdapter: rendererOrOptions }
+      : usesRendererArg(rendererOrOptions)
+        ? { ...maybeOptions, renderer: rendererOrOptions }
+        : { ...rendererOrOptions, ...maybeOptions };
 
     validateOptions(rawOptions);
-    this._renderer = rawOptions.renderer ?? null;
+    this._rendererAdapter =
+      rawOptions.rendererAdapter ??
+      (rawOptions.renderer ? createRendererAdapter(rawOptions.renderer) : null);
 
     this.opts = {
       samples: rawOptions.samples ?? 96,
@@ -135,7 +157,9 @@ export class LightmapBaker {
       texelsPerMeter: rawOptions.texelsPerMeter ?? 0,
       perMesh: rawOptions.perMesh ?? {},
       light: {
-        position: rawOptions.light?.position ?? new Vector3(0, 10, 0),
+        position: Array.isArray(rawOptions.light?.position)
+          ? new Vector3(...(rawOptions.light!.position as unknown as [number, number, number]))
+          : (rawOptions.light?.position ?? new Vector3(0, 10, 0)),
         color: rawOptions.light?.color ?? 0xffffff,
         intensity: rawOptions.light?.intensity ?? 2.0,
         size: rawOptions.light?.size ?? 1.0,
@@ -153,11 +177,20 @@ export class LightmapBaker {
   }
 
   get renderer(): WebGLRenderer | null {
-    return this._renderer;
+    return this._rendererAdapter?.renderer ?? null;
+  }
+
+  get rendererAdapter(): LightmapRendererAdapter | null {
+    return this._rendererAdapter;
   }
 
   setRenderer(renderer: WebGLRenderer): this {
-    this._renderer = renderer;
+    this._rendererAdapter = createRendererAdapter(renderer);
+    return this;
+  }
+
+  setRendererAdapter(rendererAdapter: LightmapRendererAdapter): this {
+    this._rendererAdapter = rendererAdapter;
     return this;
   }
 
@@ -176,10 +209,11 @@ export class LightmapBaker {
    * stats → result) lives in `bake/pipeline.ts::runBakePipeline`.
    */
   async bake(scene: Scene | Object3D, hooks: BakeHooks = {}): Promise<LightmapBakeResult> {
-    const renderer = this._renderer;
+    const rendererAdapter = this._rendererAdapter;
+    const renderer = rendererAdapter?.renderer ?? null;
     if (!renderer)
       throw new BakeError(
-        'renderer is required: use `new LightmapBaker(renderer, opts)`, `new LightmapBaker({ renderer, ...opts })`, or `baker.setRenderer(renderer)`',
+        'renderer is required: use `new LightmapBaker(renderer, opts)`, `new LightmapBaker({ renderer, ...opts })`, `new LightmapBaker({ rendererAdapter, ...opts })`, `baker.setRenderer(renderer)`, or `baker.setRendererAdapter(adapter)`',
         'validation',
       );
 
@@ -205,15 +239,15 @@ export class LightmapBaker {
     // Context-loss guard: shared mutable flag flipped by the canvas listener.
     // Each tick of the mapper loop checks it before scheduling new work.
     const ctxState: ContextLossState = { lost: false };
-    const canvas = renderer.domElement;
+    const contextLossTarget = rendererAdapter?.contextLossTarget ?? renderer.domElement;
     const onLost = (e: Event): void => {
       e.preventDefault(); // Tells the browser we'll attempt recovery (we don't, but it's harmless).
       ctxState.lost = true;
       console.error('[baker] webglcontextlost during bake - cancelling');
     };
-    canvas.addEventListener('webglcontextlost', onLost as EventListener, false);
+    contextLossTarget.addEventListener('webglcontextlost', onLost as EventListener, false);
     const releaseContextGuard = (): void => {
-      canvas.removeEventListener('webglcontextlost', onLost as EventListener, false);
+      contextLossTarget.removeEventListener('webglcontextlost', onLost as EventListener, false);
     };
 
     scene.updateMatrixWorld(true);

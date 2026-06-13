@@ -2,7 +2,9 @@ import type { Mesh, MeshStandardMaterial, Texture } from 'three';
 
 /** Demo-side mesh handle. `_originalMap` is read by the Albedo render mode. */
 export type SceneObj = Mesh & {
-  material: MeshStandardMaterial & { _originalMap?: Texture | null };
+  material:
+    | (MeshStandardMaterial & { _originalMap?: Texture | null })
+    | Array<MeshStandardMaterial & { _originalMap?: Texture | null }>;
 };
 
 /** Per-mesh editor overrides feeding the library bake. */
@@ -15,5 +17,6 @@ export type RenderModeOptions = {
   layer: string;
   texelsPerMeter: number;
   lightMapSize: number;
+  directLightEnabled: boolean;
   perMesh: PerMeshMap;
 };

@@ -162,7 +162,7 @@ export class SceneController {
     this.scene = new Scene();
     this.scene.background = new Color(0x0a0a0a);
 
-    this.camera = new PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    this.camera = new PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
     this.camera.position.set(0, 5, 18);
     this.camera.lookAt(0, 5, 0);
 
@@ -560,6 +560,10 @@ export class SceneController {
    */
   async importGLB(file: File): Promise<void> {
     const buffer = await file.arrayBuffer();
+    await this.importGLBBuffer(buffer);
+  }
+
+  async importGLBBuffer(buffer: ArrayBuffer): Promise<void> {
     const loader = new GLTFLoader();
     let gltf: GLTF;
     try {
@@ -788,8 +792,7 @@ export class SceneController {
 
   /**
    * Single render entry point. Composer when master toggle is on, plain
-   * renderer otherwise. AtlasViewer and other scissor overlays still
-   * render *after* this returns, against the default framebuffer.
+   * renderer otherwise.
    */
   renderFrame(): void {
     this.syncPostFX();
@@ -925,6 +928,7 @@ export class SceneController {
       console.warn('[baker] addAsset: unknown or disabled asset spec', spec);
       return '';
     }
+    node.userData.assetSpec = { ...spec };
     node.position.copy(worldPos);
 
     if (spec.kind === 'primitive') {
@@ -1113,6 +1117,10 @@ export class SceneController {
     if (result.camera) {
       this.camera.position.set(...result.camera.position);
       this.controls.target.set(...result.camera.target);
+      if (result.camera.fov !== undefined) {
+        this.camera.fov = result.camera.fov;
+      }
+      this.camera.updateProjectionMatrix();
       this.controls.update();
     }
     if (result.lightDummy) this.lightDummy.position.set(...result.lightDummy.position);

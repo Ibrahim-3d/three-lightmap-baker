@@ -8,6 +8,7 @@ import {
   ColorField,
   hdriTexture,
   markStale,
+  cameraFOV,
   NumberField,
   objectTick,
   optionsTick,
@@ -66,10 +67,6 @@ export function WorldPage() {
     );
   };
 
-  // Camera reachable from the orchestrator via the scene's first child
-  // chain; we keep things loose-typed since Orchestrator doesn't expose it.
-  const camera = (app as unknown as { sceneController?: { camera?: { fov?: number } } })
-    .sceneController?.camera;
   const sc = (
     app as unknown as {
       sceneController?: {
@@ -97,12 +94,12 @@ export function WorldPage() {
       <Section title="Camera">
         <Row label="FOV" hint="Field of view in degrees. Hotkeys 1 / 3 / 7 / 0 jump views.">
           <RangeField
-            value={camera?.fov ?? 45}
+            value={cameraFOV.value}
             min={10}
             max={120}
             step={1}
             onChange={(v) => {
-              sc?.setCameraFov?.(v);
+              cameraFOV.value = v;
               bumpObject();
             }}
           />

@@ -93,6 +93,7 @@ async function build(parent: Object3D): Promise<SceneBuildResult> {
     [SPAWN_POS[0], SPAWN_POS[1], SPAWN_POS[2]],
     [SPAWN_EULER[0], SPAWN_EULER[1], SPAWN_EULER[2]],
     3,
+    83,
   );
 
   return {
@@ -123,7 +124,7 @@ sceneRegistry.register({
     targetSamples: 384,
     bounces: 3,
     casts: 6,
-    texelsPerMeter: 16,
+    texelsPerMeter: 1,
   },
   schemaVersion: 1,
 });

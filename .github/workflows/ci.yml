@@ -20,28 +20,158 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: npm
+          node-version: 24
+          cache: pnpm
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: TypeScript
-        run: npm run typecheck
+        run: pnpm run typecheck
+
+      - name: TypeScript examples
+        run: pnpm run typecheck:examples
 
       - name: ESLint
-        run: npm run lint
+        run: pnpm run lint
 
       - name: Prettier
-        run: npm run format:check
+        run: pnpm run format:check
 
       - name: Vite build
-        run: npm run build
+        run: pnpm run build
 
       - name: Package API import smoke test
-        run: npm run test:api-import
+        run: pnpm run test:api-import
+
+  browser-smoke:
+    name: Browser runtime smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Browser smoke suite
+        run: pnpm run test:browser-smoke
+
+  pr-preview:
+    name: PR testing link
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      PREVIEW_PATH: pr-${{ github.event.pull_request.number }}
+      PREVIEW_URL: https://${{ github.repository_owner }}.github.io/three-lightmap-baker/pr-${{ github.event.pull_request.number }}/
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build PR preview
+        env:
+          VITE_BASE_PATH: /three-lightmap-baker/${{ env.PREVIEW_PATH }}/
+        run: pnpm run build:demo
+
+      - name: Check bundle budget
+        run: pnpm run budget:bundle
+
+      - name: Create .nojekyll
+        run: touch dist/.nojekyll
+
+      - name: Publish PR preview
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./dist
+          destination_dir: ${{ env.PREVIEW_PATH }}
+          keep_files: true
+          full_commit_message: 'Deploy PR #${{ github.event.pull_request.number }} preview from ${{ github.event.pull_request.head.sha }}'
+
+      - name: Comment preview link
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '<!-- three-lightmap-baker-pr-preview -->';
+            const body = [
+              marker,
+              '## PR testing link',
+              '',
+              `Preview: ${process.env.PREVIEW_URL}`,
+              '',
+              'This link updates automatically when new commits are pushed to this PR.',
+            ].join('\n');
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+            const previous = comments.find(
+              (comment) => comment.user.type === 'Bot' && comment.body.includes(marker),
+            );
+
+            if (previous) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: previous.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body,
+              });
+            }
+
+      - name: Preview summary
+        run: |
+          {
+            echo "## PR testing link"
+            echo ""
+            echo "$PREVIEW_URL"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   modularity:
     name: Modularity (advisory)
@@ -49,18 +179,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: npm
+          node-version: 24
+          cache: pnpm
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Circular imports (madge)
         run: |
           set +e
-          npx -y madge --circular --extensions ts,tsx packages/ apps/
+          pnpm dlx madge --circular --extensions ts,tsx packages/ apps/
           if [ $? -ne 0 ]; then
             echo "::warning::Circular imports detected - see log above. CLAUDE.md forbids cycles; this job will flip to hard-fail once existing oversized files are split."
           fi

@@ -84,8 +84,11 @@ export function validateOptions(opts: LightmapBakerOptions): void {
   // Validate top-level density (Phase 1 - density-aware multi-atlas).
   if (opts.texelsPerMeter !== undefined) {
     const tpm = opts.texelsPerMeter;
-    if (!Number.isFinite(tpm) || tpm <= 0 || tpm > 1024)
-      throw new BakeError(`texelsPerMeter must be in (0, 1024], got ${tpm}`, 'validation');
+    if (!Number.isFinite(tpm) || tpm <= 0 || tpm > 64)
+      throw new BakeError(
+        `texelsPerMeter density multiplier must be in (0, 64], got ${tpm}`,
+        'validation',
+      );
   }
 
   // Validate per-mesh resolution + density overrides.
