@@ -73,6 +73,7 @@ export const viewLayers = signal<ReadonlyArray<ViewLayerDescriptor>>([]);
  */
 export const flySpeed = signal<number>(5);
 export const flyActive = signal<boolean>(false);
+export const cameraFOV = signal<number>(50);
 
 /**
  * Viewport editor helpers - Blender-style ground grid + RGB world axes.

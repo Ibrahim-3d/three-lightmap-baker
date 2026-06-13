@@ -8,6 +8,7 @@ import {
   ColorField,
   hdriTexture,
   markStale,
+  cameraFOV,
   NumberField,
   objectTick,
   optionsTick,
@@ -97,12 +98,12 @@ export function WorldPage() {
       <Section title="Camera">
         <Row label="FOV" hint="Field of view in degrees. Hotkeys 1 / 3 / 7 / 0 jump views.">
           <RangeField
-            value={camera?.fov ?? 45}
+            value={cameraFOV.value}
             min={10}
             max={120}
             step={1}
             onChange={(v) => {
-              sc?.setCameraFov?.(v);
+              cameraFOV.value = v;
               bumpObject();
             }}
           />

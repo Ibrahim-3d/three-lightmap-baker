@@ -44,6 +44,7 @@ export {
   eslEnvEnabled,
   flySpeed,
   flyActive,
+  cameraFOV,
   showGrid,
   showAxes,
   log,

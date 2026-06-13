@@ -7,7 +7,7 @@ import { StaleBanner } from './components/StaleBanner';
 import { StatusBar } from './components/StatusBar';
 import { Toast } from './components/Toast';
 import { Topbar } from './components/Topbar';
-import { ViewportFlySpeed } from './components/ViewportFlySpeed';
+import { ViewportCameraSettings } from './components/ViewportCameraSettings';
 import { ViewportOverlaysMenu } from './components/ViewportOverlaysMenu';
 import { ViewportToggle } from './components/ViewportToggle';
 
@@ -66,7 +66,7 @@ export function App() {
           <div class="flex-1 relative pointer-events-none">
             {/* Top-right viewport overlay row - all dropdowns share one line. */}
             <div class="absolute top-3 right-3 z-20 flex items-start gap-2 pointer-events-none">
-              <ViewportFlySpeed />
+              <ViewportCameraSettings />
               <ViewportOverlaysMenu />
               <ViewportToggle />
             </div>

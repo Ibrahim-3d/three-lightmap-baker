@@ -162,7 +162,7 @@ export class SceneController {
     this.scene = new Scene();
     this.scene.background = new Color(0x0a0a0a);
 
-    this.camera = new PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    this.camera = new PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
     this.camera.position.set(0, 5, 18);
     this.camera.lookAt(0, 5, 0);
 
@@ -1117,6 +1117,10 @@ export class SceneController {
     if (result.camera) {
       this.camera.position.set(...result.camera.position);
       this.controls.target.set(...result.camera.target);
+      if (result.camera.fov !== undefined) {
+        this.camera.fov = result.camera.fov;
+      }
+      this.camera.updateProjectionMatrix();
       this.controls.update();
     }
     if (result.lightDummy) this.lightDummy.position.set(...result.lightDummy.position);

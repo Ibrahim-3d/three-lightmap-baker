@@ -32,7 +32,7 @@ import {
 } from 'baker-classic';
 import type { BakerOrchestrator } from 'baker-classic/ui';
 import type { AssetSpec } from 'shared';
-import { activeSceneId, bakeProgress, bakeStatus, dirtyMeshIds } from 'shared';
+import { activeSceneId, bakeProgress, bakeStatus, cameraFOV, dirtyMeshIds } from 'shared';
 import { LAYERS } from './three/modes';
 import { BakeController } from './three/BakeController';
 import { FlyController } from './three/FlyController';
@@ -1434,6 +1434,9 @@ export class CornellBoxExample implements BakerOrchestrator {
     this.currentImportedModel = null;
     activeSceneId.value = id;
     this.options.perMesh = {};
+
+    // Sync camera FOV signal after preset load (preset might have defined an override).
+    cameraFOV.value = this.sceneController.camera.fov;
 
     if (this.ptController) {
       await this.ptController.setScene(this.sceneController.scene, this.sceneController.camera);

@@ -103,6 +103,9 @@ function wireSelectionEffects(app: CornellBoxExample): void {
   effect(() => {
     app.sceneController.axesHelper.visible = showAxes.value;
   });
+  effect(() => {
+    app.sceneController.setCameraFov(cameraFOV.value);
+  });
   // Auto-switch inspector tab on selection: lights → Light; meshes → Object.
   // Read current tab via `.peek()` so this effect only re-runs on selection
   // change, not on its own write - otherwise clicking Light/Post FX/World/Bake
