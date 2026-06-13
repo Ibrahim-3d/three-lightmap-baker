@@ -269,14 +269,8 @@ export class BakeController {
       filtering: options.filterMode === 'linear' ? 'linear' : 'nearest',
       texelsPerMeter: options.texelsPerMeter,
       perMesh,
-      denoise: options.denoiseEnabled,
-      refinementOptions: {
-        dilationIterations: options.dilationIterations,
-        denoiseEnabled: options.denoiseEnabled,
-        denoiseSigma: options.denoiseSigma,
-        denoiseThreshold: options.denoiseThreshold,
-        denoiseKSigma: options.denoiseKSigma,
-      },
+      denoise: false,
+      refinementOptions: { dilationIterations: 0, denoiseEnabled: false },
       light: {
         position: lightPosition.clone(),
         color: options.lightColor,
