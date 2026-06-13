@@ -41,16 +41,17 @@ export type LightmapperMaterialOptions = {
 };
 
 export class LightmapperMaterial extends ShaderMaterial {
-  // Shared program cache key: all compile-determining inputs are hardcoded (#define MAX_BOUNCES 4,
-  // #define MAX_LIGHTS 16, fixed MRT layout). casts/bounces/directLightEnabled/indirectLightEnabled
-  // are uniforms → NOT in key. Renderer owns the compiled WebGLProgram; dispose() is unaffected.
+  private programKey = 'LightmapperMaterial|glsl3|mrt2';
+
+  // Program cache key includes casts because the cast loop is compiled into GLSL.
   override customProgramCacheKey(): string {
-    return 'LightmapperMaterial|glsl3|mrt2';
+    return this.programKey;
   }
 
   constructor(options: LightmapperMaterialOptions) {
     const bvhUniformStruct = new MeshBVHUniformStruct();
     bvhUniformStruct.updateFrom(options.bvh);
+    const castCount = Math.max(1, Math.min(256, options.casts | 0));
 
     super({
       transparent: true,
@@ -66,7 +67,6 @@ export class LightmapperMaterial extends ShaderMaterial {
         emissiveTex: { value: options.emissiveTex },
         materialTextureSize: { value: options.materialTextureSize },
         invModelMatrix: { value: options.invModelMatrix },
-        casts: { value: options.casts },
         bounces: { value: options.bounces },
         lightsTex: { value: options.lightsTex },
         lightCount: { value: options.lightCount },
@@ -130,8 +130,10 @@ export class LightmapperMaterial extends ShaderMaterial {
                 // Static upper cap on lights checked per shadow loop iteration.
                 // Runtime count is controlled by the lightCount uniform.
                 #define MAX_LIGHTS 16
+                // Cast count is compile-time on purpose. A uniform-bound cast
+                // loop produced NaNs on ANGLE when it wrapped texture/BVH calls.
+                #define CASTS ${castCount}
 
-                uniform int casts;
                 uniform int bounces;
 
                 // Multi-light texture: 4 texels wide × lightCount tall, RGBA float.
@@ -178,6 +180,11 @@ export class LightmapperMaterial extends ShaderMaterial {
                     float u = r.y; float u2 = u * u;
                     float s = sqrt(max(0.0, 1.0 - u2));
                     return vec3(s * cos(ang1), s * sin(ang1), u);
+                }
+
+                vec3 safeNormalize(vec3 v, vec3 fallback) {
+                    float len2 = dot(v, v);
+                    return len2 > 1e-12 ? v * inversesqrt(len2) : fallback;
                 }
 
                 vec3 getHemisphereSample( vec3 n, vec2 uv ) {
@@ -231,7 +238,7 @@ export class LightmapperMaterial extends ShaderMaterial {
                     vec4 t3 = readLight(li, 3);
                     int  ltype  = int(t0.w + 0.5);
                     vec3 lpos   = t0.xyz;
-                    vec3 ldir   = normalize(t1.xyz);
+                    vec3 ldir   = safeNormalize(t1.xyz, vec3(0.0, -1.0, 0.0));
                     vec3 lcolor = t2.xyz;
                     float p0 = t1.w, p1 = t2.w; // p2=t3.x, p3=t3.y available if needed
 
@@ -254,7 +261,7 @@ export class LightmapperMaterial extends ShaderMaterial {
                         vec3 jitter = (p0 > 0.0)
                             ? randomSpherePoint(vec3(rnd, rand())) * tan(p0)
                             : vec3(0.0);
-                        s.L        = normalize(baseL + jitter);
+                        s.L        = safeNormalize(baseL + jitter, baseL);
                         s.distance = 1e6;
                         s.emission = lcolor;
                     }
@@ -271,7 +278,7 @@ export class LightmapperMaterial extends ShaderMaterial {
                     else {
                         // Area - rectangle centered at lpos, normal = ldir, width=p0, height=p1.
                         vec3 up = abs(ldir.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
-                        vec3 tu = normalize(cross(up, ldir));
+                        vec3 tu = safeNormalize(cross(up, ldir), vec3(1.0, 0.0, 0.0));
                         vec3 tv = cross(ldir, tu);
                         vec2 luv = rnd - 0.5;
                         vec3 sample_pos = lpos + tu * (luv.x * p0) + tv * (luv.y * p1);
@@ -299,7 +306,7 @@ export class LightmapperMaterial extends ShaderMaterial {
                     for (int li = 0; li < MAX_LIGHTS; li++) {
                         if (li >= lightCount) break;
                         LightSample ls = sampleLight(li, hitPos, hitNormal, rand4().xy);
-                        if (ls.emission == vec3(0.0)) continue;
+                        if (dot(ls.emission, ls.emission) <= 1e-12) continue;
                         float cosL = max(0.0, dot(hitNormal, ls.L));
                         if (cosL <= 0.0) continue;
                         vec3 shadowOrigin = hitPos + hitNormal * 0.001;
@@ -372,6 +379,14 @@ export class LightmapperMaterial extends ShaderMaterial {
                     vec4 position = texture(positions, vUv);
                     vec4 normal   = texture(normals,   vUv);
 
+                    // Empty G-buffer pixels have no surface. Do not trace rays
+                    // from origin with a zero normal into the accumulation RTs.
+                    if (position.a <= 0.0 || dot(normal.xyz, normal.xyz) <= 1e-10) {
+                        directOut = vec4(0.0);
+                        indirectOut = vec4(0.0);
+                        return;
+                    }
+
                     rng_initialize(gl_FragCoord.xy, sampleIndex);
 
                     vec3 rayOrigin    = position.rgb;
@@ -386,12 +401,13 @@ export class LightmapperMaterial extends ShaderMaterial {
 
                     vec3  totalIndirectLight = vec3(0.0);
                     vec3  totalDirectLight   = vec3(0.0);
+                    float castDivisor        = float(CASTS);
 
                     // Indirect bounce loop. AO has been moved to its own pass
                     // (AOMaterial / AOMapper) so AO sliders can be tweaked
                     // without a bounce re-bake.
                     if (indirectLightEnabled) {
-                        for (int i = 0; i < casts; i++) {
+                        for (int i = 0; i < CASTS; i++) {
                             vec3 newDir = getHemisphereSample(normal.xyz, rand4().xy);
                             if (dot(rayDirection, newDir) > 0.0) {
                                 bool hit = bvhIntersectFirstHit(bvh, rayOrigin, newDir,
@@ -406,18 +422,20 @@ export class LightmapperMaterial extends ShaderMaterial {
                         // Direct lighting: NEE over all lights at the primary surface.
                         // hitAlbedo=vec3(1.0) keeps directOut as raw irradiance so the
                         // material color is applied at composite time (bake convention).
-                        for (int i = 0; i < casts; i++) {
+                        for (int i = 0; i < CASTS; i++) {
                             totalDirectLight += sampleAllLightsNEE(rayOrigin, normal.xyz, vec3(1.0));
                         }
                     }
 
-                    vec4 avgDirect   = vec4(totalDirectLight   / float(casts), 1.0);
-                    vec4 avgIndirect = vec4(totalIndirectLight / float(casts), 1.0);
+                    vec4 avgDirect   = vec4(totalDirectLight   / castDivisor, 1.0);
+                    vec4 avgIndirect = vec4(totalIndirectLight / castDivisor, 1.0);
 
                     directOut   = directLightEnabled   ? vec4(avgDirect.rgb,   opacity) : vec4(0.0, 0.0, 0.0, opacity);
                     indirectOut = indirectLightEnabled ? vec4(avgIndirect.rgb, opacity) : vec4(0.0, 0.0, 0.0, opacity);
                 }
             `,
     });
+
+    this.programKey = `LightmapperMaterial|glsl3|mrt2|casts=${castCount}`;
   }
 }

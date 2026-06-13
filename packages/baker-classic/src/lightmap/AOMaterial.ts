@@ -131,6 +131,13 @@ export class AOMaterial extends ShaderMaterial {
                     vec4 position = texture(positions, vUv);
                     vec4 normal   = texture(normals,   vUv);
 
+                    // Outside-chart pixels are neutral AO. Writing black here
+                    // makes chart-cut filtering darken visible mesh surfaces.
+                    if (position.a <= 0.0 || dot(normal.xyz, normal.xyz) <= 1e-10) {
+                        aoOut = vec4(vec3(1.0), opacity);
+                        return;
+                    }
+
                     rng_initialize(gl_FragCoord.xy, sampleIndex);
 
                     vec3 rayOrigin    = position.rgb;
