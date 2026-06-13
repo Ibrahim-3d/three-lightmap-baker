@@ -1,9 +1,20 @@
-import { BufferAttribute, Mesh } from 'three';
+import { BufferAttribute, Mesh, Vector3 } from 'three';
 import { UVUnwrapper } from 'xatlas-three';
+import { computeMeshSurfaceArea } from '../utils/Packing';
 
 const DEBUG = import.meta.env.DEV;
 
 const unwrapper = new UVUnwrapper({ BufferAttribute: BufferAttribute });
+const worldScale = new Vector3();
+
+export type GenerateAtlasOptions = {
+  /** Actual lightmap side length. Used by xatlas when texel density is active. */
+  resolution?: number;
+  /** Target texels per world unit. When omitted, legacy fill-the-atlas packing is used. */
+  texelsPerUnit?: number;
+  /** Per-mesh density multiplier keyed by mesh uuid. */
+  perMeshScale?: Record<string, number>;
+};
 
 enum ProgressCategory {
   AddMesh,
@@ -44,24 +55,66 @@ export const loadXAtlasThree = async (): Promise<void> => {
  * MUST be serial (await between calls). For multi-atlas pipelines, see
  * `generateAtlases` below.
  */
-export const generateAtlas = async (meshs: Mesh[]): Promise<void> => {
+export const generateAtlas = async (
+  meshs: Mesh[],
+  options: GenerateAtlasOptions = {},
+): Promise<void> => {
   const geometry = meshs.map((mesh) => mesh.geometry);
+  const densityMode = options.texelsPerUnit !== undefined && options.texelsPerUnit > 0;
+  const packResolution = densityMode ? (options.resolution ?? 1024) : 4096;
+  let texelsPerUnit = options.texelsPerUnit ?? 0;
 
-  // Crucial: xatlas defaults are padding=0 and resolution=2048. With renderAtlas's
-  // +/-2-pixel dilation halo and a 1024 lightmap (so each lightmap-texel covers
-  // ~2x2 atlas-texels), zero padding causes the halo of one chart to land inside
-  // the *true footprint* of the neighbouring chart - every chart-adjacent texel
-  // reads position/normal data from the wrong surface. Symptom: "green bleed on
-  // the LEFT side of the cube while the green wall is on the RIGHT" - charts that
-  // happen to be neighbours in atlas space, not in world space.
-  //
-  // 4096 atlas resolution + 16-px padding gives >=4 lightmap-pixels of gutter on
-  // every chart boundary, more than the +/-2-px dilation halo can reach.
-  unwrapper.packOptions.padding = 16;
-  unwrapper.packOptions.resolution = 4096;
+  if (densityMode) {
+    const atlasTexels = packResolution * packResolution;
+    let demand = 0;
+    for (const mesh of meshs) {
+      const scale = options.perMeshScale?.[mesh.uuid] ?? 1.0;
+      demand +=
+        (computeMeshSurfaceArea(mesh) * texelsPerUnit * texelsPerUnit * scale * scale) /
+        atlasTexels;
+    }
+    const fillRatio = 0.95;
+    if (demand > fillRatio) {
+      texelsPerUnit *= Math.sqrt(fillRatio / demand);
+    }
+  }
 
-  // Write the shared UVs to the uv2 attribute
-  await unwrapper.packAtlas(geometry, 'uv2', 'uv');
+  // Crucial: xatlas defaults are padding=0. renderAtlas adds a +/-2 pixel
+  // G-buffer halo, so keep roughly four lightmap pixels between charts.
+  unwrapper.packOptions.padding = Math.max(4, Math.ceil(packResolution / 256));
+  unwrapper.packOptions.resolution = packResolution;
+  unwrapper.packOptions.texelsPerUnit = densityMode ? texelsPerUnit : undefined;
+
+  const previousWorldScales = densityMode
+    ? meshs.map((mesh) => mesh.geometry.userData.worldScale as unknown)
+    : [];
+
+  try {
+    if (densityMode) {
+      for (const mesh of meshs) {
+        const scale = options.perMeshScale?.[mesh.uuid] ?? 1.0;
+        mesh.getWorldScale(worldScale);
+        mesh.geometry.userData.worldScale = [
+          worldScale.x * scale,
+          worldScale.y * scale,
+          worldScale.z * scale,
+        ];
+      }
+    }
+
+    // Write the shared UVs to the uv2 attribute.
+    await unwrapper.packAtlas(geometry, 'uv2', 'uv');
+  } finally {
+    if (densityMode) {
+      for (let i = 0; i < meshs.length; i++) {
+        const mesh = meshs[i];
+        if (!mesh) continue;
+        const prev = previousWorldScales[i];
+        if (prev === undefined) delete mesh.geometry.userData.worldScale;
+        else mesh.geometry.userData.worldScale = prev;
+      }
+    }
+  }
 };
 
 /**
@@ -78,12 +131,15 @@ export const generateAtlas = async (meshs: Mesh[]): Promise<void> => {
  * responsible for calling `renderAtlas` on the same per-bin mesh lists in
  * the same order so atlas-index mappings stay aligned.
  */
-export const generateAtlases = async (meshesByBin: Mesh[][]): Promise<void> => {
+export const generateAtlases = async (
+  meshesByBin: Mesh[][],
+  options: GenerateAtlasOptions = {},
+): Promise<void> => {
   for (let i = 0; i < meshesByBin.length; i++) {
     const bin = meshesByBin[i];
     if (!bin || bin.length === 0) continue;
     if (DEBUG)
       console.info(`[baker] xatlas bin ${i + 1}/${meshesByBin.length}: ${bin.length} meshes`);
-    await generateAtlas(bin);
+    await generateAtlas(bin, options);
   }
 };

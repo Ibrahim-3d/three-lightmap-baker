@@ -104,7 +104,15 @@ export async function runBakePipeline(args: BakePipelineArgs): Promise<LightmapB
     // Density mode creates one render target per atlas group. Each group must
     // receive its own full 0-1 UV2 layout, otherwise separate atlas targets
     // still contain UVs from a global pack and density appears to do nothing.
-    await generateAtlases(meshesByGroup);
+    const perMeshScale: Record<string, number> = {};
+    for (const [uuid, override] of Object.entries(opts.perMesh)) {
+      if (override.density !== undefined) perMeshScale[uuid] = override.density;
+    }
+    await generateAtlases(meshesByGroup, {
+      resolution: opts.resolution,
+      texelsPerUnit: tpm,
+      perMeshScale,
+    });
   } else {
     // Resolution mode preserves the legacy behavior: all non-excluded meshes
     // sharing a resolution are unwrapped together.
