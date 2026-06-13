@@ -6,7 +6,7 @@ import {
   type RectAreaLight,
   type Texture,
 } from 'three';
-import { TexelDensityMaterial } from 'baker-classic';
+import { resolveDensityTexelsPerMeter, TexelDensityMaterial } from 'baker-classic';
 import type { BakeGroup } from './BakeController';
 import type { RenderModeOptions, SceneObj } from './types';
 
@@ -277,14 +277,25 @@ export class RenderModeRunner {
 
   /**
    * Sync per-mesh TexelDensityMaterial cache with current mesh list + options.
-   * Each mesh's effective target = global texelsPerMeter × per-mesh scale.
+   * Density is scene-relative: 1 fills one atlas, then per-mesh scale adjusts
+   * local allocation.
    * Cheap - uniform writes only. Triggered on Texel Density layer activation,
-   * per-mesh density slider, global texelsPerMeter, and lightMapSize changes.
+   * per-mesh density slider, global density multiplier, and lightMapSize changes.
    */
   refreshTexelDensityMaterials(): void {
     const opts = this.deps.getOptions();
     const meshes = this.deps.getMeshes();
     const live = new Set<Mesh>(meshes);
+    const perMeshScale: Record<string, number> = {};
+    for (const m of meshes) {
+      const scale = opts.perMesh[m.uuid]?.scaleInLightmap ?? 1.0;
+      if (scale !== 1.0) perMeshScale[m.uuid] = scale;
+    }
+    const resolvedTexelsPerMeter = resolveDensityTexelsPerMeter(meshes, {
+      atlasResolution: opts.lightMapSize,
+      densityMultiplier: opts.texelsPerMeter,
+      perMeshScale,
+    });
 
     for (const m of this.texelDensityMats.keys()) {
       if (!live.has(m)) {
@@ -294,7 +305,7 @@ export class RenderModeRunner {
     }
     for (const m of meshes) {
       const scale = opts.perMesh[m.uuid]?.scaleInLightmap ?? 1.0;
-      const target = opts.texelsPerMeter * scale;
+      const target = resolvedTexelsPerMeter * scale;
       let mat = this.texelDensityMats.get(m);
       if (!mat) {
         mat = new TexelDensityMaterial({

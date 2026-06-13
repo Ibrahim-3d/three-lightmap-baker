@@ -170,7 +170,7 @@ export class CornellBoxExample implements BakerOrchestrator {
     aoIntensity: 1.0,
     aoExponent: 1.5,
     aoSamples: 5,
-    texelsPerMeter: 10,
+    texelsPerMeter: 1,
     lightSize: 2.9,
     lightIntensity: 2.0,
     lightColor: '#ffffff',

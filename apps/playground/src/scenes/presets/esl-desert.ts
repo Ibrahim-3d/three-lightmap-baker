@@ -107,7 +107,7 @@ sceneRegistry.register({
     targetSamples: 192,
     bounces: 1,
     casts: 3,
-    texelsPerMeter: 4,
+    texelsPerMeter: 1,
   },
   schemaVersion: 1,
 });
