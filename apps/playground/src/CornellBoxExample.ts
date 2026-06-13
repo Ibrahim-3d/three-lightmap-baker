@@ -18,6 +18,7 @@ import {
   ShaderMaterial,
   type Texture,
   Vector3,
+  Vector4,
   WebGLRenderTarget,
   WebGLRenderer,
 } from 'three';
@@ -1080,16 +1081,33 @@ export class CornellBoxExample implements BakerOrchestrator {
     const camera = this.atlasPreviewCamera!;
     const previousTarget = renderer.getRenderTarget();
     const previousAutoClear = renderer.autoClear;
+    const previousScissorTest = renderer.getScissorTest();
+    const previousScissor = renderer.getScissor(new Vector4());
+    const previousViewport = renderer.getViewport(new Vector4());
     const pixels = new Uint8Array(size * size * 4);
 
     try {
       material.uniforms.map!.value = texture;
       renderer.autoClear = true;
+      renderer.setScissorTest(false);
       renderer.setRenderTarget(target);
       renderer.render(scene, camera);
       renderer.readRenderTargetPixels(target, 0, 0, size, size, pixels);
     } finally {
       renderer.setRenderTarget(previousTarget);
+      renderer.setScissor(
+        previousScissor.x,
+        previousScissor.y,
+        previousScissor.z,
+        previousScissor.w,
+      );
+      renderer.setViewport(
+        previousViewport.x,
+        previousViewport.y,
+        previousViewport.z,
+        previousViewport.w,
+      );
+      renderer.setScissorTest(previousScissorTest);
       renderer.autoClear = previousAutoClear;
     }
 
