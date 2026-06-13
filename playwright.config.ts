@@ -1,5 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const testTimeoutMs = Number(
+  process.env.BAKER_E2E_TEST_TIMEOUT_MS ?? (process.env.CI ? 180_000 : 60_000),
+);
+
 /**
  * Playwright config for the demo e2e suite.
  *
@@ -8,11 +12,12 @@ import { defineConfig, devices } from '@playwright/test';
  *   on dual-GPU machines and `--ignore-gpu-blocklist` for blocked drivers.
  * - Boots the Vite dev server (`corepack pnpm run start`) and waits for it before launching.
  * - Base URL appends `?test=1` per spec so `window.__baker` is exposed.
- * - Per-test timeout long enough for a Draft bake (~10s on SwiftShader).
+ * - Per-test timeout keeps local runs tight while giving CI's slower browser
+ *   runner enough room for real draft bakes.
  */
 export default defineConfig({
   testDir: './tests/e2e',
-  timeout: 60_000,
+  timeout: testTimeoutMs,
   expect: { timeout: 30_000 },
   fullyParallel: false, // single browser, single tab, GPU contention
   retries: 1,
