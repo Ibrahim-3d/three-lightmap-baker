@@ -251,7 +251,7 @@ export class LightmapperMaterial extends ShaderMaterial {
                         vec3 jitter = (p0 > 0.0) ? randomSpherePoint(vec3(rnd, rand())) * p0
                                                   : vec3(0.0);
                         vec3 d = (lpos + jitter) - hitPos;
-                        s.distance = max(length(d), 1e-5);
+                        s.distance = max(length(d), 1.0e-5);
                         s.L        = d / s.distance;
                         s.emission = lcolor;
                     }
@@ -269,10 +269,10 @@ export class LightmapperMaterial extends ShaderMaterial {
                         // Spot - point source with angular cone falloff.
                         // p0 = innerAngleCos, p1 = outerAngleCos.
                         vec3 d = lpos - hitPos;
-                        s.distance = max(length(d), 1e-5);
+                        s.distance = max(length(d), 1.0e-5);
                         s.L = d / s.distance;
                         float cosAngle = dot(-s.L, ldir);
-                        float falloff  = clamp((cosAngle - p1) / max(p0 - p1, 1e-5), 0.0, 1.0);
+                        float falloff  = clamp((cosAngle - p1) / max(p0 - p1, 1.0e-5), 0.0, 1.0);
                         s.emission = lcolor * falloff;
                     }
                     else {
@@ -283,7 +283,7 @@ export class LightmapperMaterial extends ShaderMaterial {
                         vec2 luv = rnd - 0.5;
                         vec3 sample_pos = lpos + tu * (luv.x * p0) + tv * (luv.y * p1);
                         vec3 d = sample_pos - hitPos;
-                        s.distance = max(length(d), 1e-5);
+                        s.distance = max(length(d), 1.0e-5);
                         s.L = d / s.distance;
                         // One-sided emission: only emits in -ldir hemisphere.
                         s.emission = lcolor * max(0.0, dot(-s.L, ldir));
@@ -361,7 +361,7 @@ export class LightmapperMaterial extends ShaderMaterial {
                         if (b >= 2) {
                             float p = clamp(max(throughput.r, max(throughput.g, throughput.b)), 0.0, 1.0);
                             if (rand() > p) break;
-                            throughput /= max(p, 1e-4);
+                            throughput /= max(p, 1.0e-4);
                         }
 
                         // (e) Next bounce - cosine-weighted hemisphere.

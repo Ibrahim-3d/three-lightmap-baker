@@ -6,7 +6,7 @@ const DEBUG = import.meta.env.DEV;
 
 const unwrapper = new UVUnwrapper({ BufferAttribute: BufferAttribute });
 const worldScale = new Vector3();
-const UV_EPSILON = 1e-4;
+const UV_EPSILON = 1.0e-4;
 const MAX_DENSITY_PACK_ATTEMPTS = 6;
 
 export type GenerateAtlasOptions = {

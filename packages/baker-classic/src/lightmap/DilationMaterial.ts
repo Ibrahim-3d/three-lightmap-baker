@@ -38,7 +38,7 @@ export class DilationMaterial extends ShaderMaterial {
                 }
             `,
       fragmentShader: /* glsl */ `
-                #define DILATION_EMPTY_EPS 1e-6
+                #define DILATION_EMPTY_EPS 1.0e-6
 
                 uniform sampler2D map;
                 uniform sampler2D positions;

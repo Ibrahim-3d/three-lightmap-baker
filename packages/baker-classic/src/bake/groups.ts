@@ -210,7 +210,7 @@ export async function runGroupBake(
         aoMapper,
         composite,
         refinement,
-        atlasDispose: atlas.dispose,
+        atlasDispose: () => atlas.dispose(),
         resolution,
         internalResolution,
         downscale,

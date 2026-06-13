@@ -157,7 +157,9 @@ export class LightmapBaker {
       texelsPerMeter: rawOptions.texelsPerMeter ?? 0,
       perMesh: rawOptions.perMesh ?? {},
       light: {
-        position: rawOptions.light?.position ?? new Vector3(0, 10, 0),
+        position: Array.isArray(rawOptions.light?.position)
+          ? new Vector3(...(rawOptions.light!.position as unknown as [number, number, number]))
+          : (rawOptions.light?.position ?? new Vector3(0, 10, 0)),
         color: rawOptions.light?.color ?? 0xffffff,
         intensity: rawOptions.light?.intensity ?? 2.0,
         size: rawOptions.light?.size ?? 1.0,

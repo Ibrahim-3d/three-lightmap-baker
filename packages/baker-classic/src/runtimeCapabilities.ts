@@ -53,7 +53,7 @@ function detectRuntime(globals: RuntimeProbeGlobals): LightmapRuntimeKind {
 }
 
 function hasWebGL2Constructor(globals: RuntimeProbeGlobals): LightmapRuntimeFeatureStatus {
-  return typeof globals.WebGL2RenderingContext === 'function' ? 'available' : 'unknown';
+  return typeof globals.WebGL2RenderingContext === 'function' ? 'available' : 'unavailable';
 }
 
 function probeOffscreenWebGL2(globals: RuntimeProbeGlobals): LightmapRuntimeFeatureStatus {
@@ -61,9 +61,9 @@ function probeOffscreenWebGL2(globals: RuntimeProbeGlobals): LightmapRuntimeFeat
 
   try {
     const canvas = new globals.OffscreenCanvas(1, 1);
-    return canvas.getContext?.('webgl2') ? 'available' : 'unknown';
+    return canvas.getContext?.('webgl2') ? 'available' : 'unavailable';
   } catch {
-    return 'unknown';
+    return 'unavailable';
   }
 }
 

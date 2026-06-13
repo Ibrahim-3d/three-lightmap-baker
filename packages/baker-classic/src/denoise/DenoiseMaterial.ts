@@ -87,7 +87,7 @@ export class DenoiseMaterial extends ShaderMaterial {
 							aBuff += deltaFactor * walkPx;
 						}
 					}
-					return aBuff / max( zBuff, 1e-5 );
+					return aBuff / max( zBuff, 1.0e-5 );
 				}
 				void main() {
 					// Internal RT pass: stay in linear space. Downstream MeshStandardMaterial.lightMap
