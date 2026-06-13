@@ -1,18 +1,22 @@
 import {
+  Color,
   DoubleSide,
+  FloatType,
   GLSL3,
-  LinearFilter,
+  HalfFloatType,
   Mesh,
+  NearestFilter,
   NoBlending,
+  OrthographicCamera,
   RGBAFormat,
   Scene,
   ShaderMaterial,
+  Texture,
   Uniform,
   Vector2,
   WebGLRenderer,
   WebGLRenderTarget,
 } from 'three';
-import type { AtlasPartitionGroup } from '../utils/Partition';
 
 /**
  * Render world-space G-buffer atlases for a partition group.
@@ -21,12 +25,13 @@ import type { AtlasPartitionGroup } from '../utils/Partition';
  * using its Lightmap UV (uv2).
  */
 export type AtlasRenderResult = {
-  positionTexture: WebGLRenderTarget;
-  normalTexture: WebGLRenderTarget;
+  positionTexture: Texture;
+  normalTexture: Texture;
   dispose: () => void;
 };
 
 const worldPositionVertexShader = /* glsl */ `
+    in vec2 uv2;
     uniform vec2 offset;
     out vec4 vPosition;
     void main() {
@@ -56,10 +61,11 @@ const worldPositionMaterial = new ShaderMaterial({
 });
 
 const normalVertexShader = /* glsl */ `
+    in vec2 uv2;
     uniform vec2 offset;
     out vec4 vNormal;
     void main() {
-        // worldNormal calculated manually to avoid needing `normalMatrix` update
+        // worldNormal calculated manually to avoid requiring normalMatrix updates
         // for every mesh in the atlas scene.
         vec3 worldNormal = normalize(mat3(modelMatrix) * normal);
         // Alpha = 0.0 to match the prior modelMatrix * vec4(normal, 0.0) output.
@@ -94,6 +100,55 @@ const normalMaterial = new ShaderMaterial({
 });
 
 const scene = new Scene();
+const atlasCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+const dilationOffsets = [
+  { x: -2, y: -2 },
+  { x: 2, y: -2 },
+  { x: -2, y: 2 },
+  { x: 2, y: 2 },
+
+  { x: -1, y: -2 },
+  { x: 1, y: -2 },
+  { x: -2, y: -1 },
+  { x: 2, y: -1 },
+  { x: -2, y: 1 },
+  { x: 2, y: 1 },
+  { x: -1, y: 2 },
+  { x: 1, y: 2 },
+
+  { x: -2, y: 0 },
+  { x: 2, y: 0 },
+  { x: 0, y: -2 },
+  { x: 0, y: 2 },
+
+  { x: -1, y: -1 },
+  { x: 1, y: -1 },
+  { x: -1, y: 0 },
+  { x: 1, y: 0 },
+  { x: -1, y: 1 },
+  { x: 1, y: 1 },
+  { x: 0, y: -1 },
+  { x: 0, y: 1 },
+
+  { x: 0, y: 0 },
+];
+
+function makeAtlasMesh(mesh: Mesh): Mesh {
+  const clone = new Mesh(mesh.geometry, mesh.material);
+  clone.matrixAutoUpdate = false;
+  clone.matrixWorldAutoUpdate = false;
+  clone.matrix.copy(mesh.matrixWorld);
+  clone.matrixWorld.copy(mesh.matrixWorld);
+  clone.frustumCulled = false;
+  return clone;
+}
+
+function setAtlasOffset(material: ShaderMaterial, x: number, y: number): void {
+  const offset = material.uniforms.offset?.value as Vector2 | undefined;
+  if (!offset) throw new Error('[baker] atlas material missing offset uniform');
+  offset.set(x, y);
+}
 
 /**
  * Perform the atlas draw. Side effects: mutates `mesh.lightMap` and
@@ -107,9 +162,9 @@ export function renderAtlas(
 ): AtlasRenderResult {
   const rtOptions = {
     format: RGBAFormat,
-    type: renderer.capabilities.isWebGL2 ? 1016 : 1011, // FloatType or HalfFloatType
-    minFilter: LinearFilter,
-    magFilter: LinearFilter,
+    type: renderer.capabilities.isWebGL2 ? FloatType : HalfFloatType,
+    minFilter: NearestFilter,
+    magFilter: NearestFilter,
     generateMipmaps: false,
     depthBuffer: false,
     stencilBuffer: false,
@@ -121,38 +176,47 @@ export function renderAtlas(
 
   const prevRT = renderer.getRenderTarget();
   const prevAutoClear = renderer.autoClear;
-  renderer.autoClear = false;
+  const prevClearColor = new Color();
+  renderer.getClearColor(prevClearColor);
+  const prevClearAlpha = renderer.getClearAlpha();
 
-  if (clear) {
-    renderer.setRenderTarget(posRT);
-    renderer.clear();
-    renderer.setRenderTarget(normRT);
-    renderer.clear();
+  try {
+    renderer.autoClear = false;
+    renderer.setClearColor(0x000000, 0);
+
+    if (clear) {
+      renderer.setRenderTarget(posRT);
+      renderer.clear();
+      renderer.setRenderTarget(normRT);
+      renderer.clear();
+    }
+
+    scene.clear();
+    for (const m of meshes) scene.add(makeAtlasMesh(m));
+
+    const draw = (material: ShaderMaterial, target: WebGLRenderTarget): void => {
+      scene.overrideMaterial = material;
+      renderer.setRenderTarget(target);
+      for (const offset of dilationOffsets) {
+        setAtlasOffset(material, offset.x / resolution, offset.y / resolution);
+        renderer.render(scene, atlasCamera);
+      }
+      setAtlasOffset(material, 0, 0);
+    };
+
+    draw(worldPositionMaterial, posRT);
+    draw(normalMaterial, normRT);
+  } finally {
+    renderer.setRenderTarget(prevRT);
+    renderer.autoClear = prevAutoClear;
+    renderer.setClearColor(prevClearColor, prevClearAlpha);
+    scene.overrideMaterial = null;
+    scene.clear();
   }
-
-  scene.clear();
-  for (const m of meshes) {
-    scene.add(m);
-  }
-
-  // Draw positions.
-  scene.overrideMaterial = worldPositionMaterial;
-  renderer.setRenderTarget(posRT);
-  renderer.render(scene, renderer.getContext() ? (null as any) : (null as any));
-
-  // Draw normals.
-  scene.overrideMaterial = normalMaterial;
-  renderer.setRenderTarget(normRT);
-  renderer.render(scene, renderer.getContext() ? (null as any) : (null as any));
-
-  renderer.setRenderTarget(prevRT);
-  renderer.autoClear = prevAutoClear;
-  scene.overrideMaterial = null;
-  scene.clear();
 
   return {
-    positionTexture: posRT,
-    normalTexture: normRT,
+    positionTexture: posRT.texture,
+    normalTexture: normRT.texture,
     dispose: () => {
       posRT.dispose();
       normRT.dispose();
@@ -173,25 +237,29 @@ export function renderMeshToAtlas(
 ): void {
   const prevRT = renderer.getRenderTarget();
   const prevAutoClear = renderer.autoClear;
-  renderer.autoClear = false;
 
-  scene.clear();
-  scene.add(mesh);
+  try {
+    renderer.autoClear = false;
 
-  // Draw position.
-  worldPositionMaterial.uniforms.offset.value.copy(offset);
-  scene.overrideMaterial = worldPositionMaterial;
-  renderer.setRenderTarget(posRT);
-  renderer.render(scene, renderer.getContext() ? (null as any) : (null as any));
+    scene.clear();
+    scene.add(makeAtlasMesh(mesh));
 
-  // Draw normal.
-  normalMaterial.uniforms.offset.value.copy(offset);
-  scene.overrideMaterial = normalMaterial;
-  renderer.setRenderTarget(normRT);
-  renderer.render(scene, renderer.getContext() ? (null as any) : (null as any));
+    const draw = (material: ShaderMaterial, target: WebGLRenderTarget): void => {
+      scene.overrideMaterial = material;
+      renderer.setRenderTarget(target);
+      for (const halo of dilationOffsets) {
+        setAtlasOffset(material, offset.x + halo.x / posRT.width, offset.y + halo.y / posRT.height);
+        renderer.render(scene, atlasCamera);
+      }
+      setAtlasOffset(material, 0, 0);
+    };
 
-  renderer.setRenderTarget(prevRT);
-  renderer.autoClear = prevAutoClear;
-  scene.overrideMaterial = null;
-  scene.clear();
+    draw(worldPositionMaterial, posRT);
+    draw(normalMaterial, normRT);
+  } finally {
+    renderer.setRenderTarget(prevRT);
+    renderer.autoClear = prevAutoClear;
+    scene.overrideMaterial = null;
+    scene.clear();
+  }
 }

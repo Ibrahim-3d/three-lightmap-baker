@@ -203,6 +203,9 @@ export async function runGroupBake(
       opts.superSample > 1 ? createDownscale(renderer, finalInternalTex, resolution) : null;
     const finalTex = downscale?.texture ?? finalInternalTex;
 
+    const completedAtlas = atlas;
+    if (!completedAtlas) throw new BakeError('atlas render did not complete', 'bake');
+
     returned = true;
     return {
       group: {
@@ -210,13 +213,13 @@ export async function runGroupBake(
         aoMapper,
         composite,
         refinement,
-        atlasDispose: () => atlas.dispose(),
+        atlasDispose: completedAtlas.dispose,
         resolution,
         internalResolution,
         downscale,
         meshes: groupMeshes,
-        positionTex: atlas.positionTexture,
-        normalTex: atlas.normalTexture,
+        positionTex: completedAtlas.positionTexture,
+        normalTex: completedAtlas.normalTexture,
       },
       finalTex,
     };

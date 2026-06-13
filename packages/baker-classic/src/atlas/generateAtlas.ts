@@ -91,6 +91,14 @@ function restoreGeometry(geometry: BufferGeometry, snapshot: GeometrySnapshot): 
   }
 }
 
+function setPackTexelsPerUnit(enabled: boolean, texelsPerUnit: number): void {
+  if (enabled) {
+    unwrapper.packOptions.texelsPerUnit = texelsPerUnit;
+  } else {
+    delete unwrapper.packOptions.texelsPerUnit;
+  }
+}
+
 export const loadXAtlasThree = async (): Promise<void> => {
   // Only emit one line per category (at 100%). Pre-throttle was per-percent
   // → ~400 lines drowned diagnostic output.
@@ -151,7 +159,7 @@ export const generateAtlas = async (
   // G-buffer halo, so keep roughly four lightmap pixels between charts.
   unwrapper.packOptions.padding = Math.max(4, Math.ceil(packResolution / 256));
   unwrapper.packOptions.resolution = packResolution;
-  unwrapper.packOptions.texelsPerUnit = densityMode ? texelsPerUnit : undefined;
+  setPackTexelsPerUnit(densityMode, texelsPerUnit);
 
   const previousWorldScales = densityMode
     ? meshs.map((mesh) => mesh.geometry.userData.worldScale as unknown)
@@ -184,7 +192,7 @@ export const generateAtlas = async (
           if (snapshot) restoreGeometry(geometry[i]!, snapshot);
         }
       }
-      unwrapper.packOptions.texelsPerUnit = densityMode ? texelsPerUnit : undefined;
+      setPackTexelsPerUnit(densityMode, texelsPerUnit);
       const atlas = await unwrapper.packAtlas(geometry, 'uv2', 'uv');
       const uvBounds = getUv2Bounds(meshs);
       if (!densityMode || (atlas.atlasCount <= 1 && uvBounds.valid)) break;

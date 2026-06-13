@@ -67,10 +67,6 @@ export function WorldPage() {
     );
   };
 
-  // Camera reachable from the orchestrator via the scene's first child
-  // chain; we keep things loose-typed since Orchestrator doesn't expose it.
-  const camera = (app as unknown as { sceneController?: { camera?: { fov?: number } } })
-    .sceneController?.camera;
   const sc = (
     app as unknown as {
       sceneController?: {
