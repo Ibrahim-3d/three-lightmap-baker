@@ -71,6 +71,8 @@ export interface BakerOrchestrator extends Orchestrator {
   requestAORebake(): Promise<void>;
   exportFinal(): Promise<void>;
   exportSceneGLB(): Promise<void>;
+  getAtlasPreviewInfo(): { layer: string; count: number; resolution: number };
+  renderAtlasPreview(canvas: HTMLCanvasElement): boolean;
   /**
    * View-time refresh of every group's composite RT with new intensity
    * uniforms. Cheap - no rebake. Used by per-layer intensity sliders.

@@ -22,7 +22,6 @@ import {
   WebGLRenderer,
 } from 'three';
 import {
-  AtlasViewer,
   BakeFrameInfo,
   createRendererAdapter,
   exportLightmap,
@@ -32,7 +31,7 @@ import {
 } from 'baker-classic';
 import type { BakerOrchestrator } from 'baker-classic/ui';
 import type { AssetSpec } from 'shared';
-import { activeSceneId, atlasViewerVisible, bakeProgress, bakeStatus, dirtyMeshIds } from 'shared';
+import { activeSceneId, bakeProgress, bakeStatus, dirtyMeshIds } from 'shared';
 import { LAYERS } from './three/modes';
 import { BakeController } from './three/BakeController';
 import { FlyController } from './three/FlyController';
@@ -146,7 +145,12 @@ export class CornellBoxExample implements BakerOrchestrator {
   renderModeRunner: RenderModeRunner;
   ptController: PTController | null = null;
   flyController!: FlyController;
-  atlasViewer: AtlasViewer;
+  private atlasPreviewTarget: WebGLRenderTarget | null = null;
+  private atlasPreviewMaterial: ShaderMaterial | null = null;
+  private atlasPreviewScene: Scene | null = null;
+  private atlasPreviewCamera: OrthographicCamera | null = null;
+  private atlasPreviewQuad: Mesh | null = null;
+  private atlasPreviewSize = 0;
 
   options = {
     preset: 'advanced' as 'classic' | 'advanced',
@@ -255,6 +259,7 @@ export class CornellBoxExample implements BakerOrchestrator {
         layer: this.options.layer,
         texelsPerMeter: this.options.texelsPerMeter,
         lightMapSize: this.options.lightMapSize,
+        directLightEnabled: this.options.directLightEnabled,
         perMesh: this.options.perMesh,
       }),
       getVisualLight: () => this.sceneController.visualLight,
@@ -263,12 +268,6 @@ export class CornellBoxExample implements BakerOrchestrator {
       getRestoredLightmap: (mesh) => this.bakeController.getRestoredLightmap(mesh),
     });
     this.bakeController.onProgress = (info) => this.onBakeFrame(info);
-
-    // Multi-atlas overlay: corner panel that mirrors active layer's textures.
-    // Hidden by default; View → Toggle Atlas Viewer flips it on.
-    this.atlasViewer = new AtlasViewer({ size: 256, margin: 16, corner: 'br', sRGB: true });
-    this.atlasViewer.attachHeader(document.body);
-    this.atlasViewer.visible = false;
 
     this.initGLBInput();
     this.initProjectInput();
@@ -656,7 +655,7 @@ export class CornellBoxExample implements BakerOrchestrator {
     // If the user starts a bake from a debug material-swap layer (Texel Density
     // or Albedo Unlit), restore real scene materials before LightmapBaker reads
     // material colors/textures. The selected layer is re-applied after bake.
-    this.renderModeRunner.restoreSwappedMaterials();
+    this.renderModeRunner.prepareForBake();
 
     // Note: the default area light is now a regular asset-library light edited
     // directly through SceneLightPage (no options-mirror), so we no longer
@@ -955,39 +954,156 @@ export class CornellBoxExample implements BakerOrchestrator {
       } else {
         // PT mode: PTController owns the render loop - skip normal Three.js render.
         if (!this.ptController?.isActive) {
-          // renderFrame() runs the EffectComposer if postFX.master is on,
-          // otherwise a plain renderer.render. Either way the default
-          // framebuffer is updated before the atlas-viewer scissor pass.
           this.sceneController.renderFrame();
         }
-      }
-
-      // Atlas viewer overlay (toggled from View → Toggle Atlas Viewer).
-      // Skipped during PT to avoid clobbering the PT framebuffer.
-      this.atlasViewer.visible = atlasViewerVisible.value && !this.ptController?.isActive;
-      if (this.atlasViewer.visible) {
-        this.syncAtlasViewerTextures();
-        this.atlasViewer.render(this.sceneController.renderer);
       }
     };
     tick();
   }
 
-  /**
-   * Pull each bake group's texture for the current view layer and feed the
-   * atlas viewer. Texel-density and albedo layers have no per-group texture -
-   * fall back to the composite (or hide if pre-bake).
-   */
-  private syncAtlasViewerTextures(): void {
-    const layer = LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0]!;
+  private getAtlasPreviewTextures(
+    layer = LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0]!,
+  ): Texture[] {
     const groups = this.bakeController.bakeGroups;
     const texs: Texture[] = [];
     for (const g of groups) {
       const t = layer.getLightMap({ group: g }) ?? g.composite.texture;
       if (t) texs.push(t);
     }
-    this.atlasViewer.setTextures(texs);
-    this.atlasViewer.setLayerLabel(layer.label);
+    return texs;
+  }
+
+  getAtlasPreviewInfo(): { layer: string; count: number; resolution: number } {
+    const layer = LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0]!;
+    return {
+      layer: layer.label,
+      count: this.getAtlasPreviewTextures(layer).length,
+      resolution: this.options.lightMapSize,
+    };
+  }
+
+  renderAtlasPreview(canvas: HTMLCanvasElement): boolean {
+    const layer = LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0]!;
+    const textures = this.getAtlasPreviewTextures(layer);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return false;
+
+    const cssSize = Math.max(1, Math.floor(canvas.getBoundingClientRect().width || 256));
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    const size = Math.max(128, Math.floor(cssSize * dpr));
+    if (canvas.width !== size || canvas.height !== size) {
+      canvas.width = size;
+      canvas.height = size;
+    }
+
+    ctx.fillStyle = '#0b0d10';
+    ctx.fillRect(0, 0, size, size);
+    if (!textures.length) {
+      ctx.fillStyle = '#7d8794';
+      ctx.font = `${Math.max(11, Math.floor(size / 28))}px monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Bake to view atlas', size / 2, size / 2);
+      return false;
+    }
+
+    const cols = Math.ceil(Math.sqrt(textures.length));
+    const rows = Math.ceil(textures.length / cols);
+    const cell = Math.max(1, Math.floor(size / Math.max(cols, rows)));
+
+    for (let i = 0; i < textures.length; i++) {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = col * cell;
+      const y = row * cell;
+      this.paintTextureToCanvas(ctx, textures[i]!, x, y, cell);
+    }
+    return true;
+  }
+
+  private ensureAtlasPreviewResources(size: number): void {
+    if (!this.atlasPreviewTarget || this.atlasPreviewSize !== size) {
+      this.atlasPreviewTarget?.dispose();
+      this.atlasPreviewTarget = new WebGLRenderTarget(size, size, {
+        format: RGBAFormat,
+        minFilter: LinearFilter,
+        magFilter: LinearFilter,
+      });
+      this.atlasPreviewSize = size;
+    }
+    if (this.atlasPreviewMaterial) return;
+    this.atlasPreviewMaterial = new ShaderMaterial({
+      glslVersion: GLSL3,
+      blending: NoBlending,
+      depthWrite: false,
+      depthTest: false,
+      uniforms: {
+        map: { value: null as Texture | null },
+      },
+      vertexShader: `
+        out vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D map;
+        in vec2 vUv;
+        out vec4 fragColor;
+        void main() {
+          vec3 c = max(texture(map, vUv).rgb, vec3(0.0));
+          c = pow(c, vec3(1.0 / 2.2));
+          fragColor = vec4(c, 1.0);
+        }
+      `,
+    });
+    this.atlasPreviewScene = new Scene();
+    this.atlasPreviewCamera = new OrthographicCamera();
+    this.atlasPreviewQuad = new Mesh(new PlaneGeometry(2, 2), this.atlasPreviewMaterial);
+    this.atlasPreviewQuad.frustumCulled = false;
+    this.atlasPreviewScene.add(this.atlasPreviewQuad);
+  }
+
+  private paintTextureToCanvas(
+    ctx: CanvasRenderingContext2D,
+    texture: Texture,
+    x: number,
+    y: number,
+    size: number,
+  ): void {
+    this.ensureAtlasPreviewResources(size);
+    const renderer = this.sceneController.renderer;
+    const target = this.atlasPreviewTarget!;
+    const material = this.atlasPreviewMaterial!;
+    const scene = this.atlasPreviewScene!;
+    const camera = this.atlasPreviewCamera!;
+    const previousTarget = renderer.getRenderTarget();
+    const previousAutoClear = renderer.autoClear;
+    const pixels = new Uint8Array(size * size * 4);
+
+    try {
+      material.uniforms.map!.value = texture;
+      renderer.autoClear = true;
+      renderer.setRenderTarget(target);
+      renderer.render(scene, camera);
+      renderer.readRenderTargetPixels(target, 0, 0, size, size, pixels);
+    } finally {
+      renderer.setRenderTarget(previousTarget);
+      renderer.autoClear = previousAutoClear;
+    }
+
+    const image = ctx.createImageData(size, size);
+    const rowBytes = size * 4;
+    for (let row = 0; row < size; row++) {
+      const src = (size - row - 1) * rowBytes;
+      const dst = row * rowBytes;
+      image.data.set(pixels.subarray(src, src + rowBytes), dst);
+    }
+    ctx.putImageData(image, x, y);
+    ctx.strokeStyle = '#d7dde6';
+    ctx.lineWidth = Math.max(1, Math.floor(size / 128));
+    ctx.strokeRect(x + 0.5, y + 0.5, size - 1, size - 1);
   }
 
   /** Bake gate for slider/input change events. Skips mid-drag + auto-bake disabled. */

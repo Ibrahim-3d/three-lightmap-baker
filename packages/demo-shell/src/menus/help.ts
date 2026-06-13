@@ -17,7 +17,6 @@ menuRegistry.register('Help', {
         '',
         'Bake / view:',
         '  B   Re-bake (when stale)',
-        '  A   Toggle Atlas Maps viewer',
         '  F   Frame selected',
         '  G   Toggle ground grid',
         '',

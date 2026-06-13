@@ -11,7 +11,6 @@ import { registerBakerClassicUI } from 'baker-classic/ui';
 import { App, GalleryPage, PostFXPage, showToast } from 'demo-shell';
 import {
   activeSceneId,
-  atlasViewerVisible,
   bakeProgress,
   bakeStatus,
   commandHistory,
@@ -145,7 +144,7 @@ function selectSceneNodeRelative(delta: -1 | 1): void {
 }
 
 /** W/E/R = translate/rotate/scale. Escape = deselect. Delete = remove node.
- *  B = re-bake when stale. A = toggle atlas viewer. 1/3/7/0 = view orbits
+ *  B = re-bake when stale. 1/3/7/0 = view orbits
  *  (front / right / top / persp - Blender numpad convention; Shift+ = back/
  *  left/bottom). ArrowUp/ArrowDown steps through outliner selection. */
 function wireHotkeys(app: CornellBoxExample): void {
@@ -200,8 +199,6 @@ function wireHotkeys(app: CornellBoxExample): void {
     } else if (k === 'g') {
       // Toggle ground grid (matches Unity / common viewport "show grid").
       showGrid.value = !showGrid.value;
-    } else if (k === 'a') {
-      atlasViewerVisible.value = !atlasViewerVisible.value;
     } else if (e.key === '1') {
       app.sceneController.setView(e.shiftKey ? 'back' : 'front');
     } else if (e.key === '3') {

@@ -39,7 +39,6 @@ export {
   logBuffer,
   inspectorTab,
   viewLayers,
-  atlasViewerVisible,
   dirtyMeshIds,
   postFXSettings,
   eslEnvEnabled,

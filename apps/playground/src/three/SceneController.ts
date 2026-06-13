@@ -792,8 +792,7 @@ export class SceneController {
 
   /**
    * Single render entry point. Composer when master toggle is on, plain
-   * renderer otherwise. AtlasViewer and other scissor overlays still
-   * render *after* this returns, against the default framebuffer.
+   * renderer otherwise.
    */
   renderFrame(): void {
     this.syncPostFX();
