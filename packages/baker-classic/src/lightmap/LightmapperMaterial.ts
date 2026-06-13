@@ -184,7 +184,7 @@ export class LightmapperMaterial extends ShaderMaterial {
 
                 vec3 safeNormalize(vec3 v, vec3 fallback) {
                     float len2 = dot(v, v);
-                    return len2 > 1e-12 ? v * inversesqrt(len2) : fallback;
+                    return len2 > 1.0e-12 ? v * inversesqrt(len2) : fallback;
                 }
 
                 vec3 getHemisphereSample( vec3 n, vec2 uv ) {
@@ -306,7 +306,7 @@ export class LightmapperMaterial extends ShaderMaterial {
                     for (int li = 0; li < MAX_LIGHTS; li++) {
                         if (li >= lightCount) break;
                         LightSample ls = sampleLight(li, hitPos, hitNormal, rand4().xy);
-                        if (dot(ls.emission, ls.emission) <= 1e-12) continue;
+                        if (dot(ls.emission, ls.emission) <= 1.0e-12) continue;
                         float cosL = max(0.0, dot(hitNormal, ls.L));
                         if (cosL <= 0.0) continue;
                         vec3 shadowOrigin = hitPos + hitNormal * 0.001;
@@ -381,7 +381,7 @@ export class LightmapperMaterial extends ShaderMaterial {
 
                     // Empty G-buffer pixels have no surface. Do not trace rays
                     // from origin with a zero normal into the accumulation RTs.
-                    if (position.a <= 0.0 || dot(normal.xyz, normal.xyz) <= 1e-10) {
+                    if (position.a <= 0.0 || dot(normal.xyz, normal.xyz) <= 1.0e-10) {
                         directOut = vec4(0.0);
                         indirectOut = vec4(0.0);
                         return;

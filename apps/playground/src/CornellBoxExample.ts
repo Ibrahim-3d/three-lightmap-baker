@@ -148,6 +148,7 @@ export class CornellBoxExample implements BakerOrchestrator {
   flyController!: FlyController;
   private atlasPreviewTarget: WebGLRenderTarget | null = null;
   private atlasPreviewMaterial: ShaderMaterial | null = null;
+  private atlasPreviewBuffer: Uint8Array | null = null;
   private atlasPreviewScene: Scene | null = null;
   private atlasPreviewCamera: OrthographicCamera | null = null;
   private atlasPreviewQuad: Mesh | null = null;
@@ -670,6 +671,8 @@ export class CornellBoxExample implements BakerOrchestrator {
         { signal: this.activeBakeAbort.signal },
       );
     } catch (err) {
+      const aborted =
+        this.activeBakeAbort?.signal.aborted || (err instanceof Error && err.name === 'AbortError');
       const msg = err instanceof Error ? err.message : String(err);
       this.bakeInFlight = false;
       this.activeBakeAbort = null;
@@ -679,7 +682,7 @@ export class CornellBoxExample implements BakerOrchestrator {
       this.options.etaSec = 0;
       this.options.pause = true;
 
-      if (msg.includes('aborted by signal')) {
+      if (aborted || msg.includes('aborted by signal')) {
         console.info('[baker] bake cancelled');
         this.externalHooks.onStaleChange?.();
         return;
@@ -1084,7 +1087,11 @@ export class CornellBoxExample implements BakerOrchestrator {
     const previousScissorTest = renderer.getScissorTest();
     const previousScissor = renderer.getScissor(new Vector4());
     const previousViewport = renderer.getViewport(new Vector4());
-    const pixels = new Uint8Array(size * size * 4);
+
+    if (!this.atlasPreviewBuffer || this.atlasPreviewBuffer.length !== size * size * 4) {
+      this.atlasPreviewBuffer = new Uint8Array(size * size * 4);
+    }
+    const pixels = this.atlasPreviewBuffer;
 
     try {
       material.uniforms.map!.value = texture;
