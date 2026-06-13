@@ -1,6 +1,5 @@
 import {
   Color,
-  type Material,
   type Mesh,
   MeshBasicMaterial,
   type MeshStandardMaterial,

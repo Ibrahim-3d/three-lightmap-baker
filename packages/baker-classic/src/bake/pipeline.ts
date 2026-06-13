@@ -1,7 +1,7 @@
 import { Mesh, Object3D, Scene, Texture, WebGLRenderer } from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
 import { collectLightsFromScene, type PackedLight } from '../lightmap';
-import { generateAtlas } from '../atlas/generateAtlas';
+import { generateAtlas, generateAtlases } from '../atlas/generateAtlas';
 import {
   buildMaterialTextures,
   extractPerTriangleMaterials,
@@ -99,9 +99,17 @@ export async function runBakePipeline(args: BakePipelineArgs): Promise<LightmapB
   // --- 1. UV unwrap (only non-excluded meshes need UV2) ---
   const tUV0 = performance.now();
   hooks.onProgress?.('uv-unwrap', 0);
-  // Unwrap all groups at once so xatlas sees the full non-excluded set.
-  const bakeMeshes = [...groups.values()].flat();
-  await generateAtlas(bakeMeshes);
+  const meshesByGroup = [...groups.values()];
+  if (tpm > 0) {
+    // Density mode creates one render target per atlas group. Each group must
+    // receive its own full 0-1 UV2 layout, otherwise separate atlas targets
+    // still contain UVs from a global pack and density appears to do nothing.
+    await generateAtlases(meshesByGroup);
+  } else {
+    // Resolution mode preserves the legacy behavior: all non-excluded meshes
+    // sharing a resolution are unwrapped together.
+    await generateAtlas(meshesByGroup.flat());
+  }
   hooks.onProgress?.('uv-unwrap', 1);
   checkAbort('unwrap');
   const tUV1 = performance.now();
@@ -203,7 +211,7 @@ export async function runBakePipeline(args: BakePipelineArgs): Promise<LightmapB
     return s + r * r;
   }, 0);
   const stats: BakeStats = {
-    meshCount: bakeMeshes.length,
+    meshCount: meshesByGroup.flat().length,
     texelCount: totalTexels,
     raysTraced: opts.samples * opts.castsPerFrame * totalTexels,
     duration: {
