@@ -13,6 +13,7 @@ import {
   activeSceneId,
   bakeProgress,
   bakeStatus,
+  cameraFOV,
   commandHistory,
   flyActive,
   gizmoMode,
