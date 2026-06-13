@@ -102,26 +102,9 @@ const normalMaterial = new ShaderMaterial({
 const scene = new Scene();
 const atlasCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
+// One-pixel G-buffer halo is enough for the final non-mipped lightmap's
+// bilinear sampler without turning every bake group into a large render sweep.
 const dilationOffsets = [
-  { x: -2, y: -2 },
-  { x: 2, y: -2 },
-  { x: -2, y: 2 },
-  { x: 2, y: 2 },
-
-  { x: -1, y: -2 },
-  { x: 1, y: -2 },
-  { x: -2, y: -1 },
-  { x: 2, y: -1 },
-  { x: -2, y: 1 },
-  { x: 2, y: 1 },
-  { x: -1, y: 2 },
-  { x: 1, y: 2 },
-
-  { x: -2, y: 0 },
-  { x: 2, y: 0 },
-  { x: 0, y: -2 },
-  { x: 0, y: 2 },
-
   { x: -1, y: -1 },
   { x: 1, y: -1 },
   { x: -1, y: 0 },
