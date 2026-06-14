@@ -10,6 +10,7 @@ import { Color, DoubleSide, type Mesh, type MeshStandardMaterial, Object3D } fro
 import { sceneRegistry, type SceneBuildResult } from 'shared';
 import {
   addSunLight,
+  addSpawnCamera,
   applyLightmapMode,
   ESL_BASE,
   type EslLightmapMode,

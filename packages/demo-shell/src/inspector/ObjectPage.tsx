@@ -34,6 +34,7 @@ export function ObjectPage() {
   }
 
   const meshSelected = isMesh(obj);
+  const cameraSelected = !!obj.userData?.bakerCameraType;
   const options = app?.options;
   if (meshSelected && options && !options.perMesh[obj.uuid]) {
     options.perMesh[obj.uuid] = { scaleInLightmap: 1.0, exclude: false };

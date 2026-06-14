@@ -20,7 +20,7 @@ import {
   PerspectiveCamera,
   Vector2,
   Vector3,
-  } from 'three';
+} from 'three';
 import { makeBoxProjectedEnvMapPatch } from './box-projected-env';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader';

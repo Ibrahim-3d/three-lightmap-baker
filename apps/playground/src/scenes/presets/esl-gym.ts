@@ -16,6 +16,7 @@ import { sceneRegistry, type SceneBuildResult } from 'shared';
 import { createAmbientDust } from './ambient-particles';
 import {
   addSunLight,
+  addSpawnCamera,
   applyBoxProjectedEnv,
   applyLightmapMode,
   applyMeshTweaks,

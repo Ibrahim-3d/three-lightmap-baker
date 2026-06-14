@@ -1,11 +1,4 @@
-import {
-  BoxGeometry,
-  Color,
-  Mesh,
-  MeshStandardMaterial,
-  Object3D,
-  PerspectiveCamera,
-} from 'three';
+import { BoxGeometry, Color, Mesh, MeshStandardMaterial, Object3D, PerspectiveCamera } from 'three';
 import { sceneRegistry, type SceneBuildResult } from 'shared';
 
 const ROOM = 10;

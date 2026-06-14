@@ -10,7 +10,7 @@ import { signal } from '@preact/signals';
 export type LogLevel = 'info' | 'warn' | 'error';
 export type LogEntry = { ts: number; level: LogLevel; msg: string };
 
-export type SceneNodeKind = 'mesh' | 'light';
+export type SceneNodeKind = 'mesh' | 'light' | 'camera';
 export type SceneNode = {
   id: string;
   name: string;

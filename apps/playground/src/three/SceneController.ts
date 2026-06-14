@@ -19,7 +19,6 @@ import {
   NoToneMapping,
   Object3D,
   PerspectiveCamera,
-  CameraHelper,
   Plane,
   PlaneGeometry,
   PMREMGenerator,
@@ -382,8 +381,7 @@ export class SceneController {
     // scene children with `userData.bakerLightType` or `bakerCameraType` set.
     return (
       this.scene.children.find(
-        (o) =>
-          o.uuid === id && (o.userData?.bakerLightType || o.userData?.bakerCameraType),
+        (o) => o.uuid === id && (o.userData?.bakerLightType || o.userData?.bakerCameraType),
       ) ?? null
     );
   }
@@ -412,8 +410,12 @@ export class SceneController {
     kind: 'mesh' | 'light' | 'camera';
     visible: boolean;
   }[] {
-    const tree: { id: string; name: string; kind: 'mesh' | 'light' | 'camera'; visible: boolean }[] =
-      [];
+    const tree: {
+      id: string;
+      name: string;
+      kind: 'mesh' | 'light' | 'camera';
+      visible: boolean;
+    }[] = [];
     for (const m of this.meshes) {
       tree.push({
         id: m.uuid,
@@ -1086,11 +1088,7 @@ export class SceneController {
   attachNode(node: Object3D, parent: Object3D): void {
     parent.add(node);
     const mesh = node as Mesh;
-    if (
-      mesh.isMesh &&
-      !mesh.userData?.bakerLightType &&
-      !mesh.userData?.bakerCameraType
-    ) {
+    if (mesh.isMesh && !mesh.userData?.bakerLightType && !mesh.userData?.bakerCameraType) {
       // Push back into the bake set if it isn't already there.
       if (!this.meshes.find((m) => m.uuid === mesh.uuid)) {
         this.meshes.push(mesh as SceneObj);

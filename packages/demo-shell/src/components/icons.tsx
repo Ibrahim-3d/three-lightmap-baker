@@ -2,6 +2,7 @@ import type { JSX } from 'preact';
 import {
   AlertTriangle as LucideAlertTriangle,
   Box as LucideBox,
+  Camera as LucideCamera,
   ChevronDown as LucideChevronDown,
   ChevronUp as LucideChevronUp,
   Circle as LucideCircle,

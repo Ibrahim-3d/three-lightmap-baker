@@ -1,6 +1,6 @@
 import type { ComponentChildren } from 'preact';
 import { primitiveCatalog } from 'shared';
-import { Box, Circle, Cylinder, Disc, Lightbulb, Square, Sun, Triangle } from './icons';
+import { Box, Camera, Circle, Cylinder, Disc, Lightbulb, Square, Sun, Triangle } from './icons';
 
 /**
  * Asset Library panel (T-D7). Two categories: Primitives + Lights. Each tile is
@@ -60,8 +60,9 @@ type TileProps = {
     | 'lightbulb'
     | 'sun'
     | 'spot'
-    | 'area';
-  spec: { kind: 'primitive' | 'light'; id: string };
+    | 'area'
+    | 'camera';
+  spec: { kind: 'primitive' | 'light' | 'camera'; id: string };
   enabled: boolean;
 };
 

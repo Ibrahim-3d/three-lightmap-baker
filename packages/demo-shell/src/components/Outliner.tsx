@@ -1,6 +1,6 @@
 import { getOrchestrator, layout, sceneTree, selectedId, type SceneNode } from 'shared';
 import { AssetLibrary } from './AssetLibrary';
-import { Eye, EyeOff, Layers, Lightbulb, Square } from './icons';
+import { Camera, Eye, EyeOff, Layers, Lightbulb, Square } from './icons';
 import { Splitter } from './Splitter';
 
 /**
@@ -114,4 +114,3 @@ function TreeRow(props: { node: SceneNode }) {
     </li>
   );
 }
-

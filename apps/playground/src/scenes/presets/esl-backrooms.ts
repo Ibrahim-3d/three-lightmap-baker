@@ -13,6 +13,7 @@ import { createAmbientDust } from './ambient-particles';
 import {
   applyBoxProjectedEnv,
   applyLightmapMode,
+  addSpawnCamera,
   ESL_BASE,
   type EslLightmapMode,
   eulerToTarget,
