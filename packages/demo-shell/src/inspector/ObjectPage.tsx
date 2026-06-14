@@ -101,6 +101,20 @@ export function ObjectPage() {
         />
       </Section>
 
+      {cameraSelected && (
+        <Section title="Camera Settings">
+          <Row label="View">
+            <button
+              type="button"
+              class="w-full h-6 bg-bg-3 hover:bg-bg-4 border border-border rounded text-[10px] text-text-1"
+              onClick={() => getOrchestrator()?.setAsViewCamera?.(obj.uuid)}
+            >
+              Set as Viewport Camera
+            </button>
+          </Row>
+        </Section>
+      )}
+
       {entry && (
         <Section title="Bake Settings">
           <Row

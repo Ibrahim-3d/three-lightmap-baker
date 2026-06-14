@@ -36,6 +36,7 @@ const cast = <T,>(c: T) => c as unknown as IconFC;
 
 export const AlertTriangle = cast(LucideAlertTriangle);
 export const Box = cast(LucideBox);
+export const Camera = cast(LucideCamera);
 export const ChevronDown = cast(LucideChevronDown);
 export const ChevronUp = cast(LucideChevronUp);
 export const Circle = cast(LucideCircle);

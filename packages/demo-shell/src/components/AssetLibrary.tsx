@@ -116,6 +116,8 @@ function pickIcon(name: TileProps['icon']) {
       return Lightbulb;
     case 'area':
       return Square;
+    case 'camera':
+      return Camera;
     default:
       return Box;
   }

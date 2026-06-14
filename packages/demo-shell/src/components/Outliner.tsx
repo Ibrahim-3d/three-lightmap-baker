@@ -85,7 +85,13 @@ function TreeRow(props: { node: SceneNode }) {
       }}
     >
       <span class={`flex-shrink-0 ${selected ? 'text-accent' : 'text-text-2'}`}>
-        {props.node.kind === 'light' ? <Lightbulb size={12} /> : <Square size={12} />}
+        {props.node.kind === 'light' ? (
+          <Lightbulb size={12} />
+        ) : props.node.kind === 'camera' ? (
+          <Camera size={12} />
+        ) : (
+          <Square size={12} />
+        )}
       </span>
       <span class="flex-1 truncate text-[12px]">{props.node.name}</span>
       <button
@@ -108,3 +114,4 @@ function TreeRow(props: { node: SceneNode }) {
     </li>
   );
 }
+

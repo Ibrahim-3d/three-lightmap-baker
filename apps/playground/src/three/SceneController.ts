@@ -19,9 +19,11 @@ import {
   NoToneMapping,
   Object3D,
   PerspectiveCamera,
+  CameraHelper,
   Plane,
   PlaneGeometry,
   PMREMGenerator,
+  Quaternion,
   Raycaster,
   RectAreaLight,
   ReinhardToneMapping,
@@ -354,7 +356,8 @@ export class SceneController {
     // are easy to hit. Default is 1; bump to make them grab-friendly.
     if (this.raycaster.params.Line) this.raycaster.params.Line.threshold = 0.2;
     const lightGroups = this.scene.children.filter((c) => c.userData?.bakerLightType);
-    const targets: Object3D[] = [...this.meshes, ...lightGroups];
+    const cameraGroups = this.scene.children.filter((c) => c.userData?.bakerCameraType);
+    const targets: Object3D[] = [...this.meshes, ...lightGroups, ...cameraGroups];
     const hits = this.raycaster.intersectObjects(targets, true);
     if (!hits.length) return null;
     // Walk parents up the closest hit until we find either a bake mesh or the
@@ -362,7 +365,7 @@ export class SceneController {
     const meshIds = new Set(this.meshes.map((m) => m.uuid));
     let obj: Object3D | null = hits[0]!.object;
     while (obj) {
-      if (obj.userData?.bakerLightType) return obj.uuid;
+      if (obj.userData?.bakerLightType || obj.userData?.bakerCameraType) return obj.uuid;
       if (meshIds.has(obj.uuid)) return obj.uuid;
       obj = obj.parent;
     }
@@ -374,9 +377,14 @@ export class SceneController {
     if (!id) return null;
     const mesh = this.meshes.find((m) => m.uuid === id);
     if (mesh) return mesh;
-    // All lights (default area + asset-library) live as direct scene children
-    // with `userData.bakerLightType` set.
-    return this.scene.children.find((o) => o.uuid === id && o.userData?.bakerLightType) ?? null;
+    // All lights (default area + asset-library) and cameras live as direct
+    // scene children with `userData.bakerLightType` or `bakerCameraType` set.
+    return (
+      this.scene.children.find(
+        (o) =>
+          o.uuid === id && (o.userData?.bakerLightType || o.userData?.bakerCameraType),
+      ) ?? null
+    );
   }
 
   /** Attach the gizmo to a tree node (or the light dummy when null/light id).
@@ -397,8 +405,14 @@ export class SceneController {
 
   /** Build a flat tree snapshot for the Outliner. Rebuilt by the orchestrator
    *  on every scene mutation (rebuild / GLB import). */
-  buildSceneTree(): { id: string; name: string; kind: 'mesh' | 'light'; visible: boolean }[] {
-    const tree: { id: string; name: string; kind: 'mesh' | 'light'; visible: boolean }[] = [];
+  buildSceneTree(): {
+    id: string;
+    name: string;
+    kind: 'mesh' | 'light' | 'camera';
+    visible: boolean;
+  }[] {
+    const tree: { id: string; name: string; kind: 'mesh' | 'light' | 'camera'; visible: boolean }[] =
+      [];
     for (const m of this.meshes) {
       tree.push({
         id: m.uuid,
@@ -407,16 +421,25 @@ export class SceneController {
         visible: m.visible,
       });
     }
-    // All lights (default area + asset-library Point / Spot / Sun / Area) -
-    // top-level scene children carrying `userData.bakerLightType`.
+    // All lights (default area + asset-library Point / Spot / Sun / Area) and
+    // cameras - top-level scene children carrying `userData.bakerLightType` or
+    // `userData.bakerCameraType`.
     for (const child of this.scene.children) {
-      if (!child.userData?.bakerLightType) continue;
-      tree.push({
-        id: child.uuid,
-        name: child.name || 'Light',
-        kind: 'light',
-        visible: child.visible,
-      });
+      if (child.userData?.bakerLightType) {
+        tree.push({
+          id: child.uuid,
+          name: child.name || 'Light',
+          kind: 'light',
+          visible: child.visible,
+        });
+      } else if (child.userData?.bakerCameraType) {
+        tree.push({
+          id: child.uuid,
+          name: child.name || 'Camera',
+          kind: 'camera',
+          visible: child.visible,
+        });
+      }
     }
     return tree;
   }
@@ -648,7 +671,7 @@ export class SceneController {
 
   /**
    * Lazy-build the EffectComposer chain: RenderPass → SSAO → Bloom → FXAA.
-   * Built only on first \`renderFrame\` call with postFX.master = true so the
+   * Built only on first `renderFrame` call with postFX.master = true so the
    * default (composer-less) bake-QA path pays zero memory/perf cost.
    */
   private ensureComposer(): EffectComposer {
@@ -878,6 +901,32 @@ export class SceneController {
     this.controls.update();
   }
 
+  /** Snap the main viewport camera to the position and rotation of a scene camera. */
+  useCamera(id: string): void {
+    const obj = this.lookupObject(id);
+    if (!obj || !obj.userData?.bakerCameraType) return;
+
+    // The camera is the first child of the group
+    const cam = obj.children.find((c) => (c as PerspectiveCamera).isPerspectiveCamera) as
+      | PerspectiveCamera
+      | undefined;
+    if (!cam) return;
+
+    // We want to match the camera's WORLD position and rotation.
+    const wp = new Vector3();
+    const wq = new Quaternion();
+    cam.getWorldPosition(wp);
+    cam.getWorldQuaternion(wq);
+
+    this.camera.position.copy(wp);
+    this.camera.quaternion.copy(wq);
+
+    // Update OrbitControls target to be in front of the camera
+    const dir = new Vector3(0, 0, -1).applyQuaternion(wq);
+    this.controls.target.copy(wp).addScaledVector(dir, 5);
+    this.controls.update();
+  }
+
   /** Update the perspective camera FOV (in degrees) and refresh projection. */
   setCameraFov(deg: number): void {
     this.camera.fov = Math.max(1, Math.min(170, deg));
@@ -943,11 +992,11 @@ export class SceneController {
       this.meshes.push(mesh as SceneObj);
       this.hooks.installDummyLightmaps([mesh as SceneObj]);
     } else {
-      // Asset-library lights are Group objects bundling Light + Target + Helper.
-      // Parented directly to the scene so they survive cornellRoot tear-downs
-      // on preset swaps and dispose with the scene.
+      // Asset-library lights and cameras are Group objects bundling Light/Camera
+      // + Target + Helper. Parented directly to the scene so they survive
+      // cornellRoot tear-downs on preset swaps and dispose with the scene.
       this.scene.add(node);
-      // Lift to the scene's vertical mid-line so lights don't sit on the floor
+      // Lift to the scene's vertical mid-line so assets don't sit on the floor
       // and scale with the environment (a 100m scene needs more headroom than
       // a 1m one). Falls back to 2 when the scene is empty.
       const { center, size } = this.sceneBoundsOrFallback();
@@ -961,15 +1010,19 @@ export class SceneController {
   }
 
   /**
-   * Update every asset-library light helper. Three's helpers cache the
-   * light's matrixWorld + target.matrixWorld and need an explicit .update()
-   * call after any transform change. Cheap; safe to call every RAF.
+   * Update every asset-library light and camera helper. Three's helpers cache
+   * the object's matrixWorld and need an explicit .update() call after any
+   * transform change. Cheap; safe to call every RAF.
    */
-  updateLightHelpers(): void {
+  updateHelpers(): void {
     for (const child of this.scene.children) {
-      if (!child.userData?.bakerLightType) continue;
-      const helper = child.userData?.lightHelper as { update?: () => void } | undefined;
-      helper?.update?.();
+      if (child.userData?.bakerLightType) {
+        const helper = child.userData?.lightHelper as { update?: () => void } | undefined;
+        helper?.update?.();
+      } else if (child.userData?.bakerCameraType) {
+        const helper = child.userData?.cameraHelper as { update?: () => void } | undefined;
+        helper?.update?.();
+      }
     }
   }
 
@@ -1004,11 +1057,11 @@ export class SceneController {
       return { node: mesh, parent };
     }
 
-    // Any direct scene child carrying `bakerLightType` is fair game to delete
-    // - including the default area light. The user can drag a fresh one in
-    // from the asset library if they want it back.
+    // Any direct scene child carrying `bakerLightType` or `bakerCameraType` is
+    // fair game to delete - including the default area light. The user can
+    // drag a fresh one in from the asset library if they want it back.
     const target = this.scene.children.find((o) => o.uuid === id);
-    if (target?.userData?.bakerLightType) {
+    if (target?.userData?.bakerLightType || target?.userData?.bakerCameraType) {
       this.scene.remove(target);
       // If we just removed what the gizmo was attached to, detach so the
       // transform widget doesn't dangle on a freed object.
@@ -1032,7 +1085,11 @@ export class SceneController {
   attachNode(node: Object3D, parent: Object3D): void {
     parent.add(node);
     const mesh = node as Mesh;
-    if (mesh.isMesh && !mesh.userData?.bakerLightType) {
+    if (
+      mesh.isMesh &&
+      !mesh.userData?.bakerLightType &&
+      !mesh.userData?.bakerCameraType
+    ) {
       // Push back into the bake set if it isn't already there.
       if (!this.meshes.find((m) => m.uuid === mesh.uuid)) {
         this.meshes.push(mesh as SceneObj);

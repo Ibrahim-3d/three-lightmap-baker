@@ -16,6 +16,7 @@ export interface Orchestrator {
   setGizmoMode(mode: 'translate' | 'rotate' | 'scale'): void;
   setNodeVisible(id: string, visible: boolean): void;
   frameNode?(id: string): void;
+  setAsViewCamera?(id: string): void;
   getSceneTree(): SceneNode[];
   lookupObject(id: string | null): Object3D | null;
   loadScenePreset(id: string): Promise<void>;

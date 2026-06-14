@@ -910,7 +910,7 @@ export class CornellBoxExample implements BakerOrchestrator {
 
       this.flyController.tick();
       this.sceneController.syncGizmo(this.options.showGizmo);
-      this.sceneController.updateLightHelpers();
+      this.sceneController.updateHelpers();
       this.updateDirtyTracking();
 
       // Bake step.
@@ -1317,6 +1317,10 @@ export class CornellBoxExample implements BakerOrchestrator {
   frameNode(id: string): void {
     const obj = this.lookupObject(id);
     if (obj) this.sceneController.frameObject(obj);
+  }
+
+  setAsViewCamera(id: string): void {
+    this.sceneController.useCamera(id);
   }
 
   applyRefinementNow(): Promise<void> {

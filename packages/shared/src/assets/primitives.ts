@@ -391,6 +391,24 @@ function makeAreaLight(): Object3D {
   return group;
 }
 
+function makeCamera(): Object3D {
+  const group = new Group();
+  group.name = 'Camera';
+  group.userData.bakerCameraType = 'perspective';
+
+  const camera = new PerspectiveCamera(50, 1, 0.1, 10);
+  camera.name = 'Camera';
+  group.add(camera);
+
+  // Helper is visual-only
+  const helper = new CameraHelper(camera);
+  markHelperLightmapIgnore(helper);
+  group.add(helper);
+
+  group.userData.cameraHelper = helper;
+  return group;
+}
+
 /**
  * Wrap an already-created THREE light into a baker-style Group so it becomes
  * a first-class scene-tree citizen (selectable, deletable, editable through
