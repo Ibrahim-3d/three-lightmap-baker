@@ -78,9 +78,13 @@ export const runPostProcess = async (
   // SAFETY: `map` uniform is constructed in DilationMaterial; presence is invariant.
   const dilateMapU = dilate.uniforms.map;
   if (!dilateMapU) throw new Error('[baker] DilationMaterial missing `map` uniform');
+  const dilateUseSourceAlphaU = dilate.uniforms.useSourceAlpha;
+  if (!dilateUseSourceAlphaU)
+    throw new Error('[baker] DilationMaterial missing `useSourceAlpha` uniform');
 
   for (let i = 0; i < Math.max(0, opts.dilationIterations); i++) {
     dilateMapU.value = input;
+    dilateUseSourceAlphaU.value = i > 0;
     draw(dilate, write);
     input = write.texture;
     // swap

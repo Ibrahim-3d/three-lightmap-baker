@@ -71,8 +71,11 @@ export class CompositeMaterial extends ShaderMaterial {
                 out vec4 outColor;
 
                 void main() {
-                    vec3 d = texture(directTex,   vUv).rgb * directIntensity;
-                    vec3 i = texture(indirectTex, vUv).rgb * giIntensity;
+                    vec4 directSample = texture(directTex,   vUv);
+                    vec4 indirectSample = texture(indirectTex, vUv);
+                    vec3 d = directSample.rgb * directIntensity;
+                    vec3 i = indirectSample.rgb * giIntensity;
+                    float lightmapMask = max(directSample.a, indirectSample.a);
 
                     // AO remap (view-time): aoTex stores raw normalized visibility
                     // t ∈ [0,1]. Apply exponent + intensity here so tweaking those
@@ -92,7 +95,7 @@ export class CompositeMaterial extends ShaderMaterial {
                     // Guard against negative inputs that would make pow() return NaN.
                     lit = pow(max(lit, vec3(0.0)), vec3(1.0 / 1.1));
 
-                    outColor = vec4(lit, 1.0);
+                    outColor = vec4(lit, lightmapMask);
                 }
             `,
     });

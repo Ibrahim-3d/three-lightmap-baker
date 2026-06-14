@@ -29,6 +29,7 @@ export class DilationMaterial extends ShaderMaterial {
         map: { value: opts.map ?? null },
         positions: { value: opts.positions ?? null },
         resolution: { value: opts.resolution ?? 1024 },
+        useSourceAlpha: { value: false },
       },
       vertexShader: /* glsl */ `
                 out vec2 vUv;
@@ -43,6 +44,7 @@ export class DilationMaterial extends ShaderMaterial {
                 uniform sampler2D map;
                 uniform sampler2D positions;
                 uniform float resolution;
+                uniform bool useSourceAlpha;
                 in vec2 vUv;
                 out vec4 fragColor;
 
@@ -51,8 +53,8 @@ export class DilationMaterial extends ShaderMaterial {
                     float chart = texture(positions, vUv).a;
 
                     // Inside a chart - pass through.
-                    if (chart > 0.0) {
-                        fragColor = here;
+                    if (chart > DILATION_EMPTY_EPS) {
+                        fragColor = vec4(here.rgb, 1.0);
                         return;
                     }
 
@@ -65,15 +67,28 @@ export class DilationMaterial extends ShaderMaterial {
                             if (dx == 0 && dy == 0) continue;
                             vec2 uv2 = vUv + vec2(float(dx), float(dy)) * texel;
                             vec4 s = texture(map, uv2);
-                            // "non-empty" = either inside the chart or already dilated.
-                            float w = step(DILATION_EMPTY_EPS, s.r + s.g + s.b);
+                            float chartNeighbour = texture(positions, uv2).a;
+                            // First pass ignores source alpha because legacy/raw inputs may
+                            // be opaque in empty atlas space. Later passes use the alpha mask
+                            // written by this shader so black valid texels keep propagating.
+                            float priorFill = useSourceAlpha
+                                ? step(DILATION_EMPTY_EPS, s.a)
+                                : 0.0;
+                            float brightFill = step(
+                                DILATION_EMPTY_EPS,
+                                dot(max(s.rgb, vec3(0.0)), vec3(1.0))
+                            );
+                            float w = max(
+                                step(DILATION_EMPTY_EPS, chartNeighbour),
+                                max(priorFill, brightFill)
+                            );
                             sum += s.rgb * w;
                             n   += w;
                         }
                     }
                     fragColor = n > 0.0
-                        ? vec4(sum / n, here.a)
-                        : here;
+                        ? vec4(sum / n, 1.0)
+                        : vec4(0.0);
                 }
             `,
     });

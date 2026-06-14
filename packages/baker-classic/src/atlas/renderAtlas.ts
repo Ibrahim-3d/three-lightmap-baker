@@ -101,17 +101,34 @@ const normalMaterial = new ShaderMaterial({
 const scene = new Scene();
 const atlasCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
-// One-pixel G-buffer halo is enough for the final non-mipped lightmap's
-// bilinear sampler without turning every bake group into a large render sweep.
+// The raw composite is sampled directly by the viewport while refinement is
+// optional. Keep a two-pixel G-buffer halo so bilinear sampling at UV chart
+// borders does not reach the cleared atlas background.
 const dilationOffsets = [
+  { x: -2, y: -2 },
+  { x: -1, y: -2 },
+  { x: 0, y: -2 },
+  { x: 1, y: -2 },
+  { x: 2, y: -2 },
+  { x: -2, y: -1 },
   { x: -1, y: -1 },
+  { x: 0, y: -1 },
   { x: 1, y: -1 },
+  { x: 2, y: -1 },
+  { x: -2, y: 0 },
   { x: -1, y: 0 },
   { x: 1, y: 0 },
+  { x: 2, y: 0 },
+  { x: -2, y: 1 },
   { x: -1, y: 1 },
-  { x: 1, y: 1 },
-  { x: 0, y: -1 },
   { x: 0, y: 1 },
+  { x: 1, y: 1 },
+  { x: 2, y: 1 },
+  { x: -2, y: 2 },
+  { x: -1, y: 2 },
+  { x: 0, y: 2 },
+  { x: 1, y: 2 },
+  { x: 2, y: 2 },
 
   { x: 0, y: 0 },
 ];
