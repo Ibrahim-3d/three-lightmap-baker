@@ -10,6 +10,7 @@ import { Splitter } from './Splitter';
 export function Outliner() {
   const tree = sceneTree.value;
   const lights = tree.filter((n) => n.kind === 'light');
+  const cameras = tree.filter((n) => n.kind === 'camera');
   const meshes = tree.filter((n) => n.kind === 'mesh');
 
   return (
@@ -26,6 +27,7 @@ export function Outliner() {
 
       <div class="flex-1 overflow-auto">
         <TreeGroup label="Lights" nodes={lights} />
+        <TreeGroup label="Cameras" nodes={cameras} />
         <TreeGroup label="Meshes" nodes={meshes} />
         {tree.length === 0 && <div class="p-2 text-text-2 italic">Empty scene.</div>}
       </div>

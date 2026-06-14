@@ -33,6 +33,7 @@ import {
 import type { BakerOrchestrator } from 'baker-classic/ui';
 import type { AssetSpec } from 'shared';
 import {
+  activeCameraId,
   activeSceneId,
   bakeProgress,
   bakeStatus,
@@ -46,7 +47,6 @@ import { FlyController } from './three/FlyController';
 import {
   SceneController,
   type SceneControllerHooks,
-  type ScenePreset,
   type TransformSnap,
 } from './three/SceneController';
 import { RenderModeRunner } from './three/modes';
@@ -304,10 +304,22 @@ export class CornellBoxExample implements BakerOrchestrator {
 
   private onSceneChanged(): void {
     // Prune stale perMesh entries.
-    const liveUUIDs = new Set(this.sceneController.meshes.map((m) => m.uuid));
+    const meshes = this.sceneController.meshes;
+    const liveMeshUUIDs = new Set(meshes.map((m) => m.uuid));
     for (const k of Object.keys(this.options.perMesh)) {
-      if (!liveUUIDs.has(k)) delete this.options.perMesh[k];
+      if (!liveMeshUUIDs.has(k)) delete this.options.perMesh[k];
     }
+
+    // Prune stale camera signals.
+    const activeCam = activeCameraId.value;
+    const lockedCam = cameraLockId.value;
+    if (activeCam || lockedCam) {
+      const tree = this.getSceneTree();
+      const cameraIds = new Set(tree.filter((n) => n.kind === 'camera').map((n) => n.id));
+      if (activeCam && !cameraIds.has(activeCam)) activeCameraId.value = null;
+      if (lockedCam && !cameraIds.has(lockedCam)) cameraLockId.value = null;
+    }
+
     this.externalHooks.onSceneChanged?.();
   }
 
@@ -348,7 +360,7 @@ export class CornellBoxExample implements BakerOrchestrator {
   // ──────────────────────────────────────────────────────────────────────────
   private async rebuildScene(): Promise<void> {
     this.currentImportedModel = null;
-    this.sceneController.rebuildScene(this.options.preset as ScenePreset);
+    await this.loadScenePreset(this.currentScenePresetId);
     if (this.options.autoBake) await this.bake();
     this.startLoop();
   }
@@ -918,6 +930,11 @@ export class CornellBoxExample implements BakerOrchestrator {
       this.flyController.tick();
       this.sceneController.syncGizmo(this.options.showGizmo);
       this.sceneController.updateHelpers();
+
+      // If viewing through a camera, sync viewport TO it (FOV, Aspect, etc).
+      if (activeCameraId.value) {
+        this.sceneController.syncViewportToCamera(activeCameraId.value);
+      }
 
       // If a camera is locked, push viewport transform back to it.
       if (cameraLockId.value) {

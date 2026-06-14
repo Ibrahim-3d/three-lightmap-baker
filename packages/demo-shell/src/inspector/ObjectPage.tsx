@@ -16,6 +16,7 @@ import {
   TextField,
   getOrchestrator,
   cameraLockId,
+  activeCameraId,
 } from 'shared';
 
 interface BakerOrchestratorLike {
@@ -113,10 +114,21 @@ export function ObjectPage() {
             <div class="flex flex-col gap-1.5 w-full">
               <button
                 type="button"
-                class="w-full h-6 bg-bg-3 hover:bg-bg-4 border border-border rounded text-[10px] text-text-1"
-                onClick={() => getOrchestrator()?.setAsViewCamera?.(obj.uuid)}
+                class={`w-full h-6 border border-border rounded text-[10px] ${
+                  activeCameraId.value === obj.uuid
+                    ? 'bg-accent text-bg-1 border-accent'
+                    : 'bg-bg-3 hover:bg-bg-4 text-text-1'
+                }`}
+                onClick={() => {
+                  if (activeCameraId.value === obj.uuid) {
+                    activeCameraId.value = null;
+                  } else {
+                    activeCameraId.value = obj.uuid;
+                    getOrchestrator()?.setAsViewCamera?.(obj.uuid);
+                  }
+                }}
               >
-                View Camera View
+                {activeCameraId.value === obj.uuid ? 'Viewing Through Camera' : 'View Camera View'}
               </button>
               <button
                 type="button"

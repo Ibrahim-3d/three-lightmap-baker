@@ -57,6 +57,7 @@ export {
   flyActive,
   cameraFOV,
   cameraLockId,
+  activeCameraId,
   showGrid,
   showAxes,
   log,

@@ -2,7 +2,6 @@ import {
   ACESFilmicToneMapping,
   AxesHelper,
   Box3,
-  BoxGeometry,
   CineonToneMapping,
   Color,
   DoubleSide,
@@ -27,10 +26,8 @@ import {
   RectAreaLight,
   ReinhardToneMapping,
   Scene,
-  SphereGeometry,
   SRGBColorSpace,
   type Texture,
-  TorusKnotGeometry,
   Vector2,
   Vector3,
   WebGLRenderer,
@@ -67,7 +64,6 @@ import type { SceneObj } from './types';
 
 // Classic Cornell box dims: 10×10×10 unit room centered at (0, 5, 0)
 export const ROOM = 10;
-const HALF = ROOM / 2;
 
 const TONE_MAP_LOOKUP = {
   none: NoToneMapping,
@@ -452,133 +448,6 @@ export class SceneController {
     if (obj) obj.visible = visible;
   }
 
-  /** Wraps a MeshStandardMaterial so render-mode logic can find `_originalMap`. */
-  private mat(color: number, roughness = 0.95, metalness = 0.0): MeshStandardMaterial {
-    const m = new MeshStandardMaterial({ color, roughness, metalness });
-    (m as unknown as { _originalMap: Texture | null })._originalMap = null;
-    return m;
-  }
-
-  private addMesh(mesh: Mesh): SceneObj {
-    const m = mesh as SceneObj;
-    this.meshes.push(m);
-    this.cornellRoot!.add(m);
-    return m;
-  }
-
-  private buildWalls(): void {
-    const T = 0.2; // wall thickness
-    const white = this.mat(0xf0f0f0);
-    const red = this.mat(0xd62728);
-    const green = this.mat(0x2ca02c);
-
-    const floor = new Mesh(new BoxGeometry(ROOM, T, ROOM), white);
-    floor.name = 'Floor';
-    floor.position.set(0, -T / 2, 0);
-    this.addMesh(floor);
-
-    const ceil = new Mesh(new BoxGeometry(ROOM, T, ROOM), white.clone());
-    ceil.name = 'Ceiling';
-    (ceil.material as unknown as { _originalMap: Texture | null })._originalMap = null;
-    ceil.position.set(0, ROOM + T / 2, 0);
-    this.addMesh(ceil);
-
-    const back = new Mesh(new BoxGeometry(ROOM, ROOM, T), white.clone());
-    back.name = 'Back Wall';
-    (back.material as unknown as { _originalMap: Texture | null })._originalMap = null;
-    back.position.set(0, HALF, -HALF - T / 2);
-    this.addMesh(back);
-
-    const left = new Mesh(new BoxGeometry(T, ROOM, ROOM), red);
-    left.name = 'Left Wall (Red)';
-    left.position.set(-HALF - T / 2, HALF, 0);
-    this.addMesh(left);
-
-    const right = new Mesh(new BoxGeometry(T, ROOM, ROOM), green);
-    right.name = 'Right Wall (Green)';
-    right.position.set(HALF + T / 2, HALF, 0);
-    this.addMesh(right);
-  }
-
-  private buildClassicBlocks(): void {
-    const white = this.mat(0xe8e8e8);
-
-    const tall = new Mesh(new BoxGeometry(3, 6, 3), white);
-    tall.name = 'Tall Block';
-    tall.position.set(-1.8, 3, -1.5);
-    tall.rotation.y = 0.29;
-    this.addMesh(tall);
-
-    const short = new Mesh(new BoxGeometry(3, 3, 3), white.clone());
-    short.name = 'Short Block';
-    (short.material as unknown as { _originalMap: Texture | null })._originalMap = null;
-    short.position.set(1.8, 1.5, 1.5);
-    short.rotation.y = -0.29;
-    this.addMesh(short);
-  }
-
-  private buildAdvancedExtras(): void {
-    const sphere = new Mesh(new SphereGeometry(1.0, 48, 32), this.mat(0xf5f5f5, 0.4, 0.0));
-    sphere.name = 'Sphere';
-    sphere.position.set(2.4, 1.0, 3.0);
-    this.addMesh(sphere);
-
-    const knot = new Mesh(
-      new TorusKnotGeometry(0.55, 0.18, 160, 24),
-      this.mat(0xffd166, 0.55, 0.0),
-    );
-    knot.name = 'Torus Knot';
-    knot.position.set(0.0, 1.0, 2.8);
-    knot.rotation.x = Math.PI / 2;
-    this.addMesh(knot);
-
-    const accent = new Mesh(new BoxGeometry(1.2, 1.2, 1.2), this.mat(0xc77a3a, 0.8, 0.0));
-    accent.name = 'Accent Block';
-    accent.position.set(-3.5, 0.6, 2.8);
-    accent.rotation.y = 0.45;
-    this.addMesh(accent);
-  }
-
-  /**
-   * Dispose every geometry+material under `cornellRoot`, detach the root from
-   * the scene, and clear `meshes`. Single cleanup path used by `rebuildScene`,
-   * `importGLB`, and `loadPresetById` - keeps GPU resource lifetime tied to
-   * the active scene root and avoids leaks across preset swaps.
-   */
-  private disposeCornellRoot(): void {
-    if (!this.cornellRoot) return;
-    this.cornellRoot.traverse((obj) => {
-      const mesh = obj as Mesh;
-      if (!mesh.isMesh) return;
-      mesh.geometry?.dispose();
-      const mat = mesh.material as MeshStandardMaterial | MeshStandardMaterial[] | undefined;
-      if (Array.isArray(mat)) mat.forEach((mm) => mm.dispose());
-      else mat?.dispose();
-    });
-    this.scene.remove(this.cornellRoot);
-    this.cornellRoot = null;
-    this.meshes = [];
-  }
-
-  /**
-   * Rebuild Cornell scene from a preset. Tears down bake-owned GPU resources
-   * via the hook so BakeController stays internally consistent.
-   */
-  rebuildScene(preset: ScenePreset): void {
-    this.hooks.disposeBake();
-    this.disposeCornellRoot();
-    this.cornellRoot = new Object3D();
-    this.scene.add(this.cornellRoot);
-
-    this.buildWalls();
-    this.buildClassicBlocks();
-    if (preset === 'advanced') this.buildAdvancedExtras();
-
-    // Pin USE_LIGHTMAP shader variant on every mesh before first render.
-    this.hooks.installDummyLightmaps(this.meshes);
-    this.hooks.onSceneChanged(this.meshes);
-  }
-
   /**
    * Import a GLB/GLTF and replace the active scene. Bake-eligible meshes (those
    * carrying a `lightMap` field on their material) are kept; geometry is indexed
@@ -658,6 +527,9 @@ export class SceneController {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.renderer.setPixelRatio(window.devicePixelRatio);
+
+    // If we have an active camera locked or being viewed through, the
+    // CornellBoxExample tick loop will handle the property sync.
 
     if (this.composer) {
       this.composer.setSize(w, h);
@@ -944,6 +816,51 @@ export class SceneController {
     this.updateHelpers();
   }
 
+  /** Push a scene camera's properties (FOV, aspect, clipping) to the viewport camera. */
+  syncViewportToCamera(id: string): void {
+    const obj = this.lookupObject(id);
+    if (!obj || !obj.userData?.bakerCameraType) return;
+
+    const cam = obj.children.find((c) => (c as PerspectiveCamera).isPerspectiveCamera) as
+      | PerspectiveCamera
+      | undefined;
+    if (!cam) return;
+
+    // Match transform
+    const wp = new Vector3();
+    const wq = new Quaternion();
+    cam.getWorldPosition(wp);
+    cam.getWorldQuaternion(wq);
+
+    this.camera.position.copy(wp);
+    this.camera.quaternion.copy(wq);
+
+    // Match lens properties
+    if (this.camera.fov !== cam.fov) {
+      this.camera.fov = cam.fov;
+      this.camera.updateProjectionMatrix();
+    }
+    if (this.camera.near !== cam.near) {
+      this.camera.near = cam.near;
+      this.camera.updateProjectionMatrix();
+    }
+    if (this.camera.far !== cam.far) {
+      this.camera.far = cam.far;
+      this.camera.updateProjectionMatrix();
+    }
+    // Note: aspect ratio is usually controlled by the canvas/renderer size,
+    // but we copy it anyway if it differs significantly.
+    if (Math.abs(this.camera.aspect - cam.aspect) > 0.01) {
+      this.camera.aspect = cam.aspect;
+      this.camera.updateProjectionMatrix();
+    }
+
+    // Keep controls in sync
+    const dir = new Vector3(0, 0, -1).applyQuaternion(wq);
+    this.controls.target.copy(wp).addScaledVector(dir, 5);
+    this.controls.update();
+  }
+
   /** Update the perspective camera FOV (in degrees) and refresh projection. */
   setCameraFov(deg: number): void {
     this.camera.fov = Math.max(1, Math.min(170, deg));
@@ -953,6 +870,27 @@ export class SceneController {
   /** Trigger the 'stale change' hook (e.g. to invalidate bake when a locked camera moves). */
   markStale(): void {
     this.hooks.onStaleChange?.();
+  }
+
+  /**
+   * Dispose every geometry+material under `cornellRoot`, detach the root from
+   * the scene, and clear `meshes`. Single cleanup path used by `importGLB`,
+   * and `loadPresetById` - keeps GPU resource lifetime tied to the active
+   * scene root and avoids leaks across preset swaps.
+   */
+  private disposeCornellRoot(): void {
+    if (!this.cornellRoot) return;
+    this.cornellRoot.traverse((obj) => {
+      const mesh = obj as Mesh;
+      if (!mesh.isMesh) return;
+      mesh.geometry?.dispose();
+      const mat = mesh.material as MeshStandardMaterial | MeshStandardMaterial[] | undefined;
+      if (Array.isArray(mat)) mat.forEach((mm) => mm.dispose());
+      else mat?.dispose();
+    });
+    this.scene.remove(this.cornellRoot);
+    this.cornellRoot = null;
+    this.meshes = [];
   }
 
   /** Update gizmo visibility/enabled state (called from RAF). */

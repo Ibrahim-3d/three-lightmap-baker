@@ -33,6 +33,17 @@ export function AssetLibrary() {
           />
         ))}
       </Category>
+      <Category label="Cameras">
+        {primitiveCatalog.cameras.map((c) => (
+          <Tile
+            key={c.id}
+            label={c.label}
+            icon={c.icon}
+            spec={{ kind: 'camera', id: c.id }}
+            enabled
+          />
+        ))}
+      </Category>
     </div>
   );
 }

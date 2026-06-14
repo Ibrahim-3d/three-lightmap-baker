@@ -79,6 +79,10 @@ export const cameraFOV = signal<number>(50);
  *  When non-null, the viewport camera's transform is pushed back to the scene camera. */
 export const cameraLockId = signal<string | null>(null);
 
+/** The id of the scene camera we are currently "viewing through".
+ *  When non-null, the viewport camera adopts all of this camera's properties (FOV, etc). */
+export const activeCameraId = signal<string | null>(null);
+
 /**
  * Viewport editor helpers - Blender-style ground grid + RGB world axes.
  * Both default on; toggled from the View menu. Renderer reads the signals
