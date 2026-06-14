@@ -50,6 +50,7 @@ await baker.bake(scene, hooks?)
 - Demo/editor Project JSON save/load for built-in presets, imported GLB/glTF payloads, bake/editor options, baked final lightmaps, and asset-library additions, exposed as `pnpm run test:project-save-load` and wired into CI.
 - Demo/editor outliner selection ergonomics: stable selected row metadata, ArrowUp/ArrowDown selection stepping, and double-click frame-to-node. Covered by `pnpm run test:selection` and wired into CI.
 - Asset Library is the editor add path for primitives/lights; the old disabled Outliner add placeholder was removed and asset tiles are covered by `pnpm run test:asset-library` in CI.
+- 3D Camera Objects: draggable asset-library cameras with viewport-switching support and automatic preset hoisting.
 - Demo/editor undo/redo command history for add/remove/transform operations, with Edit menu items and Ctrl/Cmd keyboard shortcuts. Delete undo/redo is covered by `pnpm run test:editor-history` and wired into CI.
 - Help menu shortcut/reference text is aligned with current editor controls and repository links, with topbar menu coverage in `pnpm run test:topbar` in CI.
 - Topbar settings button opens the existing Post FX inspector tab instead of being a disabled placeholder, covered by `pnpm run test:topbar` in CI.

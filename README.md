@@ -96,6 +96,7 @@ If you've used Unity's **Progressive Lightmapper** or Unreal's **Lightmass**, yo
 - **Bake presets** - measured on the Cornell advanced scene from Draft through Final, with RTX 3050 Ti numbers listed below.
 - **Gap flood / edge dilation** - prevents black seams at UV island borders.
 - **Bilateral denoiser** - smooths noise while preserving shadow edges, guided by world-position and normal textures.
+- **3D Camera Objects** - add cameras from the Asset Library, select them in the viewport, and snap your view to match any scene camera's perspective.
 - **TypeScript** - strict mode, fully typed API.
 
 ### Coming Next
