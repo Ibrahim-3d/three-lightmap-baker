@@ -1,3 +1,4 @@
+import { type PerspectiveCamera } from 'three';
 import {
   BoolField,
   bumpObject,
@@ -36,6 +37,9 @@ export function ObjectPage() {
 
   const meshSelected = isMesh(obj);
   const cameraSelected = !!obj.userData?.bakerCameraType;
+  const cam = cameraSelected
+    ? (obj.children.find((c) => (c as PerspectiveCamera).isPerspectiveCamera) as PerspectiveCamera)
+    : null;
   const options = app?.options;
   if (meshSelected && options && !options.perMesh[obj.uuid]) {
     options.perMesh[obj.uuid] = { scaleInLightmap: 1.0, exclude: false };
@@ -136,6 +140,58 @@ export function ObjectPage() {
               </button>
             </div>
           </Row>
+          {cameraSelected && cam && (
+            <>
+              <Row label="FOV">
+                <NumberField
+                  value={cam.fov}
+                  step={1}
+                  onChange={(v) => {
+                    cam.fov = v;
+                    cam.updateProjectionMatrix();
+                    getOrchestrator()?.updateHelpers?.();
+                    markStale();
+                  }}
+                />
+              </Row>
+              <Row label="Aspect">
+                <NumberField
+                  value={cam.aspect}
+                  step={0.1}
+                  onChange={(v) => {
+                    cam.aspect = v;
+                    cam.updateProjectionMatrix();
+                    getOrchestrator()?.updateHelpers?.();
+                    markStale();
+                  }}
+                />
+              </Row>
+              <Row label="Near">
+                <NumberField
+                  value={cam.near}
+                  step={0.1}
+                  onChange={(v) => {
+                    cam.near = v;
+                    cam.updateProjectionMatrix();
+                    getOrchestrator()?.updateHelpers?.();
+                    markStale();
+                  }}
+                />
+              </Row>
+              <Row label="Far">
+                <NumberField
+                  value={cam.far}
+                  step={1}
+                  onChange={(v) => {
+                    cam.far = v;
+                    cam.updateProjectionMatrix();
+                    getOrchestrator()?.updateHelpers?.();
+                    markStale();
+                  }}
+                />
+              </Row>
+            </>
+          )}
         </Section>
       )}
 

@@ -1,4 +1,4 @@
-import type { JSX } from 'preact';
+import type { ComponentChildren } from 'preact';
 
 /**
  * Inspector field primitives. Dense rows: 24px tall, label on left, control on
@@ -6,11 +6,7 @@ import type { JSX } from 'preact';
  * theme stays in one place (`theme.css`).
  */
 
-export function Row(props: {
-  label: string;
-  children: JSX.Element | JSX.Element[];
-  hint?: string;
-}) {
+export function Row(props: { label: string; children: ComponentChildren; hint?: string }) {
   return (
     <div class="flex items-center gap-2 px-2 h-6 hover:bg-bg-2">
       <label
@@ -24,7 +20,7 @@ export function Row(props: {
   );
 }
 
-export function Section(props: { title: string; children: JSX.Element | JSX.Element[] }) {
+export function Section(props: { title: string; children: ComponentChildren }) {
   return (
     <div class="mb-1">
       <div class="px-2 py-1 text-[10px] uppercase tracking-wider text-text-2 font-semibold bg-bg-2/40">

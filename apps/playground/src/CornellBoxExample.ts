@@ -1349,6 +1349,10 @@ export class CornellBoxExample implements BakerOrchestrator {
     return cameraLockId.value === id;
   }
 
+  updateHelpers(): void {
+    this.sceneController.updateHelpers();
+  }
+
   applyRefinementNow(): Promise<void> {
     return this.applyRefinement();
   }
