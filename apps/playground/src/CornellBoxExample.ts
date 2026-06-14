@@ -161,6 +161,7 @@ export class CornellBoxExample implements BakerOrchestrator {
   private atlasPreviewCamera: OrthographicCamera | null = null;
   private atlasPreviewQuad: Mesh | null = null;
   private atlasPreviewSize = 0;
+  private lastAtlasPreviewHash = '';
 
   options = {
     preset: 'advanced' as 'classic' | 'advanced',
@@ -639,6 +640,10 @@ export class CornellBoxExample implements BakerOrchestrator {
     const materials = asset.materials ?? (asset.material ? [asset.material] : null);
     if (!materials || materials.length === 0) return;
 
+    // Restrict material restoration to primitive assets. Multi-mesh assets (lights, cameras,
+    // or future complex models) manage their own visual state or need more robust mapping.
+    if (asset.spec.kind !== 'primitive') return;
+
     let matIdx = 0;
     obj.traverse((child) => {
       if (!(child instanceof Mesh)) return;
@@ -1020,6 +1025,12 @@ export class CornellBoxExample implements BakerOrchestrator {
   renderAtlasPreview(canvas: HTMLCanvasElement): boolean {
     const layer = LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0]!;
     const textures = this.getAtlasPreviewTextures(layer);
+
+    // Performance: Skip redraw if nothing has changed. GPU-to-CPU readback is slow.
+    const currentHash = `${this.options.layer}:${this.options.samples}:${textures.length}:${canvas.width}`;
+    if (this.lastAtlasPreviewHash === currentHash) return true;
+    this.lastAtlasPreviewHash = currentHash;
+
     const ctx = canvas.getContext('2d');
     if (!ctx) return false;
 
@@ -1094,7 +1105,9 @@ export class CornellBoxExample implements BakerOrchestrator {
       `,
     });
     this.atlasPreviewScene = new Scene();
-    this.atlasPreviewCamera = new OrthographicCamera();
+    // Initialize with explicit bounds to ensure near/far planes don't clip the
+    // preview quad at Z=0.
+    this.atlasPreviewCamera = new OrthographicCamera(-1, 1, 1, -1, -1, 1);
     this.atlasPreviewQuad = new Mesh(new PlaneGeometry(2, 2), this.atlasPreviewMaterial);
     this.atlasPreviewQuad.frustumCulled = false;
     this.atlasPreviewScene.add(this.atlasPreviewQuad);

@@ -65,8 +65,10 @@ const normalVertexShader = /* glsl */ `
     uniform vec2 offset;
     out vec4 vNormal;
     void main() {
-        // Use normalMatrix for correct transformation under non-uniform scaling.
-        vec3 worldNormal = normalize(normalMatrix * normal);
+        // Use world-space normal matrix (inverse-transpose of modelMatrix) 
+        // to correctly handle non-uniform scaling.
+        mat3 worldNormalMatrix = transpose(inverse(mat3(modelMatrix)));
+        vec3 worldNormal = normalize(worldNormalMatrix * normal);
         // Alpha = 0.0 to match the prior modelMatrix * vec4(normal, 0.0) output.
         // The fragment shader emits length-checked xyz and forwards w as the
         // chart-mask convention; keeping it 0 matches the previous wire format.
