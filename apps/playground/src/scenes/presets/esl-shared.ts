@@ -15,11 +15,12 @@ import {
   DirectionalLight,
   Euler,
   Mesh,
-  type MeshStandardMaterial,
+  MeshStandardMaterial,
   Object3D,
+  PerspectiveCamera,
   Vector2,
   Vector3,
-} from 'three';
+  } from 'three';
 import { makeBoxProjectedEnvMapPatch } from './box-projected-env';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader';
@@ -85,6 +86,24 @@ export function eulerToTarget(
     ],
     fov,
   };
+}
+
+/**
+ * Spawn a PerspectiveCamera at the ESL spawn position/rotation. Hoisted by
+ * SceneController into a baker group.
+ */
+export function addSpawnCamera(
+  root: Object3D,
+  pos: [number, number, number] | Readonly<[number, number, number]>,
+  euler: [number, number, number] | Readonly<[number, number, number]>,
+  fov = 50,
+): PerspectiveCamera {
+  const cam = new PerspectiveCamera(fov, 1, 0.1, 100);
+  cam.name = 'Spawn Camera';
+  cam.position.set(pos[0], pos[1], pos[2]);
+  cam.quaternion.setFromEuler(new Euler(euler[0], euler[1], euler[2], 'YXZ'));
+  root.add(cam);
+  return cam;
 }
 
 /**

@@ -1,4 +1,4 @@
-import { BoxGeometry, Mesh, MeshStandardMaterial, Object3D } from 'three';
+import { BoxGeometry, Mesh, MeshStandardMaterial, Object3D, PerspectiveCamera } from 'three';
 import { sceneRegistry, type SceneBuildResult } from 'shared';
 
 const FLOOR = 6;
@@ -14,6 +14,13 @@ function build(parent: Object3D): SceneBuildResult {
   const root = new Object3D();
   root.name = 'sceneRoot';
   parent.add(root);
+
+  // Default scene camera (Isometric View)
+  const camera = new PerspectiveCamera(40, 1, 0.1, 100);
+  camera.name = 'Iso View';
+  camera.position.set(9, 9, 9);
+  camera.lookAt(0, 1, 0);
+  root.add(camera);
 
   const floor = new Mesh(new BoxGeometry(FLOOR, T, FLOOR), mat(0xcfa67a));
   floor.name = 'Floor';

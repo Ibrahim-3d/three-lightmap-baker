@@ -65,6 +65,8 @@ async function build(parent: Object3D): Promise<SceneBuildResult> {
   // No sun: backrooms is windowless. Ceiling-fluorescent vibe deferred to a
   // proper emissive ceiling pass; for now bake leans on skyIntensity fill.
 
+  addSpawnCamera(root, SPAWN_POS, SPAWN_EULER, 83);
+
   root.add(
     createAmbientDust([{ center: [0, -0.5, 0], size: [ENV_SIZE_X, ENV_SIZE_Z], count: 500 }]),
   );

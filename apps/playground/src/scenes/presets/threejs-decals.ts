@@ -3,6 +3,7 @@ import {
   Mesh,
   MeshStandardMaterial,
   Object3D,
+  PerspectiveCamera,
   PointLight,
   SphereGeometry,
   TorusKnotGeometry,
@@ -17,6 +18,13 @@ function build(parent: Object3D): SceneBuildResult {
   const root = new Object3D();
   root.name = 'sceneRoot';
   parent.add(root);
+
+  // Default scene camera
+  const camera = new PerspectiveCamera(45, 1, 0.1, 100);
+  camera.name = 'Close Shot';
+  camera.position.set(0, 4, 10);
+  camera.lookAt(0, 3, 0);
+  root.add(camera);
 
   // Backdrop floor + back wall for context.
   const floor = new Mesh(new BoxGeometry(20, 0.2, 20), mat(0x303030, 0.9));

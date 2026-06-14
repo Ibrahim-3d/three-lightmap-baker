@@ -58,6 +58,7 @@ import {
   postFXSettings,
   ptSettings,
   sceneRegistry,
+  wrapAsBakerCamera,
   wrapAsBakerLight,
 } from 'shared';
 import { makeGammaPass } from './postfx/GammaPass';
@@ -1147,6 +1148,7 @@ export class SceneController {
     // through the same path as asset-library lights. Done before the mesh
     // walk so the wrappers don't accidentally show up as "meshes".
     this.hoistRawLights(this.cornellRoot);
+    this.hoistRawCameras(this.cornellRoot);
 
     // Walk newly-added meshes (scoped to cornellRoot - preset content all lives
     // there by contract). Skip lightmap-ignored meshes (mirror/glass/emissive
@@ -1335,6 +1337,33 @@ export class SceneController {
     });
     for (const { light } of orphans) {
       const group = wrapAsBakerLight(light);
+      this.scene.add(group);
+    }
+  }
+
+  /**
+   * Walk a freshly-built preset root, find raw THREE.PerspectiveCamera nodes
+   * that aren't already inside a baker-style group, and wrap each in one.
+   * The wrapper is promoted to a direct scene child so it appears in the
+   * Outliner and is pickable / deletable like asset-library cameras.
+   */
+  private hoistRawCameras(root: Object3D): void {
+    const orphans: PerspectiveCamera[] = [];
+    root.traverse((obj) => {
+      if (!(obj as PerspectiveCamera).isPerspectiveCamera) return;
+      // Skip the main viewport camera if it somehow got in there (unlikely)
+      if (obj === this.camera) return;
+
+      // Skip if already inside a baker group.
+      let p: Object3D | null = obj.parent;
+      while (p) {
+        if (p.userData?.bakerCameraType) return;
+        p = p.parent;
+      }
+      orphans.push(obj as PerspectiveCamera);
+    });
+    for (const cam of orphans) {
+      const group = wrapAsBakerCamera(cam);
       this.scene.add(group);
     }
   }

@@ -71,6 +71,8 @@ async function build(parent: Object3D): Promise<SceneBuildResult> {
   applyBoxProjectedEnv(gltf.scene, [9.35794, 1, -2.42829], [37.95, 25, 66.95]);
   logFirstMaterial(gltf.scene, 'gym');
 
+  addSpawnCamera(root, SPAWN_POS, SPAWN_EULER, 56);
+
   // ESL gym uses Kloofendal HDR with sun rotated to y=4.94 rad ≈ 283°.
   // sin(4.94) ≈ -0.97, cos(4.94) ≈ 0.23. Sun comes from the west, slightly
   // back-of-camera, pitched ~45° down. direction = where sun POINTS (toward

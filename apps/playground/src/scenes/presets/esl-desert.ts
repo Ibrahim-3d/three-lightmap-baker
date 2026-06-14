@@ -54,6 +54,8 @@ async function build(parent: Object3D): Promise<SceneBuildResult> {
   applyLightmapMode(gltf.scene, mode);
   logFirstMaterial(gltf.scene, 'desert');
 
+  addSpawnCamera(root, SPAWN_POS, SPAWN_EULER, 52);
+
   // Strong outdoor sun, high above, slight tilt.
   addSunLight(root, [0.3, -0.9, 0.3], 2.5, 200);
 

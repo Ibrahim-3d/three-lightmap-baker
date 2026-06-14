@@ -3,6 +3,7 @@ import {
   Mesh,
   MeshStandardMaterial,
   Object3D,
+  PerspectiveCamera,
   PointLight,
   SphereGeometry,
 } from 'three';
@@ -20,6 +21,13 @@ function build(parent: Object3D): SceneBuildResult {
   const root = new Object3D();
   root.name = 'sceneRoot';
   parent.add(root);
+
+  // Default scene camera
+  const camera = new PerspectiveCamera(45, 1, 0.1, 100);
+  camera.name = 'Room View';
+  camera.position.set(0, 6, 20);
+  camera.lookAt(0, 5, 0);
+  root.add(camera);
 
   const wallMat = () => mat(0xe0e0e0);
 

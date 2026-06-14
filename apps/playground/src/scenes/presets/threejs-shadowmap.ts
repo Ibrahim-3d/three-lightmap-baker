@@ -6,6 +6,7 @@ import {
   Mesh,
   MeshStandardMaterial,
   Object3D,
+  PerspectiveCamera,
   SphereGeometry,
 } from 'three';
 import { sceneRegistry, type SceneBuildResult } from 'shared';
@@ -18,6 +19,13 @@ function build(parent: Object3D): SceneBuildResult {
   const root = new Object3D();
   root.name = 'sceneRoot';
   parent.add(root);
+
+  // Default scene camera
+  const camera = new PerspectiveCamera(45, 1, 0.1, 100);
+  camera.name = 'Outdoor View';
+  camera.position.set(12, 10, 18);
+  camera.lookAt(0, 1, 0);
+  root.add(camera);
 
   // Large ground plane (use a thin box for proper UV unwrapping).
   const ground = new Mesh(new BoxGeometry(40, 0.4, 40), mat(0x808080));

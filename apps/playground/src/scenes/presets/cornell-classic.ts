@@ -1,4 +1,4 @@
-import { BoxGeometry, Mesh, MeshStandardMaterial, Object3D } from 'three';
+import { BoxGeometry, Mesh, MeshStandardMaterial, Object3D, PerspectiveCamera } from 'three';
 import { sceneRegistry, type SceneBuildResult } from 'shared';
 
 const ROOM = 10;
@@ -13,6 +13,13 @@ function build(parent: Object3D): SceneBuildResult {
   const root = new Object3D();
   root.name = 'sceneRoot';
   parent.add(root);
+
+  // Default scene camera
+  const camera = new PerspectiveCamera(50, 1, 0.1, 100);
+  camera.name = 'Main View';
+  camera.position.set(0, 5, 18);
+  camera.lookAt(0, 5, 0);
+  root.add(camera);
 
   const white = () => mat(0xf0f0f0);
   const red = () => mat(0xd62728);
