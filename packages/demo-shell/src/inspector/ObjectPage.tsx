@@ -14,6 +14,7 @@ import {
   selectedId,
   TextField,
   getOrchestrator,
+  cameraLockId,
 } from 'shared';
 
 interface BakerOrchestratorLike {
@@ -105,13 +106,35 @@ export function ObjectPage() {
       {cameraSelected && (
         <Section title="Camera Settings">
           <Row label="View">
-            <button
-              type="button"
-              class="w-full h-6 bg-bg-3 hover:bg-bg-4 border border-border rounded text-[10px] text-text-1"
-              onClick={() => getOrchestrator()?.setAsViewCamera?.(obj.uuid)}
-            >
-              Set as Viewport Camera
-            </button>
+            <div class="flex flex-col gap-1.5 w-full">
+              <button
+                type="button"
+                class="w-full h-6 bg-bg-3 hover:bg-bg-4 border border-border rounded text-[10px] text-text-1"
+                onClick={() => getOrchestrator()?.setAsViewCamera?.(obj.uuid)}
+              >
+                View Camera View
+              </button>
+              <button
+                type="button"
+                class={`w-full h-6 border border-border rounded text-[10px] ${
+                  cameraLockId.value === obj.uuid
+                    ? 'bg-accent text-bg-1 border-accent'
+                    : 'bg-bg-3 hover:bg-bg-4 text-text-1'
+                }`}
+                onClick={() => {
+                  const orchestrator = getOrchestrator();
+                  if (orchestrator?.isCameraLocked?.(obj.uuid)) {
+                    orchestrator.setCameraLock?.(null);
+                  } else {
+                    orchestrator?.setCameraLock?.(obj.uuid);
+                  }
+                }}
+              >
+                {cameraLockId.value === obj.uuid
+                  ? 'Locked to Viewport'
+                  : 'Move Camera with Viewport'}
+              </button>
+            </div>
           </Row>
         </Section>
       )}

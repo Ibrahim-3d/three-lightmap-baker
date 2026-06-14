@@ -32,7 +32,14 @@ import {
 } from 'baker-classic';
 import type { BakerOrchestrator } from 'baker-classic/ui';
 import type { AssetSpec } from 'shared';
-import { activeSceneId, bakeProgress, bakeStatus, cameraFOV, dirtyMeshIds } from 'shared';
+import {
+  activeSceneId,
+  bakeProgress,
+  bakeStatus,
+  cameraFOV,
+  cameraLockId,
+  dirtyMeshIds,
+} from 'shared';
 import { LAYERS } from './three/modes';
 import { BakeController } from './three/BakeController';
 import { FlyController } from './three/FlyController';
@@ -911,6 +918,13 @@ export class CornellBoxExample implements BakerOrchestrator {
       this.flyController.tick();
       this.sceneController.syncGizmo(this.options.showGizmo);
       this.sceneController.updateHelpers();
+
+      // If a camera is locked, push viewport transform back to it.
+      if (cameraLockId.value) {
+        this.sceneController.syncCameraToViewport(cameraLockId.value);
+        this.sceneController.markStale();
+      }
+
       this.updateDirtyTracking();
 
       // Bake step.
@@ -1320,7 +1334,19 @@ export class CornellBoxExample implements BakerOrchestrator {
   }
 
   setAsViewCamera(id: string): void {
-    this.sceneController.useCamera(id);
+    this.sceneController.snapViewportToCamera(id);
+  }
+
+  setCameraLock(id: string | null): void {
+    cameraLockId.value = id;
+    if (id) {
+      this.sceneController.snapViewportToCamera(id);
+      this.sceneController.markStale();
+    }
+  }
+
+  isCameraLocked(id: string): boolean {
+    return cameraLockId.value === id;
   }
 
   applyRefinementNow(): Promise<void> {

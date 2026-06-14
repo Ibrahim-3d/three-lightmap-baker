@@ -905,7 +905,7 @@ export class SceneController {
   }
 
   /** Snap the main viewport camera to the position and rotation of a scene camera. */
-  useCamera(id: string): void {
+  snapViewportToCamera(id: string): void {
     const obj = this.lookupObject(id);
     if (!obj || !obj.userData?.bakerCameraType) return;
 
@@ -930,10 +930,29 @@ export class SceneController {
     this.controls.update();
   }
 
+  /** Push the main viewport camera's transform back to a scene camera object. */
+  syncCameraToViewport(id: string): void {
+    const obj = this.lookupObject(id);
+    if (!obj || !obj.userData?.bakerCameraType) return;
+
+    // We match the GROUP's world position/rotation to the viewport camera.
+    // (Simpler than counter-transforming the camera child).
+    obj.position.copy(this.camera.position);
+    obj.quaternion.copy(this.camera.quaternion);
+
+    // Ensure the helper updates immediately
+    this.updateHelpers();
+  }
+
   /** Update the perspective camera FOV (in degrees) and refresh projection. */
   setCameraFov(deg: number): void {
     this.camera.fov = Math.max(1, Math.min(170, deg));
     this.camera.updateProjectionMatrix();
+  }
+
+  /** Trigger the 'stale change' hook (e.g. to invalidate bake when a locked camera moves). */
+  markStale(): void {
+    this.hooks.onStaleChange?.();
   }
 
   /** Update gizmo visibility/enabled state (called from RAF). */

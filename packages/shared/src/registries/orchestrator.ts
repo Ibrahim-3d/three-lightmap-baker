@@ -17,6 +17,8 @@ export interface Orchestrator {
   setNodeVisible(id: string, visible: boolean): void;
   frameNode?(id: string): void;
   setAsViewCamera?(id: string): void;
+  setCameraLock?(id: string | null): void;
+  isCameraLocked?(id: string): boolean;
   getSceneTree(): SceneNode[];
   lookupObject(id: string | null): Object3D | null;
   loadScenePreset(id: string): Promise<void>;

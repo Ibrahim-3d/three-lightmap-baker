@@ -75,6 +75,10 @@ export const flySpeed = signal<number>(5);
 export const flyActive = signal<boolean>(false);
 export const cameraFOV = signal<number>(50);
 
+/** The id of the scene camera currently locked/synced to the viewport camera.
+ *  When non-null, the viewport camera's transform is pushed back to the scene camera. */
+export const cameraLockId = signal<string | null>(null);
+
 /**
  * Viewport editor helpers - Blender-style ground grid + RGB world axes.
  * Both default on; toggled from the View menu. Renderer reads the signals
