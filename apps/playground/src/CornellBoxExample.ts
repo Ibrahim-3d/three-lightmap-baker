@@ -149,6 +149,7 @@ export class CornellBoxExample implements BakerOrchestrator {
   private atlasPreviewTarget: WebGLRenderTarget | null = null;
   private atlasPreviewMaterial: ShaderMaterial | null = null;
   private atlasPreviewBuffer: Uint8Array | null = null;
+  private atlasPreviewImageData: ImageData | null = null;
   private atlasPreviewScene: Scene | null = null;
   private atlasPreviewCamera: OrthographicCamera | null = null;
   private atlasPreviewQuad: Mesh | null = null;
@@ -589,13 +590,10 @@ export class CornellBoxExample implements BakerOrchestrator {
   }
 
   private projectMaterials(obj: Object3D): ProjectMaterialV1[] | undefined {
-    const stack = [obj];
-    while (stack.length) {
-      const child = stack.pop();
-      if (!child) continue;
+    const results: ProjectMaterialV1[] = [];
+    obj.traverse((child) => {
       if (child instanceof Mesh) {
         const mats = Array.isArray(child.material) ? child.material : [child.material];
-        const results: ProjectMaterialV1[] = [];
         for (const mat of mats) {
           if (mat instanceof MeshStandardMaterial) {
             results.push({
@@ -605,12 +603,10 @@ export class CornellBoxExample implements BakerOrchestrator {
             });
           }
         }
-        if (results.length) return results;
       }
-      stack.push(...child.children);
-    }
+    });
 
-    return undefined;
+    return results.length ? results : undefined;
   }
 
   private applyProjectAsset(obj: Object3D, asset: ProjectAssetV1): void {
@@ -622,15 +618,18 @@ export class CornellBoxExample implements BakerOrchestrator {
     obj.userData.assetSpec = { ...asset.spec };
 
     const materials = asset.materials ?? (asset.material ? [asset.material] : null);
-    if (!materials) return;
+    if (!materials || materials.length === 0) return;
 
+    let matIdx = 0;
     obj.traverse((child) => {
       if (!(child instanceof Mesh)) return;
       const mats = Array.isArray(child.material) ? child.material : [child.material];
       for (let i = 0; i < mats.length; i++) {
         const mat = mats[i];
-        const spec = materials[i] ?? materials[0];
-        if (mat instanceof MeshStandardMaterial && spec) {
+        if (!(mat instanceof MeshStandardMaterial)) continue;
+
+        const spec = materials[matIdx++];
+        if (spec) {
           mat.color.setHex(spec.color);
           mat.roughness = spec.roughness;
           mat.metalness = spec.metalness;
@@ -674,6 +673,7 @@ export class CornellBoxExample implements BakerOrchestrator {
       const aborted =
         this.activeBakeAbort?.signal.aborted || (err instanceof Error && err.name === 'AbortError');
       const msg = err instanceof Error ? err.message : String(err);
+
       this.bakeInFlight = false;
       this.activeBakeAbort = null;
       this.bakeController.disposeAllGroups();
@@ -682,7 +682,7 @@ export class CornellBoxExample implements BakerOrchestrator {
       this.options.etaSec = 0;
       this.options.pause = true;
 
-      if (aborted || msg.includes('aborted by signal')) {
+      if (aborted) {
         console.info('[baker] bake cancelled');
         this.externalHooks.onStaleChange?.();
         return;
@@ -1118,7 +1118,10 @@ export class CornellBoxExample implements BakerOrchestrator {
       renderer.autoClear = previousAutoClear;
     }
 
-    const image = ctx.createImageData(size, size);
+    if (!this.atlasPreviewImageData || this.atlasPreviewImageData.width !== size) {
+      this.atlasPreviewImageData = ctx.createImageData(size, size);
+    }
+    const image = this.atlasPreviewImageData;
     const rowBytes = size * 4;
     for (let row = 0; row < size; row++) {
       const src = (size - row - 1) * rowBytes;

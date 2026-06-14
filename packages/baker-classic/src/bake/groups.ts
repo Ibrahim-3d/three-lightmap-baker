@@ -213,7 +213,7 @@ export async function runGroupBake(
         aoMapper,
         composite,
         refinement,
-        atlasDispose: completedAtlas.dispose,
+        atlasDispose: () => completedAtlas.dispose(),
         resolution,
         internalResolution,
         downscale,
@@ -286,9 +286,12 @@ function runMappersWithTimeoutProtection(
 
     const tick = (): void => {
       if (hooks.signal?.aborted) {
-        reject(new BakeError('aborted by signal', 'bake'));
+        const err = new BakeError('aborted by signal', 'bake');
+        err.name = 'AbortError';
+        reject(err);
         return;
       }
+
       if (ctxState.lost) {
         reject(new BakeError('webgl context lost during bake', 'context-loss'));
         return;

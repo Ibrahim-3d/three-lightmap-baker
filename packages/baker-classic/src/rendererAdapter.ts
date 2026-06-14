@@ -42,10 +42,8 @@ export function isLightmapRendererAdapter(value: unknown): value is LightmapRend
     !!value &&
     typeof value === 'object' &&
     'renderer' in value &&
-    !!(value as { renderer?: unknown }).renderer &&
-    // Harden the check: options objects passed to LightmapBaker often have a
-    // 'renderer' property but shouldn't be treated as an adapter. We check
-    // for the 'contextLossTarget' which is unique to the adapter interface.
-    ('contextLossTarget' in value || typeof (value as { label?: unknown }).label === 'string')
+    (value as { renderer?: unknown }).renderer !== null &&
+    typeof (value as { renderer?: { isWebGLRenderer?: boolean } }).renderer?.isWebGLRenderer ===
+      'boolean'
   );
 }

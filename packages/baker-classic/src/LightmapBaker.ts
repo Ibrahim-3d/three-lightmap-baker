@@ -253,10 +253,13 @@ export class LightmapBaker {
     scene.updateMatrixWorld(true);
 
     const checkAbort = (phase: BakeErrorPhase): void => {
-      if (hooks.signal?.aborted) throw new BakeError('aborted by signal', phase);
+      if (hooks.signal?.aborted) {
+        const err = new BakeError('aborted by signal', phase);
+        err.name = 'AbortError';
+        throw err;
+      }
       if (ctxState.lost) throw new BakeError('webgl context lost', 'context-loss');
     };
-
     try {
       return await runBakePipeline({
         renderer,

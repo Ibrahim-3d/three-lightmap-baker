@@ -65,9 +65,8 @@ const normalVertexShader = /* glsl */ `
     uniform vec2 offset;
     out vec4 vNormal;
     void main() {
-        // worldNormal calculated manually to avoid requiring normalMatrix updates
-        // for every mesh in the atlas scene.
-        vec3 worldNormal = normalize(mat3(modelMatrix) * normal);
+        // Use normalMatrix for correct transformation under non-uniform scaling.
+        vec3 worldNormal = normalize(normalMatrix * normal);
         // Alpha = 0.0 to match the prior modelMatrix * vec4(normal, 0.0) output.
         // The fragment shader emits length-checked xyz and forwards w as the
         // chart-mask convention; keeping it 0 matches the previous wire format.
@@ -123,6 +122,7 @@ function makeAtlasMesh(mesh: Mesh): Mesh {
   clone.matrixWorldAutoUpdate = false;
   clone.matrix.copy(mesh.matrixWorld);
   clone.matrixWorld.copy(mesh.matrixWorld);
+  clone.normalMatrix.getNormalMatrix(mesh.matrixWorld);
   clone.frustumCulled = false;
   return clone;
 }
