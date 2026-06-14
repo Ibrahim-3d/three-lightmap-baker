@@ -64,12 +64,12 @@ export function BakePage() {
             </button>
           </div>
         </Row>
-        <Row label="Density (px/m)">
+        <Row label="Density x">
           <RangeField
             value={o.texelsPerMeter}
             min={1}
-            max={50}
-            step={0.5}
+            max={8}
+            step={0.25}
             onChange={(v) => {
               o.texelsPerMeter = v;
               bumpOptions();

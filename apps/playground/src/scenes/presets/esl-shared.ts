@@ -15,8 +15,9 @@ import {
   DirectionalLight,
   Euler,
   Mesh,
-  type MeshStandardMaterial,
+  MeshStandardMaterial,
   Object3D,
+  PerspectiveCamera,
   Vector2,
   Vector3,
 } from 'three';
@@ -72,7 +73,8 @@ export function eulerToTarget(
   pos: [number, number, number],
   euler: [number, number, number],
   distance = 5,
-): { position: [number, number, number]; target: [number, number, number] } {
+  fov?: number,
+): { position: [number, number, number]; target: [number, number, number]; fov?: number } {
   const e = new Euler(euler[0], euler[1], euler[2], 'YXZ');
   const forward = new Vector3(0, 0, -1).applyEuler(e).normalize();
   return {
@@ -82,7 +84,26 @@ export function eulerToTarget(
       pos[1] + forward.y * distance,
       pos[2] + forward.z * distance,
     ],
+    fov,
   };
+}
+
+/**
+ * Spawn a PerspectiveCamera at the ESL spawn position/rotation. Hoisted by
+ * SceneController into a baker group.
+ */
+export function addSpawnCamera(
+  root: Object3D,
+  pos: [number, number, number] | Readonly<[number, number, number]>,
+  euler: [number, number, number] | Readonly<[number, number, number]>,
+  fov = 50,
+): PerspectiveCamera {
+  const cam = new PerspectiveCamera(fov, 1, 0.1, 100);
+  cam.name = 'Spawn Camera';
+  cam.position.set(pos[0], pos[1], pos[2]);
+  cam.quaternion.setFromEuler(new Euler(euler[0], euler[1], euler[2], 'YXZ'));
+  root.add(cam);
+  return cam;
 }
 
 /**

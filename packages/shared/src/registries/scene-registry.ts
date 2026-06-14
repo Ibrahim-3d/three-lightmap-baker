@@ -44,7 +44,11 @@ export type ScenePreset = {
 };
 
 export type SceneBuildResult = {
-  camera?: { position: [number, number, number]; target: [number, number, number] };
+  camera?: {
+    position: [number, number, number];
+    target: [number, number, number];
+    fov?: number;
+  };
   lightDummy?: { position: [number, number, number] };
   background?: number; // 0xRRGGBB
   /** Optional HDR equirectangular file. Loaded by the scene controller via

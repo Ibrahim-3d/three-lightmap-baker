@@ -6,6 +6,10 @@ const isBakingC = computed(() => bakeStatus.value === 'baking');
 
 function onBakeClick() {
   const app = getOrchestrator();
+  if (bakeStatus.peek() === 'baking') {
+    app?.cancelBake?.();
+    return;
+  }
   if (!app?.requestBake) return;
   void app.requestBake();
 }
@@ -30,13 +34,13 @@ export function StatusBar() {
         type="button"
         class={`flex items-center gap-1.5 px-3 py-1.5 rounded font-medium text-[12px] ${
           baking
-            ? 'bg-stale/20 text-stale border border-stale/40 cursor-wait'
+            ? 'bg-stale/20 text-stale border border-stale/40 hover:bg-stale/30'
             : stale
               ? 'bg-stale text-bg-0 hover:bg-stale/90 animate-pulse'
               : 'bg-accent text-bg-0 hover:bg-accent/90'
         }`}
         onClick={onBakeClick}
-        disabled={baking}
+        title={baking ? 'Cancel bake' : stale ? 'Re-bake' : 'Bake'}
       >
         {baking ? <Square size={12} /> : <Play size={12} fill="currentColor" />}
         <span>{baking ? 'Baking…' : stale ? 'Re-bake' : 'Bake'}</span>

@@ -9,6 +9,6 @@ export { App } from './App';
 export { GalleryPage } from './components/GalleryPage';
 export { Toast, showToast } from './components/Toast';
 export { ViewportToggle } from './components/ViewportToggle';
-export { ViewportFlySpeed } from './components/ViewportFlySpeed';
+export { ViewportCameraSettings } from './components/ViewportCameraSettings';
 export { ViewportOverlaysMenu } from './components/ViewportOverlaysMenu';
 export { PostFXPage } from './inspector/PostFXPage';

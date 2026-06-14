@@ -13,6 +13,7 @@ import { createAmbientDust } from './ambient-particles';
 import {
   applyBoxProjectedEnv,
   applyLightmapMode,
+  addSpawnCamera,
   ESL_BASE,
   type EslLightmapMode,
   eulerToTarget,
@@ -65,6 +66,8 @@ async function build(parent: Object3D): Promise<SceneBuildResult> {
   // No sun: backrooms is windowless. Ceiling-fluorescent vibe deferred to a
   // proper emissive ceiling pass; for now bake leans on skyIntensity fill.
 
+  addSpawnCamera(root, SPAWN_POS, SPAWN_EULER, 83);
+
   root.add(
     createAmbientDust([{ center: [0, -0.5, 0], size: [ENV_SIZE_X, ENV_SIZE_Z], count: 500 }]),
   );
@@ -93,6 +96,7 @@ async function build(parent: Object3D): Promise<SceneBuildResult> {
     [SPAWN_POS[0], SPAWN_POS[1], SPAWN_POS[2]],
     [SPAWN_EULER[0], SPAWN_EULER[1], SPAWN_EULER[2]],
     3,
+    83,
   );
 
   return {
@@ -123,7 +127,7 @@ sceneRegistry.register({
     targetSamples: 384,
     bounces: 3,
     casts: 6,
-    texelsPerMeter: 16,
+    texelsPerMeter: 1,
   },
   schemaVersion: 1,
 });

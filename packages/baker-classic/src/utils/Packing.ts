@@ -4,10 +4,10 @@ import { Mesh, Vector3 } from 'three';
  * Lightmap atlas bin-packing - density-aware.
  *
  * Goal: assign N meshes to M atlases so that each atlas is filled close to (but
- * not over) its capacity. The user picks ONE knob - `texelsPerMeter` - which
- * determines how many lightmap texels each square world-meter of surface gets.
- * Meshes with more world-space surface need more texels and therefore more
- * atlas area; small props share an atlas, big walls/floors get their own.
+ * not over) its capacity. The UI exposes a scene-relative density multiplier:
+ * `1` means "derive a texel density that fills one atlas with the current
+ * bakeable meshes"; higher values multiply that baseline. Internally the
+ * bin-packer still consumes resolved texels-per-world-unit values.
  *
  * This file is pure math + a greedy bin-packer. It does NOT touch the GPU,
  * does NOT modify geometry, does NOT call xatlas. The demo (and `LightmapBaker`)
@@ -21,6 +21,8 @@ const v2 = new Vector3();
 const e1 = new Vector3();
 const e2 = new Vector3();
 const cr = new Vector3();
+
+export const DEFAULT_DENSITY_FILL_RATIO = 0.95;
 
 /**
  * Sum of triangle areas in WORLD space. Walks the geometry's index buffer
@@ -86,6 +88,20 @@ export interface BinPackOptions {
   fillRatio?: number;
 }
 
+export interface DensityTexelsPerMeterOptions {
+  /** Atlas side length in texels (e.g. 1024). */
+  atlasResolution: number;
+  /**
+   * User-facing scene density multiplier. `1` fills one atlas, `2` asks for
+   * roughly 4x the atlas area, and so on.
+   */
+  densityMultiplier: number;
+  /** Per-mesh density multiplier keyed by `mesh.uuid`. */
+  perMeshScale?: Record<string, number>;
+  /** Target baseline fill for multiplier 1. Default 0.95. */
+  fillRatio?: number;
+}
+
 export interface BinAssignment {
   /** 0-indexed atlas this mesh is assigned to. */
   atlasIdx: number;
@@ -94,6 +110,41 @@ export interface BinAssignment {
   uvFraction: number;
   /** World-space surface area (units²). Cached for downstream debug logging. */
   surfaceArea: number;
+}
+
+/**
+ * Convert the user-facing density multiplier into the actual texels-per-world
+ * unit value used by xatlas and the bin-packer.
+ *
+ * Multiplier 1 is calibrated from the current scene: sum all eligible mesh
+ * surface area, include per-mesh density weights, and solve for the texel
+ * density that uses `fillRatio` of a single atlas.
+ */
+export function resolveDensityTexelsPerMeter(
+  meshes: ReadonlyArray<Mesh>,
+  opts: DensityTexelsPerMeterOptions,
+): number {
+  if (
+    !Number.isFinite(opts.densityMultiplier) ||
+    opts.densityMultiplier <= 0 ||
+    !Number.isFinite(opts.atlasResolution) ||
+    opts.atlasResolution <= 0
+  ) {
+    return 0;
+  }
+
+  let weightedSurfaceArea = 0;
+  for (const mesh of meshes) {
+    const scale = opts.perMeshScale?.[mesh.uuid] ?? 1.0;
+    weightedSurfaceArea += computeMeshSurfaceArea(mesh) * scale * scale;
+  }
+
+  if (!Number.isFinite(weightedSurfaceArea) || weightedSurfaceArea <= 0) return 0;
+
+  const fillRatio = opts.fillRatio ?? DEFAULT_DENSITY_FILL_RATIO;
+  const atlasTexels = opts.atlasResolution * opts.atlasResolution;
+  const baseline = Math.sqrt((atlasTexels * fillRatio) / weightedSurfaceArea);
+  return baseline * opts.densityMultiplier;
 }
 
 /**
@@ -115,7 +166,7 @@ export interface BinAssignment {
  * Returns one `BinAssignment` per input mesh, in input order (not sort order).
  */
 export function binPackMeshes(meshes: Mesh[], opts: BinPackOptions): BinAssignment[] {
-  const fillRatio = opts.fillRatio ?? 0.95;
+  const fillRatio = opts.fillRatio ?? DEFAULT_DENSITY_FILL_RATIO;
   const atlasTexels = opts.atlasResolution * opts.atlasResolution;
   const tpm2 = opts.texelsPerMeter * opts.texelsPerMeter;
 

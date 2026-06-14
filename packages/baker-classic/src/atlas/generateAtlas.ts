@@ -1,15 +1,102 @@
-import { BufferAttribute, Mesh } from 'three';
+import { BufferAttribute, type BufferGeometry, Mesh, Vector3 } from 'three';
 import { UVUnwrapper } from 'xatlas-three';
+import { computeMeshSurfaceArea } from '../utils/Packing';
 
 const DEBUG = import.meta.env.DEV;
 
 const unwrapper = new UVUnwrapper({ BufferAttribute: BufferAttribute });
+const worldScale = new Vector3();
+const UV_EPSILON = 1.0e-4;
+const MAX_DENSITY_PACK_ATTEMPTS = 6;
+
+export type GenerateAtlasOptions = {
+  /** Actual lightmap side length. Used by xatlas when texel density is active. */
+  resolution?: number;
+  /** Target texels per world unit. When omitted, legacy fill-the-atlas packing is used. */
+  texelsPerUnit?: number;
+  /** Per-mesh density multiplier keyed by mesh uuid. */
+  perMeshScale?: Record<string, number>;
+};
 
 enum ProgressCategory {
   AddMesh,
   ComputeCharts,
   PackCharts,
   BuildOutputMeshes,
+}
+
+function getUv2Bounds(meshs: Mesh[]): { min: number; max: number; valid: boolean } {
+  let min = Infinity;
+  let max = -Infinity;
+
+  for (const mesh of meshs) {
+    const uv2 = mesh.geometry.getAttribute('uv2');
+    if (!uv2) return { min: 0, max: 0, valid: false };
+    for (let i = 0; i < uv2.count; i++) {
+      const u = uv2.getX(i);
+      const v = uv2.getY(i);
+      if (!Number.isFinite(u) || !Number.isFinite(v)) {
+        return { min: 0, max: 0, valid: false };
+      }
+      min = Math.min(min, u, v);
+      max = Math.max(max, u, v);
+    }
+  }
+
+  return {
+    min,
+    max,
+    valid:
+      Number.isFinite(min) && Number.isFinite(max) && min >= -UV_EPSILON && max <= 1 + UV_EPSILON,
+  };
+}
+
+type GeometrySnapshot = {
+  attributes: Record<string, BufferAttribute>;
+  index: BufferAttribute | null;
+  xAtlasSubMeshes: unknown;
+  hadXAtlasSubMeshes: boolean;
+};
+
+function snapshotGeometry(geometry: BufferGeometry): GeometrySnapshot {
+  const attributes: Record<string, BufferAttribute> = {};
+  for (const [name, attribute] of Object.entries(geometry.attributes)) {
+    attributes[name] = attribute.clone() as BufferAttribute;
+  }
+  return {
+    attributes,
+    index: geometry.index ? (geometry.index.clone() as BufferAttribute) : null,
+    xAtlasSubMeshes: geometry.userData.xAtlasSubMeshes
+      ? structuredClone(geometry.userData.xAtlasSubMeshes)
+      : undefined,
+    hadXAtlasSubMeshes: Object.prototype.hasOwnProperty.call(geometry.userData, 'xAtlasSubMeshes'),
+  };
+}
+
+function restoreGeometry(geometry: BufferGeometry, snapshot: GeometrySnapshot): void {
+  for (const name of Object.keys(geometry.attributes)) {
+    geometry.deleteAttribute(name);
+  }
+  for (const [name, attribute] of Object.entries(snapshot.attributes)) {
+    geometry.setAttribute(name, attribute.clone() as BufferAttribute);
+  }
+  geometry.setIndex(snapshot.index ? (snapshot.index.clone() as BufferAttribute) : null);
+
+  if (snapshot.hadXAtlasSubMeshes) {
+    geometry.userData.xAtlasSubMeshes = snapshot.xAtlasSubMeshes
+      ? structuredClone(snapshot.xAtlasSubMeshes)
+      : snapshot.xAtlasSubMeshes;
+  } else {
+    delete geometry.userData.xAtlasSubMeshes;
+  }
+}
+
+function setPackTexelsPerUnit(enabled: boolean, texelsPerUnit: number): void {
+  if (enabled) {
+    unwrapper.packOptions.texelsPerUnit = texelsPerUnit;
+  } else {
+    delete unwrapper.packOptions.texelsPerUnit;
+  }
 }
 
 export const loadXAtlasThree = async (): Promise<void> => {
@@ -28,8 +115,8 @@ export const loadXAtlasThree = async (): Promise<void> => {
   };
   await unwrapper.loadLibrary(
     onProgress,
-    'https://cdn.jsdelivr.net/npm/xatlasjs@0.1.0/dist/xatlas.wasm',
-    'https://cdn.jsdelivr.net/npm/xatlasjs@0.1.0/dist/xatlas.js',
+    'https://cdn.jsdelivr.net/npm/xatlasjs@0.2.0/dist/xatlas.wasm',
+    'https://cdn.jsdelivr.net/npm/xatlasjs@0.2.0/dist/xatlas.js',
   );
 
   if (DEBUG) console.info('[baker] xatlas loaded');
@@ -44,24 +131,99 @@ export const loadXAtlasThree = async (): Promise<void> => {
  * MUST be serial (await between calls). For multi-atlas pipelines, see
  * `generateAtlases` below.
  */
-export const generateAtlas = async (meshs: Mesh[]): Promise<void> => {
+export const generateAtlas = async (
+  meshs: Mesh[],
+  options: GenerateAtlasOptions = {},
+): Promise<void> => {
   const geometry = meshs.map((mesh) => mesh.geometry);
+  const densityMode = options.texelsPerUnit !== undefined && options.texelsPerUnit > 0;
+  const packResolution = densityMode ? (options.resolution ?? 1024) : 4096;
+  let texelsPerUnit = options.texelsPerUnit ?? 0;
 
-  // Crucial: xatlas defaults are padding=0 and resolution=2048. With renderAtlas's
-  // +/-2-pixel dilation halo and a 1024 lightmap (so each lightmap-texel covers
-  // ~2x2 atlas-texels), zero padding causes the halo of one chart to land inside
-  // the *true footprint* of the neighbouring chart - every chart-adjacent texel
-  // reads position/normal data from the wrong surface. Symptom: "green bleed on
-  // the LEFT side of the cube while the green wall is on the RIGHT" - charts that
-  // happen to be neighbours in atlas space, not in world space.
-  //
-  // 4096 atlas resolution + 16-px padding gives >=4 lightmap-pixels of gutter on
-  // every chart boundary, more than the +/-2-px dilation halo can reach.
-  unwrapper.packOptions.padding = 16;
-  unwrapper.packOptions.resolution = 4096;
+  if (densityMode) {
+    const atlasTexels = packResolution * packResolution;
+    let demand = 0;
+    for (const mesh of meshs) {
+      const scale = options.perMeshScale?.[mesh.uuid] ?? 1.0;
+      demand +=
+        (computeMeshSurfaceArea(mesh) * texelsPerUnit * texelsPerUnit * scale * scale) /
+        atlasTexels;
+    }
+    const fillRatio = 0.95;
+    if (demand > fillRatio) {
+      texelsPerUnit *= Math.sqrt(fillRatio / demand);
+    }
+  }
 
-  // Write the shared UVs to the uv2 attribute
-  await unwrapper.packAtlas(geometry, 'uv2', 'uv');
+  // Crucial: xatlas defaults are padding=0. renderAtlas adds a +/-2 pixel
+  // G-buffer halo, so keep roughly four lightmap pixels between charts.
+  unwrapper.packOptions.padding = Math.max(4, Math.ceil(packResolution / 256));
+  unwrapper.packOptions.resolution = packResolution;
+  setPackTexelsPerUnit(densityMode, texelsPerUnit);
+
+  const previousWorldScales = densityMode
+    ? meshs.map((mesh) => mesh.geometry.userData.worldScale as unknown)
+    : [];
+
+  try {
+    if (densityMode) {
+      for (const mesh of meshs) {
+        const scale = options.perMeshScale?.[mesh.uuid] ?? 1.0;
+        mesh.getWorldScale(worldScale);
+        mesh.geometry.userData.worldScale = [
+          worldScale.x * scale,
+          worldScale.y * scale,
+          worldScale.z * scale,
+        ];
+      }
+    }
+
+    // Write the shared UVs to the uv2 attribute. In density mode xatlas can
+    // still decide one logical pack needs multiple internal atlases because
+    // chart shapes and padding are less efficient than the area estimate. Our
+    // downstream renderer expects each bake group to be one 0-1 atlas target,
+    // so retry with a lower resolved density until xatlas agrees.
+    const maxAttempts = densityMode ? MAX_DENSITY_PACK_ATTEMPTS : 1;
+    const snapshots = densityMode ? geometry.map(snapshotGeometry) : [];
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (attempt > 0) {
+        for (let i = 0; i < geometry.length; i++) {
+          const snapshot = snapshots[i];
+          if (snapshot) restoreGeometry(geometry[i]!, snapshot);
+        }
+      }
+      setPackTexelsPerUnit(densityMode, texelsPerUnit);
+      const atlas = await unwrapper.packAtlas(geometry, 'uv2', 'uv');
+      const uvBounds = getUv2Bounds(meshs);
+      if (!densityMode || (atlas.atlasCount <= 1 && uvBounds.valid)) break;
+
+      const canRetry = attempt + 1 < maxAttempts;
+      const reason =
+        atlas.atlasCount > 1
+          ? `${atlas.atlasCount} internal atlases`
+          : `uv2 bounds ${uvBounds.min.toFixed(3)}..${uvBounds.max.toFixed(3)}`;
+      if (canRetry) {
+        texelsPerUnit *= 0.85;
+        console.warn(
+          `[baker] xatlas produced ${reason} for one ${packResolution}x${packResolution} bake group; retrying at ${texelsPerUnit.toFixed(2)} texels/m`,
+        );
+      } else {
+        console.warn(
+          `[baker] xatlas still produced ${reason}; this bake group may show unmapped black areas`,
+        );
+      }
+    }
+  } finally {
+    if (densityMode) {
+      for (let i = 0; i < meshs.length; i++) {
+        const mesh = meshs[i];
+        if (!mesh) continue;
+        const prev = previousWorldScales[i];
+        if (prev === undefined) delete mesh.geometry.userData.worldScale;
+        else mesh.geometry.userData.worldScale = prev;
+      }
+    }
+  }
 };
 
 /**
@@ -78,12 +240,15 @@ export const generateAtlas = async (meshs: Mesh[]): Promise<void> => {
  * responsible for calling `renderAtlas` on the same per-bin mesh lists in
  * the same order so atlas-index mappings stay aligned.
  */
-export const generateAtlases = async (meshesByBin: Mesh[][]): Promise<void> => {
+export const generateAtlases = async (
+  meshesByBin: Mesh[][],
+  options: GenerateAtlasOptions = {},
+): Promise<void> => {
   for (let i = 0; i < meshesByBin.length; i++) {
     const bin = meshesByBin[i];
     if (!bin || bin.length === 0) continue;
     if (DEBUG)
       console.info(`[baker] xatlas bin ${i + 1}/${meshesByBin.length}: ${bin.length} meshes`);
-    await generateAtlas(bin);
+    await generateAtlas(bin, options);
   }
 };

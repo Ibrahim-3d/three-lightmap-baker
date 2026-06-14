@@ -1,3 +1,4 @@
+import { type PerspectiveCamera } from 'three';
 import {
   BoolField,
   bumpObject,
@@ -14,6 +15,8 @@ import {
   selectedId,
   TextField,
   getOrchestrator,
+  cameraLockId,
+  activeCameraId,
 } from 'shared';
 
 interface BakerOrchestratorLike {
@@ -34,6 +37,10 @@ export function ObjectPage() {
   }
 
   const meshSelected = isMesh(obj);
+  const cameraSelected = !!obj.userData?.bakerCameraType;
+  const cam = cameraSelected
+    ? (obj.children.find((c) => (c as PerspectiveCamera).isPerspectiveCamera) as PerspectiveCamera)
+    : null;
   const options = app?.options;
   if (meshSelected && options && !options.perMesh[obj.uuid]) {
     options.perMesh[obj.uuid] = { scaleInLightmap: 1.0, exclude: false };
@@ -101,11 +108,110 @@ export function ObjectPage() {
         />
       </Section>
 
+      {cameraSelected && (
+        <Section title="Camera Settings">
+          <Row label="View">
+            <div class="flex flex-col gap-1.5 w-full">
+              <button
+                type="button"
+                class={`w-full h-6 border border-border rounded text-[10px] ${
+                  activeCameraId.value === obj.uuid
+                    ? 'bg-accent text-bg-1 border-accent'
+                    : 'bg-bg-3 hover:bg-bg-4 text-text-1'
+                }`}
+                onClick={() => {
+                  if (activeCameraId.value === obj.uuid) {
+                    activeCameraId.value = null;
+                  } else {
+                    activeCameraId.value = obj.uuid;
+                    getOrchestrator()?.setAsViewCamera?.(obj.uuid);
+                  }
+                }}
+              >
+                {activeCameraId.value === obj.uuid ? 'Viewing Through Camera' : 'View Camera View'}
+              </button>
+              <button
+                type="button"
+                class={`w-full h-6 border border-border rounded text-[10px] ${
+                  cameraLockId.value === obj.uuid
+                    ? 'bg-accent text-bg-1 border-accent'
+                    : 'bg-bg-3 hover:bg-bg-4 text-text-1'
+                }`}
+                onClick={() => {
+                  const orchestrator = getOrchestrator();
+                  if (orchestrator?.isCameraLocked?.(obj.uuid)) {
+                    orchestrator.setCameraLock?.(null);
+                  } else {
+                    orchestrator?.setCameraLock?.(obj.uuid);
+                  }
+                }}
+              >
+                {cameraLockId.value === obj.uuid
+                  ? 'Locked to Viewport'
+                  : 'Move Camera with Viewport'}
+              </button>
+            </div>
+          </Row>
+          {cameraSelected && cam && (
+            <>
+              <Row label="FOV">
+                <NumberField
+                  value={cam.fov}
+                  step={1}
+                  onChange={(v) => {
+                    cam.fov = v;
+                    cam.updateProjectionMatrix();
+                    getOrchestrator()?.updateHelpers?.();
+                    markStale();
+                  }}
+                />
+              </Row>
+              <Row label="Aspect">
+                <NumberField
+                  value={cam.aspect}
+                  step={0.1}
+                  onChange={(v) => {
+                    cam.aspect = v;
+                    cam.updateProjectionMatrix();
+                    getOrchestrator()?.updateHelpers?.();
+                    markStale();
+                  }}
+                />
+              </Row>
+              <Row label="Near">
+                <NumberField
+                  value={cam.near}
+                  step={0.1}
+                  onChange={(v) => {
+                    cam.near = v;
+                    cam.updateProjectionMatrix();
+                    getOrchestrator()?.updateHelpers?.();
+                    markStale();
+                  }}
+                />
+              </Row>
+              <Row label="Far">
+                <NumberField
+                  value={cam.far}
+                  step={1}
+                  onChange={(v) => {
+                    cam.far = v;
+                    cam.updateProjectionMatrix();
+                    getOrchestrator()?.updateHelpers?.();
+                    markStale();
+                  }}
+                />
+              </Row>
+            </>
+          )}
+        </Section>
+      )}
+
       {entry && (
         <Section title="Bake Settings">
           <Row
             label="Texel Density ×"
-            hint="Multiplier on the global texels/m density for this mesh. Higher = more atlas area."
+            hint="Multiplier on this mesh's share of the scene density. Higher = more atlas area."
           >
             <RangeField
               value={entry.scaleInLightmap}

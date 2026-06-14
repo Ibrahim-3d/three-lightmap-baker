@@ -97,18 +97,15 @@ export type LightmapBakerOptions = {
   /** UV2 filtering at view time. Default 'linear'. */
   filtering?: 'linear' | 'nearest';
   /**
-   * Density-aware multi-atlas bin-packing. Texels per WORLD UNIT (typically meters)
-   * of mesh surface. When provided, the baker computes per-mesh atlas demand from
-   * world-space surface area × `texelsPerMeter²` and greedily packs meshes into
-   * one or more atlases of side `resolution`. Larger meshes auto-spawn additional
-   * atlases when one cannot hold them all at the target density.
+   * Density-aware multi-atlas bin-packing. Legacy field name: this is a
+   * scene-relative density multiplier, not raw texels per meter.
    *
-   * When NOT provided (default), the baker falls back to resolution-only grouping -
-   * all meshes share one atlas at `resolution`, OR meshes with `perMesh[uuid].resolution`
-   * overrides get their own per-resolution atlas.
+   * `1` derives the texels-per-world-unit needed to fit all eligible meshes into
+   * one atlas at `resolution`. `2` asks for roughly 4x the atlas area and may
+   * split the scene into more atlases. Per-mesh `density` values multiply local
+   * allocation before that baseline is solved.
    *
-   * Density and per-mesh `resolution` compose: a mesh with `resolution: 2048` gets
-   * its own 2048² atlas; within that atlas the bin-packer respects its `density` weight.
+   * When NOT provided (default), the baker falls back to resolution-only grouping.
    */
   texelsPerMeter?: number;
   /**

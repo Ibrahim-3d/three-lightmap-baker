@@ -1,6 +1,6 @@
 import type { ComponentChildren } from 'preact';
 import { primitiveCatalog } from 'shared';
-import { Box, Circle, Cylinder, Disc, Lightbulb, Square, Sun, Triangle } from './icons';
+import { Box, Camera, Circle, Cylinder, Disc, Lightbulb, Square, Sun, Triangle } from './icons';
 
 /**
  * Asset Library panel (T-D7). Two categories: Primitives + Lights. Each tile is
@@ -33,6 +33,17 @@ export function AssetLibrary() {
           />
         ))}
       </Category>
+      <Category label="Cameras">
+        {primitiveCatalog.cameras.map((c) => (
+          <Tile
+            key={c.id}
+            label={c.label}
+            icon={c.icon}
+            spec={{ kind: 'camera', id: c.id }}
+            enabled
+          />
+        ))}
+      </Category>
     </div>
   );
 }
@@ -60,8 +71,9 @@ type TileProps = {
     | 'lightbulb'
     | 'sun'
     | 'spot'
-    | 'area';
-  spec: { kind: 'primitive' | 'light'; id: string };
+    | 'area'
+    | 'camera';
+  spec: { kind: 'primitive' | 'light' | 'camera'; id: string };
   enabled: boolean;
 };
 
@@ -116,6 +128,8 @@ function pickIcon(name: TileProps['icon']) {
       return Lightbulb;
     case 'area':
       return Square;
+    case 'camera':
+      return Camera;
     default:
       return Box;
   }

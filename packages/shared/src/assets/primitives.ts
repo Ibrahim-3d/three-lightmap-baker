@@ -14,8 +14,11 @@ import {
   MeshBasicMaterial,
   MeshStandardMaterial,
   Object3D,
+  PerspectiveCamera,
+  CameraHelper,
   PlaneGeometry,
   PointLight,
+  Quaternion,
   RectAreaLight,
   SphereGeometry,
   SpotLight,
@@ -47,7 +50,7 @@ function hasGizmoMaterial(
  * (matches the `SceneController.mat` pattern).
  */
 
-export type AssetCategory = 'primitive' | 'light';
+export type AssetCategory = 'primitive' | 'light' | 'camera';
 
 export type AssetSpec = {
   kind: AssetCategory;
@@ -75,6 +78,13 @@ export type LightDef = {
   create: (() => Object3D) | null;
 };
 
+export type CameraDef = {
+  id: string;
+  label: string;
+  icon: 'camera';
+  create: () => Object3D;
+};
+
 function defaultMat(): MeshStandardMaterial {
   const m = new MeshStandardMaterial({ color: 0xb0b0b0, roughness: 0.8, metalness: 0 });
   (m as unknown as { _originalMap: Texture | null })._originalMap = null;
@@ -90,6 +100,7 @@ function makeMesh(name: string, geom: ConstructorParameters<typeof Mesh>[0]): Me
 export const primitiveCatalog: {
   primitives: ReadonlyArray<PrimitiveDef>;
   lights: ReadonlyArray<LightDef>;
+  cameras: ReadonlyArray<CameraDef>;
 } = {
   primitives: [
     {
@@ -161,6 +172,14 @@ export const primitiveCatalog: {
       icon: 'area',
       enabled: true,
       create: () => makeAreaLight(),
+    },
+  ],
+  cameras: [
+    {
+      id: 'perspective',
+      label: 'Camera',
+      icon: 'camera',
+      create: () => makeCamera(),
     },
   ],
 };
@@ -391,6 +410,24 @@ function makeAreaLight(): Object3D {
   return group;
 }
 
+function makeCamera(): Object3D {
+  const group = new Group();
+  group.name = 'Camera';
+  group.userData.bakerCameraType = 'perspective';
+
+  const camera = new PerspectiveCamera(50, 1, 0.1, 10);
+  camera.name = 'Camera';
+  group.add(camera);
+
+  // Helper is visual-only
+  const helper = new CameraHelper(camera);
+  markHelperLightmapIgnore(helper);
+  group.add(helper);
+
+  group.userData.cameraHelper = helper;
+  return group;
+}
+
 /**
  * Wrap an already-created THREE light into a baker-style Group so it becomes
  * a first-class scene-tree citizen (selectable, deletable, editable through
@@ -461,6 +498,34 @@ export function wrapAsBakerLight(light: Light, displayName?: string): Object3D {
   return group;
 }
 
+/**
+ * Wrap an already-created THREE camera into a baker-style Group.
+ */
+export function wrapAsBakerCamera(camera: PerspectiveCamera): Object3D {
+  const group = new Group();
+  group.name = camera.name || 'Camera';
+  group.userData.bakerCameraType = 'perspective';
+
+  const wp = camera.getWorldPosition(new Vector3());
+  const wq = camera.getWorldQuaternion(new Quaternion());
+
+  const oldParent = camera.parent;
+  if (oldParent) oldParent.remove(camera);
+
+  camera.position.set(0, 0, 0);
+  camera.quaternion.set(0, 0, 0, 1);
+  group.position.copy(wp);
+  group.quaternion.copy(wq);
+  group.add(camera);
+
+  const helper = new CameraHelper(camera);
+  markHelperLightmapIgnore(helper);
+  group.add(helper);
+
+  group.userData.cameraHelper = helper;
+  return group;
+}
+
 function detectLightType(light: Light): 'point' | 'spot' | 'directional' | 'area' {
   if (light instanceof PointLight) return 'point';
   if (light instanceof SpotLight) return 'spot';
@@ -493,6 +558,10 @@ export function createAsset(spec: AssetSpec): Object3D | null {
   if (spec.kind === 'light') {
     const def = primitiveCatalog.lights.find((l) => l.id === spec.id);
     return def && def.enabled && def.create ? def.create() : null;
+  }
+  if (spec.kind === 'camera') {
+    const def = primitiveCatalog.cameras.find((c) => c.id === spec.id);
+    return def ? def.create() : null;
   }
   return null;
 }

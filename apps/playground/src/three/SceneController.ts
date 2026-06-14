@@ -2,7 +2,6 @@ import {
   ACESFilmicToneMapping,
   AxesHelper,
   Box3,
-  BoxGeometry,
   CineonToneMapping,
   Color,
   DoubleSide,
@@ -22,16 +21,16 @@ import {
   Plane,
   PlaneGeometry,
   PMREMGenerator,
+  Quaternion,
   Raycaster,
   RectAreaLight,
   ReinhardToneMapping,
   Scene,
-  SphereGeometry,
   SRGBColorSpace,
   type Texture,
-  TorusKnotGeometry,
   Vector2,
   Vector3,
+  Vector4,
   WebGLRenderer,
 } from 'three';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader';
@@ -55,7 +54,9 @@ import {
   eslEnvEnabled,
   postFXSettings,
   ptSettings,
+  activeCameraId,
   sceneRegistry,
+  wrapAsBakerCamera,
   wrapAsBakerLight,
 } from 'shared';
 import { makeGammaPass } from './postfx/GammaPass';
@@ -65,7 +66,6 @@ import type { SceneObj } from './types';
 
 // Classic Cornell box dims: 10×10×10 unit room centered at (0, 5, 0)
 export const ROOM = 10;
-const HALF = ROOM / 2;
 
 const TONE_MAP_LOOKUP = {
   none: NoToneMapping,
@@ -162,7 +162,7 @@ export class SceneController {
     this.scene = new Scene();
     this.scene.background = new Color(0x0a0a0a);
 
-    this.camera = new PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    this.camera = new PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
     this.camera.position.set(0, 5, 18);
     this.camera.lookAt(0, 5, 0);
 
@@ -354,7 +354,8 @@ export class SceneController {
     // are easy to hit. Default is 1; bump to make them grab-friendly.
     if (this.raycaster.params.Line) this.raycaster.params.Line.threshold = 0.2;
     const lightGroups = this.scene.children.filter((c) => c.userData?.bakerLightType);
-    const targets: Object3D[] = [...this.meshes, ...lightGroups];
+    const cameraGroups = this.scene.children.filter((c) => c.userData?.bakerCameraType);
+    const targets: Object3D[] = [...this.meshes, ...lightGroups, ...cameraGroups];
     const hits = this.raycaster.intersectObjects(targets, true);
     if (!hits.length) return null;
     // Walk parents up the closest hit until we find either a bake mesh or the
@@ -362,7 +363,7 @@ export class SceneController {
     const meshIds = new Set(this.meshes.map((m) => m.uuid));
     let obj: Object3D | null = hits[0]!.object;
     while (obj) {
-      if (obj.userData?.bakerLightType) return obj.uuid;
+      if (obj.userData?.bakerLightType || obj.userData?.bakerCameraType) return obj.uuid;
       if (meshIds.has(obj.uuid)) return obj.uuid;
       obj = obj.parent;
     }
@@ -374,9 +375,13 @@ export class SceneController {
     if (!id) return null;
     const mesh = this.meshes.find((m) => m.uuid === id);
     if (mesh) return mesh;
-    // All lights (default area + asset-library) live as direct scene children
-    // with `userData.bakerLightType` set.
-    return this.scene.children.find((o) => o.uuid === id && o.userData?.bakerLightType) ?? null;
+    // All lights (default area + asset-library) and cameras live as direct
+    // scene children with `userData.bakerLightType` or `bakerCameraType` set.
+    return (
+      this.scene.children.find(
+        (o) => o.uuid === id && (o.userData?.bakerLightType || o.userData?.bakerCameraType),
+      ) ?? null
+    );
   }
 
   /** Attach the gizmo to a tree node (or the light dummy when null/light id).
@@ -397,8 +402,18 @@ export class SceneController {
 
   /** Build a flat tree snapshot for the Outliner. Rebuilt by the orchestrator
    *  on every scene mutation (rebuild / GLB import). */
-  buildSceneTree(): { id: string; name: string; kind: 'mesh' | 'light'; visible: boolean }[] {
-    const tree: { id: string; name: string; kind: 'mesh' | 'light'; visible: boolean }[] = [];
+  buildSceneTree(): {
+    id: string;
+    name: string;
+    kind: 'mesh' | 'light' | 'camera';
+    visible: boolean;
+  }[] {
+    const tree: {
+      id: string;
+      name: string;
+      kind: 'mesh' | 'light' | 'camera';
+      visible: boolean;
+    }[] = [];
     for (const m of this.meshes) {
       tree.push({
         id: m.uuid,
@@ -407,16 +422,25 @@ export class SceneController {
         visible: m.visible,
       });
     }
-    // All lights (default area + asset-library Point / Spot / Sun / Area) -
-    // top-level scene children carrying `userData.bakerLightType`.
+    // All lights (default area + asset-library Point / Spot / Sun / Area) and
+    // cameras - top-level scene children carrying `userData.bakerLightType` or
+    // `userData.bakerCameraType`.
     for (const child of this.scene.children) {
-      if (!child.userData?.bakerLightType) continue;
-      tree.push({
-        id: child.uuid,
-        name: child.name || 'Light',
-        kind: 'light',
-        visible: child.visible,
-      });
+      if (child.userData?.bakerLightType) {
+        tree.push({
+          id: child.uuid,
+          name: child.name || 'Light',
+          kind: 'light',
+          visible: child.visible,
+        });
+      } else if (child.userData?.bakerCameraType) {
+        tree.push({
+          id: child.uuid,
+          name: child.name || 'Camera',
+          kind: 'camera',
+          visible: child.visible,
+        });
+      }
     }
     return tree;
   }
@@ -426,133 +450,6 @@ export class SceneController {
     if (obj) obj.visible = visible;
   }
 
-  /** Wraps a MeshStandardMaterial so render-mode logic can find `_originalMap`. */
-  private mat(color: number, roughness = 0.95, metalness = 0.0): MeshStandardMaterial {
-    const m = new MeshStandardMaterial({ color, roughness, metalness });
-    (m as unknown as { _originalMap: Texture | null })._originalMap = null;
-    return m;
-  }
-
-  private addMesh(mesh: Mesh): SceneObj {
-    const m = mesh as SceneObj;
-    this.meshes.push(m);
-    this.cornellRoot!.add(m);
-    return m;
-  }
-
-  private buildWalls(): void {
-    const T = 0.2; // wall thickness
-    const white = this.mat(0xf0f0f0);
-    const red = this.mat(0xd62728);
-    const green = this.mat(0x2ca02c);
-
-    const floor = new Mesh(new BoxGeometry(ROOM, T, ROOM), white);
-    floor.name = 'Floor';
-    floor.position.set(0, -T / 2, 0);
-    this.addMesh(floor);
-
-    const ceil = new Mesh(new BoxGeometry(ROOM, T, ROOM), white.clone());
-    ceil.name = 'Ceiling';
-    (ceil.material as unknown as { _originalMap: Texture | null })._originalMap = null;
-    ceil.position.set(0, ROOM + T / 2, 0);
-    this.addMesh(ceil);
-
-    const back = new Mesh(new BoxGeometry(ROOM, ROOM, T), white.clone());
-    back.name = 'Back Wall';
-    (back.material as unknown as { _originalMap: Texture | null })._originalMap = null;
-    back.position.set(0, HALF, -HALF - T / 2);
-    this.addMesh(back);
-
-    const left = new Mesh(new BoxGeometry(T, ROOM, ROOM), red);
-    left.name = 'Left Wall (Red)';
-    left.position.set(-HALF - T / 2, HALF, 0);
-    this.addMesh(left);
-
-    const right = new Mesh(new BoxGeometry(T, ROOM, ROOM), green);
-    right.name = 'Right Wall (Green)';
-    right.position.set(HALF + T / 2, HALF, 0);
-    this.addMesh(right);
-  }
-
-  private buildClassicBlocks(): void {
-    const white = this.mat(0xe8e8e8);
-
-    const tall = new Mesh(new BoxGeometry(3, 6, 3), white);
-    tall.name = 'Tall Block';
-    tall.position.set(-1.8, 3, -1.5);
-    tall.rotation.y = 0.29;
-    this.addMesh(tall);
-
-    const short = new Mesh(new BoxGeometry(3, 3, 3), white.clone());
-    short.name = 'Short Block';
-    (short.material as unknown as { _originalMap: Texture | null })._originalMap = null;
-    short.position.set(1.8, 1.5, 1.5);
-    short.rotation.y = -0.29;
-    this.addMesh(short);
-  }
-
-  private buildAdvancedExtras(): void {
-    const sphere = new Mesh(new SphereGeometry(1.0, 48, 32), this.mat(0xf5f5f5, 0.4, 0.0));
-    sphere.name = 'Sphere';
-    sphere.position.set(2.4, 1.0, 3.0);
-    this.addMesh(sphere);
-
-    const knot = new Mesh(
-      new TorusKnotGeometry(0.55, 0.18, 160, 24),
-      this.mat(0xffd166, 0.55, 0.0),
-    );
-    knot.name = 'Torus Knot';
-    knot.position.set(0.0, 1.0, 2.8);
-    knot.rotation.x = Math.PI / 2;
-    this.addMesh(knot);
-
-    const accent = new Mesh(new BoxGeometry(1.2, 1.2, 1.2), this.mat(0xc77a3a, 0.8, 0.0));
-    accent.name = 'Accent Block';
-    accent.position.set(-3.5, 0.6, 2.8);
-    accent.rotation.y = 0.45;
-    this.addMesh(accent);
-  }
-
-  /**
-   * Dispose every geometry+material under `cornellRoot`, detach the root from
-   * the scene, and clear `meshes`. Single cleanup path used by `rebuildScene`,
-   * `importGLB`, and `loadPresetById` - keeps GPU resource lifetime tied to
-   * the active scene root and avoids leaks across preset swaps.
-   */
-  private disposeCornellRoot(): void {
-    if (!this.cornellRoot) return;
-    this.cornellRoot.traverse((obj) => {
-      const mesh = obj as Mesh;
-      if (!mesh.isMesh) return;
-      mesh.geometry?.dispose();
-      const mat = mesh.material as MeshStandardMaterial | MeshStandardMaterial[] | undefined;
-      if (Array.isArray(mat)) mat.forEach((mm) => mm.dispose());
-      else mat?.dispose();
-    });
-    this.scene.remove(this.cornellRoot);
-    this.cornellRoot = null;
-    this.meshes = [];
-  }
-
-  /**
-   * Rebuild Cornell scene from a preset. Tears down bake-owned GPU resources
-   * via the hook so BakeController stays internally consistent.
-   */
-  rebuildScene(preset: ScenePreset): void {
-    this.hooks.disposeBake();
-    this.disposeCornellRoot();
-    this.cornellRoot = new Object3D();
-    this.scene.add(this.cornellRoot);
-
-    this.buildWalls();
-    this.buildClassicBlocks();
-    if (preset === 'advanced') this.buildAdvancedExtras();
-
-    // Pin USE_LIGHTMAP shader variant on every mesh before first render.
-    this.hooks.installDummyLightmaps(this.meshes);
-    this.hooks.onSceneChanged(this.meshes);
-  }
-
   /**
    * Import a GLB/GLTF and replace the active scene. Bake-eligible meshes (those
    * carrying a `lightMap` field on their material) are kept; geometry is indexed
@@ -560,6 +457,10 @@ export class SceneController {
    */
   async importGLB(file: File): Promise<void> {
     const buffer = await file.arrayBuffer();
+    await this.importGLBBuffer(buffer);
+  }
+
+  async importGLBBuffer(buffer: ArrayBuffer): Promise<void> {
     const loader = new GLTFLoader();
     let gltf: GLTF;
     try {
@@ -629,6 +530,9 @@ export class SceneController {
     this.camera.updateProjectionMatrix();
     this.renderer.setPixelRatio(window.devicePixelRatio);
 
+    // If we have an active camera locked or being viewed through, the
+    // CornellBoxExample tick loop will handle the property sync.
+
     if (this.composer) {
       this.composer.setSize(w, h);
       this.bloomPass?.setSize(w, h);
@@ -644,7 +548,7 @@ export class SceneController {
 
   /**
    * Lazy-build the EffectComposer chain: RenderPass → SSAO → Bloom → FXAA.
-   * Built only on first \`renderFrame\` call with postFX.master = true so the
+   * Built only on first `renderFrame` call with postFX.master = true so the
    * default (composer-less) bake-QA path pays zero memory/perf cost.
    */
   private ensureComposer(): EffectComposer {
@@ -788,22 +692,82 @@ export class SceneController {
 
   /**
    * Single render entry point. Composer when master toggle is on, plain
-   * renderer otherwise. AtlasViewer and other scissor overlays still
-   * render *after* this returns, against the default framebuffer.
+   * renderer otherwise. Handles Blender-style camera portal when viewing
+   * through a scene camera.
    */
   renderFrame(): void {
     this.syncPostFX();
     const s = postFXSettings.value;
-    if (s.master) {
-      this.ensureComposer().render();
+    const portalCamId = activeCameraId.value;
+    const portalCamObj = portalCamId ? this.lookupObject(portalCamId) : null;
+    const portalCam = portalCamObj?.children.find(
+      (c) => (c as PerspectiveCamera).isPerspectiveCamera,
+    ) as PerspectiveCamera | undefined;
+
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+
+    if (portalCam) {
+      // Calculate portal rect centered on canvas
+      const canvasAspect = w / h;
+      const camAspect = portalCam.aspect;
+
+      let pw, ph;
+      if (camAspect > canvasAspect) {
+        pw = w;
+        ph = w / camAspect;
+      } else {
+        ph = h;
+        pw = h * camAspect;
+      }
+
+      const px = (w - pw) / 2;
+      const py = (h - ph) / 2;
+
+      const renderer = this.renderer;
+      const prevViewport = renderer.getViewport(new Vector4());
+      const prevScissor = renderer.getScissor(new Vector4());
+      const prevScissorTest = renderer.getScissorTest();
+      const prevClearColor = new Color();
+      renderer.getClearColor(prevClearColor);
+      const prevClearAlpha = renderer.getClearAlpha();
+
+      try {
+        // Clear background with dark grey (Blender-style)
+        renderer.setClearColor(0x1a1a1a, 1);
+        renderer.setRenderTarget(null);
+        renderer.clear();
+
+        // Set viewport and scissor to the portal rect
+        renderer.setViewport(px, py, pw, ph);
+        renderer.setScissor(px, py, pw, ph);
+        renderer.setScissorTest(true);
+
+        if (s.master) {
+          this.ensureComposer().render();
+        } else {
+          this.scene.overrideMaterial = null;
+          renderer.render(this.scene, this.camera);
+        }
+      } finally {
+        renderer.setViewport(prevViewport);
+        renderer.setScissor(prevScissor);
+        renderer.setScissorTest(prevScissorTest);
+        renderer.setClearColor(prevClearColor, prevClearAlpha);
+      }
     } else {
-      // Defensive: SSAOPass + other composer passes set scene.overrideMaterial
-      // or rebind render targets during their pre-passes. If a pass throws or
-      // gets disabled mid-flight, those leak - direct render then shows black.
-      // Reset known side-effects before falling back to a plain renderer pass.
-      this.scene.overrideMaterial = null;
-      this.renderer.setRenderTarget(null);
-      this.renderer.render(this.scene, this.camera);
+      const canvasAspect = w / h;
+      if (Math.abs(this.camera.aspect - canvasAspect) > 0.01) {
+        this.camera.aspect = canvasAspect;
+        this.camera.updateProjectionMatrix();
+      }
+      if (s.master) {
+        this.ensureComposer().render();
+      } else {
+        this.scene.overrideMaterial = null;
+        this.renderer.setRenderTarget(null);
+        this.renderer.render(this.scene, this.camera);
+      }
     }
   }
 
@@ -875,10 +839,121 @@ export class SceneController {
     this.controls.update();
   }
 
+  /** Snap the main viewport camera to the position and rotation of a scene camera. */
+  snapViewportToCamera(id: string): void {
+    const obj = this.lookupObject(id);
+    if (!obj || !obj.userData?.bakerCameraType) return;
+
+    // The camera is the first child of the group
+    const cam = obj.children.find((c) => (c as PerspectiveCamera).isPerspectiveCamera) as
+      | PerspectiveCamera
+      | undefined;
+    if (!cam) return;
+
+    // We want to match the camera's WORLD position and rotation.
+    const wp = new Vector3();
+    const wq = new Quaternion();
+    cam.getWorldPosition(wp);
+    cam.getWorldQuaternion(wq);
+
+    this.camera.position.copy(wp);
+    this.camera.quaternion.copy(wq);
+
+    // Update OrbitControls target to be in front of the camera
+    const dir = new Vector3(0, 0, -1).applyQuaternion(wq);
+    this.controls.target.copy(wp).addScaledVector(dir, 5);
+    this.controls.update();
+  }
+
+  /** Push the main viewport camera's transform back to a scene camera object. */
+  syncCameraToViewport(id: string): void {
+    const obj = this.lookupObject(id);
+    if (!obj || !obj.userData?.bakerCameraType) return;
+
+    // We match the GROUP's world position/rotation to the viewport camera.
+    // (Simpler than counter-transforming the camera child).
+    obj.position.copy(this.camera.position);
+    obj.quaternion.copy(this.camera.quaternion);
+
+    // Ensure the helper updates immediately
+    this.updateHelpers();
+  }
+
+  /** Push a scene camera's properties (FOV, aspect, clipping) to the viewport camera. */
+  syncViewportToCamera(id: string): void {
+    const obj = this.lookupObject(id);
+    if (!obj || !obj.userData?.bakerCameraType) return;
+
+    const cam = obj.children.find((c) => (c as PerspectiveCamera).isPerspectiveCamera) as
+      | PerspectiveCamera
+      | undefined;
+    if (!cam) return;
+
+    // Match transform
+    const wp = new Vector3();
+    const wq = new Quaternion();
+    cam.getWorldPosition(wp);
+    cam.getWorldQuaternion(wq);
+
+    this.camera.position.copy(wp);
+    this.camera.quaternion.copy(wq);
+
+    // Match lens properties
+    if (this.camera.fov !== cam.fov) {
+      this.camera.fov = cam.fov;
+      this.camera.updateProjectionMatrix();
+    }
+    if (this.camera.near !== cam.near) {
+      this.camera.near = cam.near;
+      this.camera.updateProjectionMatrix();
+    }
+    if (this.camera.far !== cam.far) {
+      this.camera.far = cam.far;
+      this.camera.updateProjectionMatrix();
+    }
+    // Note: aspect ratio is usually controlled by the canvas/renderer size,
+    // but we copy it anyway if it differs significantly.
+    if (Math.abs(this.camera.aspect - cam.aspect) > 0.01) {
+      this.camera.aspect = cam.aspect;
+      this.camera.updateProjectionMatrix();
+    }
+
+    // Keep controls in sync
+    const dir = new Vector3(0, 0, -1).applyQuaternion(wq);
+    this.controls.target.copy(wp).addScaledVector(dir, 5);
+    this.controls.update();
+  }
+
   /** Update the perspective camera FOV (in degrees) and refresh projection. */
   setCameraFov(deg: number): void {
     this.camera.fov = Math.max(1, Math.min(170, deg));
     this.camera.updateProjectionMatrix();
+  }
+
+  /** Trigger the 'stale change' hook (e.g. to invalidate bake when a locked camera moves). */
+  markStale(): void {
+    this.hooks.onStaleChange?.();
+  }
+
+  /**
+   * Dispose every geometry+material under `cornellRoot`, detach the root from
+   * the scene, and clear `meshes`. Single cleanup path used by `importGLB`,
+   * and `loadPresetById` - keeps GPU resource lifetime tied to the active
+   * scene root and avoids leaks across preset swaps.
+   */
+  private disposeCornellRoot(): void {
+    if (!this.cornellRoot) return;
+    this.cornellRoot.traverse((obj) => {
+      const mesh = obj as Mesh;
+      if (!mesh.isMesh) return;
+      mesh.geometry?.dispose();
+      const mat = mesh.material as MeshStandardMaterial | MeshStandardMaterial[] | undefined;
+      if (Array.isArray(mat)) mat.forEach((mm) => mm.dispose());
+      else mat?.dispose();
+    });
+    this.scene.remove(this.cornellRoot);
+    this.cornellRoot = null;
+    this.meshes = [];
   }
 
   /** Update gizmo visibility/enabled state (called from RAF). */
@@ -925,6 +1000,7 @@ export class SceneController {
       console.warn('[baker] addAsset: unknown or disabled asset spec', spec);
       return '';
     }
+    node.userData.assetSpec = { ...spec };
     node.position.copy(worldPos);
 
     if (spec.kind === 'primitive') {
@@ -939,11 +1015,11 @@ export class SceneController {
       this.meshes.push(mesh as SceneObj);
       this.hooks.installDummyLightmaps([mesh as SceneObj]);
     } else {
-      // Asset-library lights are Group objects bundling Light + Target + Helper.
-      // Parented directly to the scene so they survive cornellRoot tear-downs
-      // on preset swaps and dispose with the scene.
+      // Asset-library lights and cameras are Group objects bundling Light/Camera
+      // + Target + Helper. Parented directly to the scene so they survive
+      // cornellRoot tear-downs on preset swaps and dispose with the scene.
       this.scene.add(node);
-      // Lift to the scene's vertical mid-line so lights don't sit on the floor
+      // Lift to the scene's vertical mid-line so assets don't sit on the floor
       // and scale with the environment (a 100m scene needs more headroom than
       // a 1m one). Falls back to 2 when the scene is empty.
       const { center, size } = this.sceneBoundsOrFallback();
@@ -957,15 +1033,19 @@ export class SceneController {
   }
 
   /**
-   * Update every asset-library light helper. Three's helpers cache the
-   * light's matrixWorld + target.matrixWorld and need an explicit .update()
-   * call after any transform change. Cheap; safe to call every RAF.
+   * Update every asset-library light and camera helper. Three's helpers cache
+   * the object's matrixWorld and need an explicit .update() call after any
+   * transform change. Cheap; safe to call every RAF.
    */
-  updateLightHelpers(): void {
+  updateHelpers(): void {
     for (const child of this.scene.children) {
-      if (!child.userData?.bakerLightType) continue;
-      const helper = child.userData?.lightHelper as { update?: () => void } | undefined;
-      helper?.update?.();
+      if (child.userData?.bakerLightType) {
+        const helper = child.userData?.lightHelper as { update?: () => void } | undefined;
+        helper?.update?.();
+      } else if (child.userData?.bakerCameraType) {
+        const helper = child.userData?.cameraHelper as { update?: () => void } | undefined;
+        helper?.update?.();
+      }
     }
   }
 
@@ -1000,11 +1080,11 @@ export class SceneController {
       return { node: mesh, parent };
     }
 
-    // Any direct scene child carrying `bakerLightType` is fair game to delete
-    // - including the default area light. The user can drag a fresh one in
-    // from the asset library if they want it back.
+    // Any direct scene child carrying `bakerLightType` or `bakerCameraType` is
+    // fair game to delete - including the default area light. The user can
+    // drag a fresh one in from the asset library if they want it back.
     const target = this.scene.children.find((o) => o.uuid === id);
-    if (target?.userData?.bakerLightType) {
+    if (target?.userData?.bakerLightType || target?.userData?.bakerCameraType) {
       this.scene.remove(target);
       // If we just removed what the gizmo was attached to, detach so the
       // transform widget doesn't dangle on a freed object.
@@ -1028,7 +1108,7 @@ export class SceneController {
   attachNode(node: Object3D, parent: Object3D): void {
     parent.add(node);
     const mesh = node as Mesh;
-    if (mesh.isMesh && !mesh.userData?.bakerLightType) {
+    if (mesh.isMesh && !mesh.userData?.bakerLightType && !mesh.userData?.bakerCameraType) {
       // Push back into the bake set if it isn't already there.
       if (!this.meshes.find((m) => m.uuid === mesh.uuid)) {
         this.meshes.push(mesh as SceneObj);
@@ -1086,6 +1166,7 @@ export class SceneController {
     // through the same path as asset-library lights. Done before the mesh
     // walk so the wrappers don't accidentally show up as "meshes".
     this.hoistRawLights(this.cornellRoot);
+    this.hoistRawCameras(this.cornellRoot);
 
     // Walk newly-added meshes (scoped to cornellRoot - preset content all lives
     // there by contract). Skip lightmap-ignored meshes (mirror/glass/emissive
@@ -1113,6 +1194,10 @@ export class SceneController {
     if (result.camera) {
       this.camera.position.set(...result.camera.position);
       this.controls.target.set(...result.camera.target);
+      if (result.camera.fov !== undefined) {
+        this.camera.fov = result.camera.fov;
+      }
+      this.camera.updateProjectionMatrix();
       this.controls.update();
     }
     if (result.lightDummy) this.lightDummy.position.set(...result.lightDummy.position);
@@ -1270,6 +1355,33 @@ export class SceneController {
     });
     for (const { light } of orphans) {
       const group = wrapAsBakerLight(light);
+      this.scene.add(group);
+    }
+  }
+
+  /**
+   * Walk a freshly-built preset root, find raw THREE.PerspectiveCamera nodes
+   * that aren't already inside a baker-style group, and wrap each in one.
+   * The wrapper is promoted to a direct scene child so it appears in the
+   * Outliner and is pickable / deletable like asset-library cameras.
+   */
+  private hoistRawCameras(root: Object3D): void {
+    const orphans: PerspectiveCamera[] = [];
+    root.traverse((obj) => {
+      if (!(obj as PerspectiveCamera).isPerspectiveCamera) return;
+      // Skip the main viewport camera if it somehow got in there (unlikely)
+      if (obj === this.camera) return;
+
+      // Skip if already inside a baker group.
+      let p: Object3D | null = obj.parent;
+      while (p) {
+        if (p.userData?.bakerCameraType) return;
+        p = p.parent;
+      }
+      orphans.push(obj as PerspectiveCamera);
+    });
+    for (const cam of orphans) {
+      const group = wrapAsBakerCamera(cam);
       this.scene.add(group);
     }
   }

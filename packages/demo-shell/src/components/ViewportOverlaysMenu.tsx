@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Signal } from '@preact/signals';
-import { atlasViewerVisible, showAxes, showGrid } from 'shared';
+import { showAxes, showGrid } from 'shared';
 import { ChevronDown } from './icons';
 
 /**
  * Top-right viewport overlay - Blender/Unreal-style "Overlays" toggle list.
  * Renders a single pill button that opens a popover with one row per boolean
- * signal (grid, axes, atlas viewer). Each row is a click-target with a
+ * signal (grid, axes). Each row is a click-target with a
  * leading checkbox; clicking flips the underlying signal.
  *
  * Lives in the same horizontal row as `ViewportToggle` and the camera-speed
@@ -23,7 +23,6 @@ type Entry = {
 const ENTRIES: Entry[] = [
   { id: 'grid', label: 'Ground Grid', signal: showGrid, hotkey: 'G' },
   { id: 'axes', label: 'World Axes', signal: showAxes },
-  { id: 'atlas', label: 'Atlas Viewer', signal: atlasViewerVisible, hotkey: 'A' },
 ];
 
 export function ViewportOverlaysMenu() {
@@ -60,7 +59,7 @@ export function ViewportOverlaysMenu() {
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         class="flex items-center gap-1.5 px-3 py-1 text-[11px] font-medium text-text-0 bg-bg-1/95 backdrop-blur border border-border rounded-md shadow-md hover:bg-bg-2 transition-colors"
-        title="Viewport overlays - toggle grid, axes, atlas viewer"
+        title="Viewport overlays - toggle grid and axes"
       >
         <span>Overlays</span>
         <span class="text-text-2 text-[10px] tabular-nums">

@@ -2,10 +2,8 @@ import { effect, untracked } from '@preact/signals';
 import { canRedo, canUndo, commandHistory, menuRegistry } from 'shared';
 
 /**
- * Edit menu. Undo / Redo wired to the shared `commandHistory`. Producers
- * (transform, add, remove) push commands; this menu just invokes the stack.
- * Disabled state is reactive - re-registers the items when `canUndo`/`canRedo`
- * flip so the dropdown reflects the current stack.
+ * Edit menu. Undo / Redo are wired to the shared command history. Producers
+ * push add, remove, and transform commands; this menu just invokes the stack.
  */
 
 function registerUndo(): void {
@@ -33,9 +31,6 @@ function registerRedo(): void {
 }
 
 effect(() => {
-  // Read the signal so the effect re-runs on change, then re-register.
-  // `untracked` so the menuTick read+write inside `menuRegistry.register`
-  // doesn't pull menuTick into this effect's deps (would self-trigger → cycle).
   void canUndo.value;
   untracked(registerUndo);
 });
@@ -43,13 +38,4 @@ effect(() => {
 effect(() => {
   void canRedo.value;
   untracked(registerRedo);
-});
-
-menuRegistry.register('Edit', {
-  id: 'edit.prefs',
-  label: 'Preferences',
-  separatorBefore: true,
-  action: () => {
-    console.log('[demo] Edit → Preferences (stub)');
-  },
 });

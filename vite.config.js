@@ -7,7 +7,7 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url))
 const r = (p) => path.resolve(rootDir, p)
 
 export default defineConfig({
-    base: '/three-lightmap-baker/',
+    base: process.env.VITE_BASE_PATH || '/three-lightmap-baker/',
     root: r('apps/playground'),
     plugins: [preact()],
     resolve: {

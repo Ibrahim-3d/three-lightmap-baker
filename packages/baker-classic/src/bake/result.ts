@@ -271,9 +271,12 @@ function rebakeAOForGroup(
   return new Promise<void>((resolve, reject) => {
     const tick = (): void => {
       if (hooks.signal?.aborted) {
-        reject(new BakeError('aborted by signal', 'bake'));
+        const err = new BakeError('aborted by signal', 'bake');
+        err.name = 'AbortError';
+        reject(err);
         return;
       }
+
       // AO-only re-bake doesn't install its own context-loss guard - the
       // caller (`LightmapBakeResult.rebakeAO`) is short enough that a lost
       // context will surface as a draw-call failure on the next renderer
