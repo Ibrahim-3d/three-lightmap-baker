@@ -8,7 +8,7 @@ import type { ComponentChildren } from 'preact';
 
 export function Row(props: { label: string; children: ComponentChildren; hint?: string }) {
   return (
-    <div class="flex items-center gap-2 px-2 h-6 hover:bg-bg-2">
+    <div class="flex items-center gap-2 px-2 min-h-[24px] py-0.5 hover:bg-bg-2">
       <label
         class="text-[11px] text-text-1 w-28 flex-shrink-0 truncate"
         title={props.hint ?? props.label}

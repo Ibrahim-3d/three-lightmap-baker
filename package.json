@@ -54,6 +54,7 @@
   ],
   "scripts": {
     "start": "vite --mode dev --host",
+    "dev": "vite --mode dev --host",
     "build:demo": "vite build",
     "budget:bundle": "node scripts/check-bundle-budget.mjs",
     "budget:runtime": "node scripts/check-runtime-budget.mjs",

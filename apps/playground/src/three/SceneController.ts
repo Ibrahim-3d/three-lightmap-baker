@@ -30,6 +30,7 @@ import {
   type Texture,
   Vector2,
   Vector3,
+  Vector4,
   WebGLRenderer,
 } from 'three';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader';
@@ -53,6 +54,7 @@ import {
   eslEnvEnabled,
   postFXSettings,
   ptSettings,
+  activeCameraId,
   sceneRegistry,
   wrapAsBakerCamera,
   wrapAsBakerLight,
@@ -690,21 +692,82 @@ export class SceneController {
 
   /**
    * Single render entry point. Composer when master toggle is on, plain
-   * renderer otherwise.
+   * renderer otherwise. Handles Blender-style camera portal when viewing
+   * through a scene camera.
    */
   renderFrame(): void {
     this.syncPostFX();
     const s = postFXSettings.value;
-    if (s.master) {
-      this.ensureComposer().render();
+    const portalCamId = activeCameraId.value;
+    const portalCamObj = portalCamId ? this.lookupObject(portalCamId) : null;
+    const portalCam = portalCamObj?.children.find(
+      (c) => (c as PerspectiveCamera).isPerspectiveCamera,
+    ) as PerspectiveCamera | undefined;
+
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+
+    if (portalCam) {
+      // Calculate portal rect centered on canvas
+      const canvasAspect = w / h;
+      const camAspect = portalCam.aspect;
+
+      let pw, ph;
+      if (camAspect > canvasAspect) {
+        pw = w;
+        ph = w / camAspect;
+      } else {
+        ph = h;
+        pw = h * camAspect;
+      }
+
+      const px = (w - pw) / 2;
+      const py = (h - ph) / 2;
+
+      const renderer = this.renderer;
+      const prevViewport = renderer.getViewport(new Vector4());
+      const prevScissor = renderer.getScissor(new Vector4());
+      const prevScissorTest = renderer.getScissorTest();
+      const prevClearColor = new Color();
+      renderer.getClearColor(prevClearColor);
+      const prevClearAlpha = renderer.getClearAlpha();
+
+      try {
+        // Clear background with dark grey (Blender-style)
+        renderer.setClearColor(0x1a1a1a, 1);
+        renderer.setRenderTarget(null);
+        renderer.clear();
+
+        // Set viewport and scissor to the portal rect
+        renderer.setViewport(px, py, pw, ph);
+        renderer.setScissor(px, py, pw, ph);
+        renderer.setScissorTest(true);
+
+        if (s.master) {
+          this.ensureComposer().render();
+        } else {
+          this.scene.overrideMaterial = null;
+          renderer.render(this.scene, this.camera);
+        }
+      } finally {
+        renderer.setViewport(prevViewport);
+        renderer.setScissor(prevScissor);
+        renderer.setScissorTest(prevScissorTest);
+        renderer.setClearColor(prevClearColor, prevClearAlpha);
+      }
     } else {
-      // Defensive: SSAOPass + other composer passes set scene.overrideMaterial
-      // or rebind render targets during their pre-passes. If a pass throws or
-      // gets disabled mid-flight, those leak - direct render then shows black.
-      // Reset known side-effects before falling back to a plain renderer pass.
-      this.scene.overrideMaterial = null;
-      this.renderer.setRenderTarget(null);
-      this.renderer.render(this.scene, this.camera);
+      const canvasAspect = w / h;
+      if (Math.abs(this.camera.aspect - canvasAspect) > 0.01) {
+        this.camera.aspect = canvasAspect;
+        this.camera.updateProjectionMatrix();
+      }
+      if (s.master) {
+        this.ensureComposer().render();
+      } else {
+        this.scene.overrideMaterial = null;
+        this.renderer.setRenderTarget(null);
+        this.renderer.render(this.scene, this.camera);
+      }
     }
   }
 
