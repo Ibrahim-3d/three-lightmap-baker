@@ -42,6 +42,7 @@ Add README/demo captures for:
 - Direct-only pass.
 - Indirect/GI-only pass.
 - AO-only pass.
+- Probe-only pass.
 - Final composite.
 - Raw bake vs dilation vs denoise where visually useful.
 - GPU/runtime diagnostics panel: renderer, ANGLE backend, WebGL2, `EXT_color_buffer_float`, timeout protection mode, and budget status.
@@ -72,7 +73,7 @@ Build a clear demo that proves why probes matter:
 
 ### 4. Hybrid runtime lighting companion
 
-Add the real-time layer only where it complements the baker.
+Add the real-time layer where it complements the baker.
 
 Urgent research/prototype tasks:
 
@@ -82,7 +83,7 @@ Urgent research/prototype tasks:
 - Temporal accumulation and denoise experiments for noisy real-time passes.
 - Clear UI split: baked lighting, probe lighting, screen-space companion lighting.
 
-Do not replace the baker with SSGI. SSGI is camera-dependent and screen-space-limited. The product should combine stable baked lighting with optional real-time enhancement.
+Do not let SSGI erase the baked-lighting product. SSGI is camera-dependent and screen-space-limited. The product should combine stable baked lighting with optional real-time enhancement.
 
 ### 5. WebGPU acceleration path
 
@@ -96,7 +97,19 @@ Required staging:
 - Prototype a small WebGPU-only pass behind an experimental flag.
 - Investigate node-based shader implementation for companion post-processing, without breaking the current baker API.
 
-### 6. Headless and automation
+### 6. Aggressive R&D tracks
+
+These are no longer ignored or postponed. They are urgent evaluation tracks, but they must be proven with prototypes before they replace the stable WebGL baker.
+
+- **Full SSGI renderer:** investigate whether a complete real-time SSGI path should exist as a sibling renderer/demo mode, not as the first replacement for baked lightmaps.
+- **Full WebGPU rewrite:** evaluate a future WebGPU-native baker/runtime architecture, including compute-driven ray dispatch, probe generation, denoising, and atlas updates.
+- **Full real-time GI engine:** explore whether the project should eventually include a runtime GI mode combining SSGI, probes, GTAO, SSR, temporal accumulation, and baked fallback.
+- **Physics/editor features:** evaluate only where they improve lighting demos, for example moving test objects, draggable light/probe volumes, room-object interaction, and scene-state validation.
+- **Complex node material editor:** evaluate as a future material-authoring layer only after the lighting pipeline is stable; do not block probes, debug views, or WebGPU experiments on this.
+
+Decision rule: these tracks are urgent to study, but the shipping product must remain coherent. Do not create a half-finished engine that makes the baker harder to use.
+
+### 7. Headless and automation
 
 Headless is still important, but it must follow the renderer strategy rather than pretending Node can bake today.
 
@@ -116,7 +129,7 @@ Headless is still important, but it must follow the renderer strategy rather tha
 
 Only non-critical polish belongs here:
 
-- Minor editor chrome polish.
-- Additional sample assets.
+- Minor editor chrome polish not connected to lighting workflows.
+- Additional sample assets after the main hybrid-lighting showcase exists.
 - Extra themes and layout preferences.
 - Additional documentation examples after the core hybrid lighting pipeline is demonstrable.
