@@ -1,6 +1,18 @@
 # Roadmap
 
-Last updated: 2026-06-12
+Last updated: 2026-06-15
+
+## Product Direction
+
+Three Lightmap Baker is not only a lightmap exporter. The target is a browser-first lighting pipeline for Three.js:
+
+1. Bake static GI into reusable lightmaps.
+2. Generate and debug light probes from the baked scene.
+3. Use probes to light dynamic objects at runtime.
+4. Add real-time companion passes where they strengthen the baked workflow.
+5. Stage WebGPU acceleration without breaking the WebGL-first package.
+
+The core product remains baked lighting for Three.js. Real-time SSGI, GTAO, SSR, probes, and WebGPU are now urgent roadmap items because they explain how the baker becomes a full web lighting system instead of only a screenshot generator.
 
 ## Current State
 
@@ -9,24 +21,102 @@ Last updated: 2026-06-12
 - **Package readiness:** ESM/CJS/type declaration output is configured, `test:api-import` validates package import, adapter exports, and tarball installation, `typecheck:examples` validates public examples, `release:check` adds the full pre-publish gate plus npm dry run, and `.github/workflows/npm-publish.yml` provides a manual authenticated publish path with version confirmation and npm provenance. The package is not published on npm yet.
 - **Launch proof:** README uses committed before/after launch screenshots from `cornell.advanced`; benchmark numbers for Draft, Preview, Production, and Final are recorded for an RTX 3050 Ti Laptop GPU.
 - **Automation:** `scripts/capture-launch-assets.mjs` captures launch images and benchmark data, with GPU renderer enforcement via `BAKER_EXPECT_GPU`. `pnpm run test:browser-smoke` runs the eight CI browser smokes in one Playwright invocation: adapter runtime, Cornell Draft visual bake, bake cancellation, Project JSON save/load, outliner selection, editor history, asset-library add path, and topbar controls. Individual targeted scripts remain available for each smoke.
-- **Validation status:** `release:check` passes locally as of this audit. It covers `typecheck`, `typecheck:examples`, `lint`, `format:check`, demo build, bundle budget, package build, tarball import smoke, and npm publish dry run.
+- **Validation status:** `release:check` passes locally as of the latest audit. It covers `typecheck`, `typecheck:examples`, `lint`, `format:check`, demo build, bundle budget, package build, tarball import smoke, and npm publish dry run.
 
-## Now
+## Now: Release + Hybrid Lighting Push
 
-- **First npm release:** Run the manual `npm Publish` GitHub Actions workflow for the package version in `package.json` after npm trusted publishing or `NPM_TOKEN` is configured, then update README install wording from tarball/pre-release guidance to normal registry install flow.
-- **Docs cleanup:** Keep README, API status, and launch readiness aligned whenever release status, screenshots, or benchmark numbers change.
-- **Launch visual decision:** Current proof is Cornell advanced. A stronger custom interior/architectural room is intentionally postponed until that room is designed.
+### 0. First npm release
 
-## Next (Headless Staging)
+- Run the manual `npm Publish` workflow for the package version in `package.json` after the publishing environment is configured.
+- After publish, update README install wording from tarball/pre-release guidance to normal registry install flow.
+- Keep release messaging honest: browser/WebGL baker now; Node/headless baking and WebGPU acceleration are staged, not shipped.
 
-- **Stage 1:** Keep renderer-injected bake API as the contract boundary. Done.
-- **Stage 2:** Add optional context/renderer adapter interface for offscreen browser workers and test harnesses. Done; `examples/offscreen-browser.ts` is covered by `typecheck:examples`.
-- **Stage 3:** Prototype Node-compatible runtime path (headless-gl/WebGPU/offscreen strategy), with explicit capability matrix and limitations. Started: `getLightmapRuntimeCapabilities()` and `examples/node-headless-status.ts` now provide the Node-safe capability matrix; actual Node baking still reports unsupported until a renderer strategy is selected.
-- **Stage 4:** Add automation-focused non-UI examples and CI smoke checks around API import + basic orchestration. Done for the browser runtime path via `examples/offscreen-browser.ts`, package import smoke, example typecheck, `tests/e2e/adapter-runtime.spec.ts`, and the CI adapter-runtime job.
+### 1. Debug-view showcase
+
+This is urgent because it makes the project read as an engine-quality tool, not just a Cornell render.
+
+Add README/demo captures for:
+
+- Texel density view.
+- Lightmap atlas view.
+- Direct-only pass.
+- Indirect/GI-only pass.
+- AO-only pass.
+- Final composite.
+- Raw bake vs dilation vs denoise where visually useful.
+- GPU/runtime diagnostics panel: renderer, ANGLE backend, WebGL2, `EXT_color_buffer_float`, timeout protection mode, and budget status.
+
+### 2. Baked Light Probes
+
+This is the next major feature. It bridges baked static GI with dynamic runtime objects.
+
+Minimum viable probe system:
+
+- Generate a 3D probe grid inside scene bounds.
+- Sample baked lighting or trace a reduced ray set per probe.
+- Store RGB irradiance per probe.
+- Visualize probe points as colored debug spheres.
+- Interpolate nearby probes for a moving test object.
+- Persist probe data inside the demo `.3dl` project format.
+- Add import/export and dispose lifecycle rules for probe resources.
+
+### 3. Dynamic object GI demo
+
+Build a clear demo that proves why probes matter:
+
+- Bake a room.
+- Generate probes.
+- Move a sphere or product object through the room.
+- Show the dynamic object receiving colored room bounce from nearby probes.
+- Add debug toggles: baked lightmap only, probe lighting only, final composite.
+
+### 4. Hybrid runtime lighting companion
+
+Add the real-time layer only where it complements the baker.
+
+Urgent research/prototype tasks:
+
+- SSGI companion pass for small real-time screen-space bounce.
+- GTAO-style stronger contact-occlusion pass or integration story.
+- SSR/reflection companion only if it directly improves configurator/interior demos.
+- Temporal accumulation and denoise experiments for noisy real-time passes.
+- Clear UI split: baked lighting, probe lighting, screen-space companion lighting.
+
+Do not replace the baker with SSGI. SSGI is camera-dependent and screen-space-limited. The product should combine stable baked lighting with optional real-time enhancement.
+
+### 5. WebGPU acceleration path
+
+WebGL remains the shipping baseline. WebGPU is now urgent exploration because advanced Three.js lighting work is moving there.
+
+Required staging:
+
+- Keep WebGL path stable.
+- Add a WebGPU capability probe to the runtime matrix.
+- Add a design document for WebGPU compute-based bake/probe generation.
+- Prototype a small WebGPU-only pass behind an experimental flag.
+- Investigate node-based shader implementation for companion post-processing, without breaking the current baker API.
+
+### 6. Headless and automation
+
+Headless is still important, but it must follow the renderer strategy rather than pretending Node can bake today.
+
+- Keep renderer-injected API as the stable contract boundary. Done.
+- Keep optional context/renderer adapter interface for offscreen browser workers and test harnesses. Done.
+- Continue Node-safe capability reporting through `getLightmapRuntimeCapabilities()`. Done for current unsupported Node bake path.
+- Prototype true non-browser runtime only after choosing the rendering backend: headless-gl, browser automation, WebGPU, or another explicit renderer strategy.
+
+## Urgent Showcase Work
+
+- Custom interior/architectural room is now urgent, not postponed. Cornell proves correctness; the room proves product value.
+- Larger-scene visual regression should be added once the custom room exists.
+- Top-of-README GIF/video should show: texel density, bake, atlas, GI result, probe grid, moving dynamic object, final composite.
+- Technical breakdown should show: before, texel density, UV2/atlas, direct, indirect, AO, probes, dynamic object, final.
 
 ## Later
 
-- **Features:** Light probes and richer lighting authoring workflows.
-- **Quality:** Cornell Draft visual bake smoke is automated through `pnpm run test:visual-cornell`; custom-room/larger-scene visual regression remains future work and should wait for the planned custom room.
-- **Infrastructure:** Demo bundle-size budgets are enforced by `pnpm run budget:bundle` during `build` and `release:check`. Runtime budgets now cover the CI adapter smoke and launch-machine benchmark artifacts via `pnpm run budget:runtime` after `pnpm run capture:launch`. Pull requests now produce a downloadable demo preview artifact in CI; live per-PR preview URLs remain future work.
-- **UX:** Bake cancellation is implemented in the demo/editor and covered by `pnpm run test:bake-cancel`. Project JSON save/load is implemented for built-in scene presets, imported GLB/glTF payloads, bake/editor options, baked final lightmaps, and asset-library additions. Selection ergonomics now include stable selected-row metadata, ArrowUp/ArrowDown stepping through the outliner, and double-click frame-to-node. 3D Camera objects are now supported with asset-library adding, viewport switching, and automatic preset hoisting. Undo/redo is wired for add/remove/transform command history with menu items and keyboard shortcuts, and delete undo/redo is covered by `pnpm run test:editor-history`. The Help menu now reflects current shortcuts and project links, and the topbar settings button opens the Post FX inspector tab; both are covered in `tests/e2e/topbar-menus.spec.ts`. Broader editor polish and scene tooling remain future work.
+Only non-critical polish belongs here:
+
+- Minor editor chrome polish.
+- Additional sample assets.
+- Extra themes and layout preferences.
+- Additional documentation examples after the core hybrid lighting pipeline is demonstrable.
