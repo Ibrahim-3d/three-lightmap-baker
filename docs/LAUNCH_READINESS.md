@@ -1,11 +1,13 @@
 # Launch Readiness
 
-Last updated: 2026-06-12
+Last updated: 2026-06-15
 
 ## Positioning
 
 Browser-based Three.js lightmap baker with path-traced global illumination,
-auto UV2 unwrapping, BVH ray tracing, AO, denoising, and progressive preview.
+auto UV2 unwrapping, BVH ray tracing, AO, denoising, progressive preview, and an
+urgent path toward hybrid baked/runtime lighting.
+
 Built for procedural scenes, configurators, AI-generated 3D spaces, and web
 architectural visualization. No Blender round-trip.
 
@@ -58,20 +60,33 @@ architectural visualization. No Blender round-trip.
 - README benchmark tables contain measured RTX 3050 Ti Laptop GPU numbers for
   Draft, Preview, Production, and Final on `cornell.advanced`.
 
-## Still open before public launch
+## Still open before first npm publish
 
-- Configure npm trusted publishing or the `NPM_TOKEN` repository secret, run the
-  manual `npm Publish` workflow for the `package.json` version, then update
-  install wording from "after release" to the normal registry install flow.
-- Use the committed Cornell advanced screenshots for the current launch proof.
-  A stronger custom interior/architectural showcase is postponed until that room
-  is designed.
-- Add larger-scene visual regression coverage only after the custom showcase
-  room exists; do not add a temporary surrogate scene gate.
-- Optional: capture a short top-of-README GIF/video showing the interactive
-  flow: click Bake, GI appears, atlas shown, baked result applied.
-- Share only after the visual proof is strong enough for Three.js/R3F/CGI
-  communities.
+- Run the manual `npm Publish` workflow for the `package.json` version after the
+  publishing environment is configured, then update install wording from "after
+  release" to the normal registry install flow.
+- Keep first-release messaging honest: browser/WebGL baker now; true Node
+  headless baking, WebGPU acceleration, and probe-based dynamic object GI are
+  staged next steps.
+
+## Urgent before flagship public launch
+
+The first npm release can ship as the browser baker. The flagship public launch
+should not stay Cornell-only. These are now urgent launch tasks:
+
+- Capture a short top-of-README GIF/video showing the interactive flow: texel
+  density view, click Bake, GI appears, atlas shown, baked result applied.
+- Add debug-view screenshots for texel density, atlas, direct-only, indirect/GI,
+  AO-only, and final composite.
+- Build the custom interior/architectural showcase room. Cornell proves
+  correctness; the room proves product value.
+- Add larger-scene visual regression after the custom room exists.
+- Add a baked light-probe demo: bake static room, generate probe grid, move a
+  dynamic object through the room, and show probe-interpolated indirect light.
+- Add a technical breakdown asset: before, texel density, UV2/atlas, direct,
+  indirect, AO, probes, moving object, final.
+- Share broadly only after the visual proof is strong enough for Three.js, R3F,
+  technical-art, CGI, and archviz communities.
 
 ## GPU capture requirements
 
@@ -127,7 +142,8 @@ References:
 Suggested description:
 
 > Browser-based Three.js lightmap baker with path-traced global illumination,
-> auto UV2 unwrapping, BVH ray tracing, AO, denoising, and progressive preview.
+> auto UV2 unwrapping, BVH ray tracing, AO, denoising, progressive preview, and
+> staged baked-probe/runtime-lighting support.
 
 Suggested topics:
 
@@ -149,3 +165,5 @@ Suggested topics:
 - architectural-visualization
 - configurator
 - webgpu
+- light-probes
+- ssgi
