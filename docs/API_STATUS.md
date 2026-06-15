@@ -1,4 +1,4 @@
-# API Status (2026-06-12)
+# API Status (2026-06-15)
 
 ## Current public API
 
@@ -27,6 +27,9 @@ await baker.bake(scene, hooks?)
 - Keep explicit renderer-injected path for advanced/automation use.
 - Expand the optional renderer/context adapter boundary into real offscreen-browser and future headless implementations.
 - Preserve current result lifecycle (`apply/export/dispose`) while expanding non-destructive utilities.
+- Add probe-generation APIs without forcing the core bake API to become an editor-only workflow.
+- Add debug-view APIs for texel density, atlas, direct, indirect, AO, and final composite inspection.
+- Keep real-time companion passes optional. They should enhance baked lighting, not replace it.
 
 ## Claim audit (README/docs/code)
 
@@ -61,16 +64,26 @@ await baker.bake(scene, hooks?)
 
 ### Partially implemented
 
-- npm packaging: publish metadata/exports/build added, tarball import smoke passes, `release:check` includes npm dry run, and `.github/workflows/npm-publish.yml` provides the manual authenticated publish path; still needs npm trusted publishing or `NPM_TOKEN` configuration plus the real publish run.
+- npm packaging: publish metadata/exports/build added, tarball import smoke passes, `release:check` includes npm dry run, and `.github/workflows/npm-publish.yml` provides the manual authenticated publish path; still needs publishing environment configuration plus the real publish run.
 - Automation workflow: browser capture/benchmark automation exists, renderer-injected/adapter usage works, and runtime capability probing is exported; still WebGL/browser-bound for actual baking.
-- README launch proof: Cornell advanced screenshots and measured benchmark numbers are published in README; the stronger custom interior/architectural showcase and its larger-scene visual regression are postponed until that room is designed.
+- README launch proof: Cornell advanced screenshots and measured benchmark numbers are published in README; the stronger custom interior/architectural showcase is now urgent.
+- Debug tooling: texel density is referenced in README and existing editor tooling, but the public debug-view showcase still needs committed captures for texel density, atlas, direct, indirect, AO, and final composite.
 
-### Planned but missing
+### Urgent but missing
 
+- Baked light-probe generation from the baked scene.
+- Probe debug views: probe grid, probe color preview, influence radius, interpolation preview, and probe heatmap.
+- Dynamic-object GI demo using interpolated baked probes.
+- Probe persistence in the demo `.3dl` project format.
+- Public API or internal module boundary for probe generation and probe evaluation.
+- Direct/indirect/AO/final debug-view capture APIs or stable demo hooks.
+- Optional SSGI companion pass for small real-time screen-space bounce.
+- GTAO-style stronger contact-occlusion pass or integration story.
+- Temporal accumulation / denoise experiments for noisy real-time companion passes.
+- WebGPU capability probe and experimental WebGPU bake/probe prototype path.
+- Custom-room/larger-scene visual regression automation after the custom room exists.
 - True Node.js headless baking adapter/runtime.
 - True non-browser CI/runtime path once a Node-compatible renderer strategy is selected.
-- Probe-based lighting features referenced in roadmap.
-- Custom-room/larger-scene visual regression automation after the custom room exists.
 - Live per-PR preview deployment URLs.
 
 ### Previously corrected docs drift
@@ -88,3 +101,4 @@ await baker.bake(scene, hooks?)
 - The npm package name is not published on the public registry yet.
 - Package manager is pnpm through Corepack; CI/docs/scripts should stay aligned with `pnpm-lock.yaml`.
 - Demo Project JSON v1 is an editor convenience format, not the npm package API. It embeds imported GLB/glTF payloads and baked final lightmap atlas payloads.
+- Probe generation, real-time companion passes, and WebGPU acceleration are urgent roadmap items, not current public API.
