@@ -1,0 +1,1 @@
+{"version":3,"file":"index.d.ts","sourceRoot":"","sources":["../../../packages/baker-classic/src/bake/index.ts"],"names":[],"mappings":"AAOA,cAAc,SAAS,CAAC;AACxB,cAAc,aAAa,CAAC;AAC5B,OAAO,EACL,kBAAkB,EAClB,wBAAwB,EACxB,aAAa,EACb,eAAe,GAChB,MAAM,cAAc,CAAC;AACtB,OAAO,EAAE,kBAAkB,EAAE,MAAM,UAAU,CAAC;AAC9C,OAAO,EAAE,YAAY,EAAE,KAAK,gBAAgB,EAAE,KAAK,eAAe,EAAE,MAAM,UAAU,CAAC"}
