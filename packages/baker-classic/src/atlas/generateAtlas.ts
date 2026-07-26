@@ -2,7 +2,7 @@ import { BufferAttribute, type BufferGeometry, Mesh, Vector3 } from 'three';
 import { UVUnwrapper } from 'xatlas-three';
 import { computeMeshSurfaceArea } from '../utils/Packing';
 
-const DEBUG = import.meta.env.DEV;
+const DEBUG = import.meta.env?.DEV === true;
 
 const unwrapper = new UVUnwrapper({ BufferAttribute: BufferAttribute });
 const worldScale = new Vector3();
