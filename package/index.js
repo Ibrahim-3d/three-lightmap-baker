@@ -3902,6 +3902,7 @@ class ProbeDebugView extends Group {
     this.color = new Color();
     this.name = "ProbeDebugView";
     this.exposure = Math.max(0, (_a3 = options.exposure) != null ? _a3 : 1);
+    this.displayScale = options.autoExposure === false ? 1 : computeDisplayScale(volume);
     const radius = Math.max(1e-4, (_b2 = options.radius) != null ? _b2 : defaultRadius(volume));
     const opacity = Math.min(1, Math.max(0, (_c = options.opacity) != null ? _c : 0.9));
     this.geometry = new SphereGeometry(
@@ -3940,9 +3941,10 @@ class ProbeDebugView extends Group {
     this.refreshColors();
   }
   refreshColors() {
+    const scale = this.exposure * this.displayScale;
     for (let index = 0; index < this.volume.probeCount; index++) {
       this.volume.getIrradiance(index, this.color);
-      this.color.multiplyScalar(this.exposure);
+      this.color.multiplyScalar(scale);
       this.color.setRGB(
         this.color.r / (1 + this.color.r),
         this.color.g / (1 + this.color.g),
@@ -3965,6 +3967,16 @@ function createProbeDebugView(volume, options = {}) {
 function defaultRadius(volume) {
   const spacing = [volume.spacing.x, volume.spacing.y, volume.spacing.z].filter((value) => value > 0);
   return (spacing.length ? Math.min(...spacing) : 1) * 0.08;
+}
+function computeDisplayScale(volume) {
+  let maxChannel = 0;
+  for (const value of volume.irradiance) {
+    if (Number.isFinite(value))
+      maxChannel = Math.max(maxChannel, value);
+  }
+  if (maxChannel <= 1e-6)
+    return 1;
+  return Math.min(64, Math.max(1, 0.8 / maxChannel));
 }
 class ProbeLightingBinding {
   constructor(mesh, volume, options = {}) {
