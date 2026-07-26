@@ -136,12 +136,17 @@ export class RenderModeRunner {
   private albedoUnlitMats: Map<Mesh, MeshBasicMaterial> = new Map();
   private originalMaterials = new WeakMap<Mesh, Mesh['material']>();
   private setProbeOnly: (active: boolean) => void = () => {};
+  private beforeBake: () => void = () => {};
 
   constructor(private deps: RenderModeRunnerDeps) {}
 
   setProbeOnlyHandler(handler: (active: boolean) => void): void {
     this.setProbeOnly(false);
     this.setProbeOnly = handler;
+  }
+
+  setBeforeBakeHandler(handler: () => void): void {
+    this.beforeBake = handler;
   }
 
   restoreSwappedMaterials(): void {
@@ -154,6 +159,7 @@ export class RenderModeRunner {
 
   prepareForBake(): void {
     const opts = this.deps.getOptions();
+    this.beforeBake();
     this.setProbeOnly(false);
     this.restoreSwappedMaterials();
     this.deps.getVisualLight().visible = opts.directLightEnabled;
