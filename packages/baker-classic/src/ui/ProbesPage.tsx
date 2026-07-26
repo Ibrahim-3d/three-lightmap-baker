@@ -14,14 +14,27 @@ export function ProbesPage() {
   const app = getBakerOrchestrator();
   if (!app) return null;
   const o = app.options;
-  const generating = o.probeStatus === 'generating';
+  const spacing = o.probeSpacing ?? 0.65;
+  const padding = o.probePadding ?? 0.1;
+  const maxProbes = o.probeMaxProbes ?? 2048;
+  const sampleStride = o.probeSampleStride ?? 3;
+  const fillIterations = o.probeFillIterations ?? 5;
+  const intensity = o.probeIntensity ?? 1;
+  const showProbes = o.probeShow ?? true;
+  const showDemo = o.probeDemoEnabled ?? true;
+  const animateDemo = o.probeDemoAnimate ?? true;
+  const status = o.probeStatus ?? 'idle';
+  const progress = o.probeProgress ?? 0;
+  const probeCount = o.probeCount ?? 0;
+  const generating = status === 'generating';
+  const available = !!app.generateProbes;
 
   return (
     <div class="text-[12px]">
       <Section title="Probe volume">
         <Row label="Spacing" hint="World-space distance between probes. Smaller is denser and slower.">
           <RangeField
-            value={o.probeSpacing}
+            value={spacing}
             min={0.2}
             max={2}
             step={0.05}
@@ -33,7 +46,7 @@ export function ProbesPage() {
         </Row>
         <Row label="Padding">
           <RangeField
-            value={o.probePadding}
+            value={padding}
             min={0}
             max={1}
             step={0.05}
@@ -45,7 +58,7 @@ export function ProbesPage() {
         </Row>
         <Row label="Maximum">
           <NumberField
-            value={o.probeMaxProbes}
+            value={maxProbes}
             min={64}
             max={8192}
             step={64}
@@ -60,7 +73,7 @@ export function ProbesPage() {
       <Section title="Generation">
         <Row label="Atlas stride" hint="Read every Nth lightmap texel while building the probe field.">
           <NumberField
-            value={o.probeSampleStride}
+            value={sampleStride}
             min={1}
             max={16}
             step={1}
@@ -72,7 +85,7 @@ export function ProbesPage() {
         </Row>
         <Row label="Fill passes" hint="Six-neighbour diffusion passes for probes with no direct surface samples.">
           <NumberField
-            value={o.probeFillIterations}
+            value={fillIterations}
             min={0}
             max={16}
             step={1}
@@ -84,28 +97,28 @@ export function ProbesPage() {
         </Row>
         <Row label="Status">
           <div class="flex-1 text-right font-mono text-[11px] text-text-2">
-            {o.probeStatus === 'generating'
-              ? `${Math.round(o.probeProgress * 100)}%`
-              : o.probeStatus === 'ready'
-                ? `${o.probeCount} probes`
-                : o.probeStatus}
+            {status === 'generating'
+              ? `${Math.round(progress * 100)}%`
+              : status === 'ready'
+                ? `${probeCount} probes`
+                : status}
           </div>
         </Row>
         <div class="px-3 pb-3 flex gap-2">
           <button
             type="button"
-            disabled={generating}
+            disabled={!available || generating}
             class="flex-1 px-3 py-1.5 rounded bg-accent text-white disabled:opacity-40 hover:brightness-110 transition"
-            onClick={() => void app.generateProbes()}
+            onClick={() => void app.generateProbes?.()}
           >
             {generating ? 'Generating…' : 'Generate Probes'}
           </button>
           <button
             type="button"
-            disabled={generating || o.probeCount === 0}
+            disabled={generating || probeCount === 0}
             class="px-3 py-1.5 rounded bg-bg-3 border border-border disabled:opacity-40 hover:bg-bg-4 transition"
             onClick={() => {
-              app.clearProbes();
+              app.clearProbes?.();
               bumpOptions();
             }}
           >
@@ -117,43 +130,43 @@ export function ProbesPage() {
       <Section title="Display and runtime">
         <Row label="Show probes">
           <BoolField
-            value={o.probeShow}
+            value={showProbes}
             onChange={(value) => {
               o.probeShow = value;
-              app.setProbeVisibility(value);
+              app.setProbeVisibility?.(value);
               bumpOptions();
             }}
           />
         </Row>
         <Row label="Intensity">
           <RangeField
-            value={o.probeIntensity}
+            value={intensity}
             min={0}
             max={4}
             step={0.05}
             onChange={(value) => {
               o.probeIntensity = value;
-              app.setProbeIntensity(value);
+              app.setProbeIntensity?.(value);
               bumpOptions();
             }}
           />
         </Row>
         <Row label="Demo sphere">
           <BoolField
-            value={o.probeDemoEnabled}
+            value={showDemo}
             onChange={(value) => {
               o.probeDemoEnabled = value;
-              app.setProbeDemoEnabled(value);
+              app.setProbeDemoEnabled?.(value);
               bumpOptions();
             }}
           />
         </Row>
         <Row label="Animate demo">
           <BoolField
-            value={o.probeDemoAnimate}
+            value={animateDemo}
             onChange={(value) => {
               o.probeDemoAnimate = value;
-              app.setProbeDemoAnimation(value);
+              app.setProbeDemoAnimation?.(value);
               bumpOptions();
             }}
           />
