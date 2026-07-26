@@ -5,12 +5,7 @@ import type { ExportFormat } from '../utils/exportLightmap';
  * Renderer-specific extension of the generic `Orchestrator`. The playground
  * app's `CornellBoxExample` implements this; baker-classic's UI panels
  * resolve the live instance through `getBakerOrchestrator()`.
- *
- * The exact shape mirrors the methods + `options` bag the panels read/write.
- * Concrete narrowing of `options` lives in the implementation; the panels
- * treat it as a free-form record.
  */
-
 export type BakerQualityPreset = 'Custom' | 'Draft' | 'Preview' | 'Production' | 'Final';
 
 export interface BakerOptions {
@@ -60,18 +55,19 @@ export interface BakerOptions {
   exportFormat: ExportFormat;
   perMesh: Record<string, { scaleInLightmap: number; exclude: boolean }>;
 
-  probeSpacing: number;
-  probePadding: number;
-  probeIntensity: number;
-  probeSampleStride: number;
-  probeFillIterations: number;
-  probeMaxProbes: number;
-  probeShow: boolean;
-  probeDemoEnabled: boolean;
-  probeDemoAnimate: boolean;
-  probeStatus: 'idle' | 'generating' | 'ready' | 'error';
-  probeProgress: number;
-  probeCount: number;
+  /** Installed by the playground probe extension. Optional for library hosts. */
+  probeSpacing?: number;
+  probePadding?: number;
+  probeIntensity?: number;
+  probeSampleStride?: number;
+  probeFillIterations?: number;
+  probeMaxProbes?: number;
+  probeShow?: boolean;
+  probeDemoEnabled?: boolean;
+  probeDemoAnimate?: boolean;
+  probeStatus?: 'idle' | 'generating' | 'ready' | 'error';
+  probeProgress?: number;
+  probeCount?: number;
 }
 
 export interface BakerOrchestrator extends Orchestrator {
@@ -86,16 +82,12 @@ export interface BakerOrchestrator extends Orchestrator {
   exportSceneGLB(): Promise<void>;
   getAtlasPreviewInfo(): { layer: string; count: number; resolution: number };
   renderAtlasPreview(canvas: HTMLCanvasElement): boolean;
-  generateProbes(): Promise<void>;
-  clearProbes(): void;
-  setProbeVisibility(visible: boolean): void;
-  setProbeDemoEnabled(enabled: boolean): void;
-  setProbeDemoAnimation(enabled: boolean): void;
-  setProbeIntensity(intensity: number): void;
-  /**
-   * View-time refresh of every group's composite RT with new intensity
-   * uniforms. Cheap - no rebake. Used by per-layer intensity sliders.
-   */
+  generateProbes?(): Promise<void>;
+  clearProbes?(): void;
+  setProbeVisibility?(visible: boolean): void;
+  setProbeDemoEnabled?(enabled: boolean): void;
+  setProbeDemoAnimation?(enabled: boolean): void;
+  setProbeIntensity?(intensity: number): void;
   refreshComposites(overrides: {
     directIntensity?: number;
     giIntensity?: number;
