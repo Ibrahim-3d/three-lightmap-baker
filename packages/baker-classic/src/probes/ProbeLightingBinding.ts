@@ -104,12 +104,13 @@ export class ProbeLightingBinding {
     const uniform: ProbeUniform = { value: new Color() };
     const originalOnBeforeCompile = material.onBeforeCompile;
     const originalCustomProgramCacheKey = material.customProgramCacheKey;
+    const mode = this.multiplyByAlbedo ? 'albedo' : 'raw';
     const multiplyExpression = this.multiplyByAlbedo
       ? 'bakerProbeIrradiance * diffuseColor.rgb * RECIPROCAL_PI'
       : 'bakerProbeIrradiance';
 
-    material.onBeforeCompile = function probeOnBeforeCompile(shader, renderer): void {
-      originalOnBeforeCompile.call(this, shader, renderer);
+    material.onBeforeCompile = (shader, renderer): void => {
+      originalOnBeforeCompile.call(material, shader, renderer);
       shader.uniforms.bakerProbeIrradiance = uniform;
       shader.fragmentShader = `uniform vec3 bakerProbeIrradiance;\n${shader.fragmentShader}`;
 
@@ -123,11 +124,8 @@ export class ProbeLightingBinding {
       );
     };
 
-    material.customProgramCacheKey = function probeProgramCacheKey(): string {
-      return `${originalCustomProgramCacheKey.call(this)}|baker-probe-pbr-v1|${
-        this === material && multiplyExpression.includes('diffuseColor') ? 'albedo' : 'raw'
-      }`;
-    };
+    material.customProgramCacheKey = (): string =>
+      `${originalCustomProgramCacheKey.call(material)}|baker-probe-pbr-v1|${mode}`;
     material.needsUpdate = true;
 
     return {
