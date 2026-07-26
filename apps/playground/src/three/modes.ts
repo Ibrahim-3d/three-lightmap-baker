@@ -75,8 +75,6 @@ export const LAYERS: Layer[] = [
   },
   { id: 'albedo', label: 'Albedo', group: 'debug', showAlbedo: true, getLightMap: () => null },
   {
-    // Material-swap layer: replaces mesh material with MeshBasicMaterial that
-    // shows the albedo texture WITHOUT any lighting, env probe, or lightmap.
     id: 'albedoUnlit',
     label: 'Albedo (Unlit)',
     group: 'debug',
@@ -131,15 +129,20 @@ export type RenderModeRunnerDeps = {
   getLightMarker(): Mesh;
   getDummyLightmap(): Texture;
   getRestoredLightmap(mesh: Mesh): Texture | null;
-  setProbeOnly(active: boolean): void;
 };
 
 export class RenderModeRunner {
   private texelDensityMats: Map<Mesh, TexelDensityMaterial> = new Map();
   private albedoUnlitMats: Map<Mesh, MeshBasicMaterial> = new Map();
   private originalMaterials = new WeakMap<Mesh, Mesh['material']>();
+  private setProbeOnly: (active: boolean) => void = () => {};
 
   constructor(private deps: RenderModeRunnerDeps) {}
+
+  setProbeOnlyHandler(handler: (active: boolean) => void): void {
+    this.setProbeOnly(false);
+    this.setProbeOnly = handler;
+  }
 
   restoreSwappedMaterials(): void {
     const meshes = this.deps.getMeshes();
@@ -151,7 +154,7 @@ export class RenderModeRunner {
 
   prepareForBake(): void {
     const opts = this.deps.getOptions();
-    this.deps.setProbeOnly(false);
+    this.setProbeOnly(false);
     this.restoreSwappedMaterials();
     this.deps.getVisualLight().visible = opts.directLightEnabled;
     const dummy = this.deps.getDummyLightmap();
@@ -173,7 +176,7 @@ export class RenderModeRunner {
     const lightMarker = this.deps.getLightMarker();
     const layer = LAYERS.find((l) => l.id === opts.layer) ?? LAYERS[0]!;
 
-    this.deps.setProbeOnly(layer.id === 'probes');
+    this.setProbeOnly(layer.id === 'probes');
     if (layer.id === 'probes') {
       this.restoreSwappedMaterials();
       visualLight.visible = false;
@@ -298,7 +301,7 @@ export class RenderModeRunner {
   }
 
   dispose(): void {
-    this.deps.setProbeOnly(false);
+    this.setProbeOnly(false);
     for (const mat of this.texelDensityMats.values()) mat.dispose();
     this.texelDensityMats.clear();
     for (const mat of this.albedoUnlitMats.values()) mat.dispose();
