@@ -1,135 +1,156 @@
 # Roadmap
 
-Last updated: 2026-06-15
+Last updated: 2026-07-26
 
 ## Product Direction
 
-Three Lightmap Baker is not only a lightmap exporter. The target is a browser-first lighting pipeline for Three.js:
+Three Lightmap Baker is a browser-first lighting pipeline for Three.js:
 
-1. Bake static GI into reusable lightmaps.
-2. Generate and debug light probes from the baked scene.
-3. Use probes to light dynamic objects at runtime.
-4. Add real-time companion passes where they strengthen the baked workflow.
-5. Stage WebGPU acceleration without breaking the WebGL-first package.
+1. Bake static GI into reusable lightmaps. Implemented.
+2. Generate and debug light probes from the baked scene. Implemented in code.
+3. Use probes to light dynamic objects at runtime. Implemented in code.
+4. Validate and showcase the complete lightmap + probe workflow on target hardware. Current gate.
+5. Add optional real-time companion passes where they strengthen the baked workflow.
+6. Stage WebGPU acceleration without breaking the WebGL-first package.
 
-The core product remains baked lighting for Three.js. Real-time SSGI, GTAO, SSR, probes, and WebGPU are now urgent roadmap items because they explain how the baker becomes a full web lighting system instead of only a screenshot generator.
+The core product remains stable baked lighting. Probes now bridge static lightmaps with dynamic objects. SSGI, GTAO, SSR, temporal work, and WebGPU remain optional future layers rather than replacements for the baker.
 
 ## Current State
 
 - **Core baker:** Browser/WebGL lightmap baking is implemented with path-traced GI, BVH traversal, auto UV2, AO, dilation, denoise, supersampling/downscale, progressive hooks, and `LightmapBakeResult` lifecycle helpers.
-- **Public API:** Both renderer constructor styles are supported: `new LightmapBaker(renderer, options?)` and `new LightmapBaker({ renderer, ...options })`. The optional `LightmapRendererAdapter` boundary is also available for offscreen-browser/test harness ownership of renderer setup, and `getLightmapRuntimeCapabilities()` exposes the current runtime capability matrix for browser/offscreen/Node staging.
-- **Package readiness:** ESM/CJS/type declaration output is configured, `test:api-import` validates package import, adapter exports, and tarball installation, `typecheck:examples` validates public examples, `release:check` adds the full pre-publish gate plus npm dry run, and `.github/workflows/npm-publish.yml` provides a manual authenticated publish path with version confirmation and npm provenance. The package is not published on npm yet.
-- **Launch proof:** README uses committed before/after launch screenshots from `cornell.advanced`; benchmark numbers for Draft, Preview, Production, and Final are recorded for an RTX 3050 Ti Laptop GPU.
-- **Automation:** `scripts/capture-launch-assets.mjs` captures launch images and benchmark data, with GPU renderer enforcement via `BAKER_EXPECT_GPU`. `pnpm run test:browser-smoke` runs the eight CI browser smokes in one Playwright invocation: adapter runtime, Cornell Draft visual bake, bake cancellation, Project JSON save/load, outliner selection, editor history, asset-library add path, and topbar controls. Individual targeted scripts remain available for each smoke.
-- **Validation status:** `release:check` passes locally as of the latest audit. It covers `typecheck`, `typecheck:examples`, `lint`, `format:check`, demo build, bundle budget, package build, tarball import smoke, and npm publish dry run.
+- **Debug tooling:** Combined, refined/raw combined, direct, indirect, AO, raw lightmap, albedo, unlit albedo, position, normal, texel density, atlas, and probe-only views exist.
+- **Light probes:** Regular RGB probe volumes, lightmap-derived irradiance, interpolation, debug spheres, public generation/evaluation APIs, PBR dynamic-object binding, playground controls, animated demo, and Project JSON / `.3dl` persistence are implemented.
+- **Probe lifecycle:** Probe resources are cleared on scene replacement and invalidated before a new classic bake. Selecting the probe-only layer without a generated volume falls back to Combined.
+- **Public API:** Both renderer constructor styles and the optional `LightmapRendererAdapter` boundary are supported. Probe generation remains a separate opt-in API after the lightmap bake.
+- **Package readiness:** ESM/CJS/type declaration output, API-import smoke, example typecheck, release gate, and manual npm publish workflow exist. The package is not published on npm yet.
+- **Launch proof:** README uses committed Cornell screenshots and benchmark numbers recorded before the probe integration.
+- **Current validation truth:** The pre-probe baseline previously passed `release:check`. The new probe integration has not been compiled or executed in this environment. Local typecheck, focused Playwright tests, package build, and visual GPU validation are the current gate.
 
-## Now: Release + Hybrid Lighting Push
+## Now: Probe Validation and Showcase
 
-### 0. First npm release
+### 0. Validate the current master locally
 
-- Run the manual `npm Publish` workflow for the package version in `package.json` after the publishing environment is configured.
-- After publish, update README install wording from tarball/pre-release guidance to normal registry install flow.
-- Keep release messaging honest: browser/WebGL baker now; Node/headless baking and WebGPU acceleration are staged, not shipped.
+Run:
 
-### 1. Debug-view showcase
+```bash
+corepack enable
+pnpm install
+pnpm run typecheck
+pnpm run typecheck:examples
+pnpm run test:probes
+pnpm run build:package
+pnpm run dev
+```
 
-This is urgent because it makes the project read as an engine-quality tool, not just a Cornell render.
+Validate:
 
-Add README/demo captures for:
+- Probes generate after a completed Draft or Preview bake.
+- Red/green Cornell color bleed appears in nearby probe debug spheres.
+- The animated white sphere transitions smoothly through the irradiance field.
+- The material remains PBR and does not use emissive as the probe-light channel.
+- Light Probes mode hides normal renderables and Combined restores visibility.
+- Saving creates a `.3dl` file containing optional probe data.
+- Loading restores probe count, colors, visibility, controls, and demo state.
+- Starting a new static bake clears stale probes.
+- No console, shader compile, WebGL, or resource-lifecycle errors appear.
 
-- Texel density view.
-- Lightmap atlas view.
+Any failures found here take priority over new rendering features.
+
+### 1. Probe and debug-view showcase
+
+Once validation is green, capture and publish:
+
+- Probe grid inside Cornell and the future custom room.
+- Moving dynamic sphere or product object receiving colored bounce.
+- Probe-only view.
+- Combined lightmap + dynamic-object result.
+- Texel density.
+- Lightmap atlas.
 - Direct-only pass.
 - Indirect/GI-only pass.
 - AO-only pass.
-- Probe-only pass.
-- Final composite.
-- Raw bake vs dilation vs denoise where visually useful.
-- GPU/runtime diagnostics panel: renderer, ANGLE backend, WebGL2, `EXT_color_buffer_float`, timeout protection mode, and budget status.
+- Raw bake versus dilation/denoise where useful.
+- GPU/runtime diagnostics: renderer, ANGLE backend, WebGL2, `EXT_color_buffer_float`, timeout protection, and benchmark status.
 
-### 2. Baked Light Probes
+### 2. Improve probe quality only from measured failures
 
-This is the next major feature. It bridges baked static GI with dynamic runtime objects.
+The current RGB diffuse field is the shipping MVP. Upgrade only where validation demonstrates a real deficiency:
 
-Minimum viable probe system:
+- Tune default spacing, fill iterations, surface offset, and atlas stride.
+- Add per-probe validity and confidence values.
+- Add visibility or occlusion weighting if probes leak through walls.
+- Add probe relocation if samples sit inside geometry.
+- Add multi-point sampling for large dynamic objects.
+- Compact `.3dl` probe payloads if JSON size becomes material.
+- Evaluate SH9 directional irradiance only if RGB cannot provide acceptable dynamic-object lighting.
+- Evaluate per-probe cubemap or reduced-ray generation only if lightmap-derived projection is visibly insufficient.
 
-- Generate a 3D probe grid inside scene bounds.
-- Sample baked lighting or trace a reduced ray set per probe.
-- Store RGB irradiance per probe.
-- Visualize probe points as colored debug spheres.
-- Interpolate nearby probes for a moving test object.
-- Persist probe data inside the demo `.3dl` project format.
-- Add import/export and dispose lifecycle rules for probe resources.
+### 3. First npm release
 
-### 3. Dynamic object GI demo
+After current master passes validation:
 
-Build a clear demo that proves why probes matter:
+- Run the full local `pnpm run release:check`.
+- Configure the publishing environment.
+- Run the manual npm publish workflow for the exact package version.
+- Update README install wording from tarball guidance to registry installation.
+- Keep claims explicit: browser/WebGL lightmaps and RGB diffuse probes now; Node baking, SH9, and WebGPU remain future work.
 
-- Bake a room.
+### 4. Custom architectural showcase
+
+Cornell proves correctness; the custom room should prove product value:
+
+- Build or import a larger interior with multiple material colors and occluded spaces.
+- Bake static GI.
 - Generate probes.
-- Move a sphere or product object through the room.
-- Show the dynamic object receiving colored room bounce from nearby probes.
-- Add debug toggles: baked lightmap only, probe lighting only, final composite.
+- Move a recognizable product object through the room.
+- Capture lightmap-only, probes-only, and final views.
+- Add larger-scene visual regression after the showcase is stable.
 
-### 4. Hybrid runtime lighting companion
+### 5. Hybrid runtime lighting companion
 
-Add the real-time layer where it complements the baker.
+Add real-time effects only where they complement the baker:
 
-Urgent research/prototype tasks:
-
-- SSGI companion pass for small real-time screen-space bounce.
-- GTAO-style stronger contact-occlusion pass or integration story.
-- SSR/reflection companion only if it directly improves configurator/interior demos.
+- SSGI companion pass for small camera-visible bounce.
+- GTAO-style stronger contact occlusion.
+- SSR/reflections only if configurator/interior demos materially improve.
 - Temporal accumulation and denoise experiments for noisy real-time passes.
-- Clear UI split: baked lighting, probe lighting, screen-space companion lighting.
+- Clear UI split between baked lighting, probe lighting, and screen-space companion lighting.
 
-Do not let SSGI erase the baked-lighting product. SSGI is camera-dependent and screen-space-limited. The product should combine stable baked lighting with optional real-time enhancement.
+Do not let SSGI erase the baked-lighting product. Screen-space effects remain camera-dependent and incomplete; stable lightmaps and probes remain the foundation.
 
-### 5. WebGPU acceleration path
+### 6. WebGPU acceleration path
 
-WebGL remains the shipping baseline. WebGPU is now urgent exploration because advanced Three.js lighting work is moving there.
+WebGL remains the shipping baseline. WebGPU exploration should be staged:
 
-Required staging:
-
-- Keep WebGL path stable.
 - Add a WebGPU capability probe to the runtime matrix.
-- Add a design document for WebGPU compute-based bake/probe generation.
-- Prototype a small WebGPU-only pass behind an experimental flag.
-- Investigate node-based shader implementation for companion post-processing, without breaking the current baker API.
-
-### 6. Aggressive R&D tracks
-
-These are no longer ignored or postponed. They are urgent evaluation tracks, but they must be proven with prototypes before they replace the stable WebGL baker.
-
-- **Full SSGI renderer:** investigate whether a complete real-time SSGI path should exist as a sibling renderer/demo mode, not as the first replacement for baked lightmaps.
-- **Full WebGPU rewrite:** evaluate a future WebGPU-native baker/runtime architecture, including compute-driven ray dispatch, probe generation, denoising, and atlas updates.
-- **Full real-time GI engine:** explore whether the project should eventually include a runtime GI mode combining SSGI, probes, GTAO, SSR, temporal accumulation, and baked fallback.
-- **Physics/editor features:** evaluate only where they improve lighting demos, for example moving test objects, draggable light/probe volumes, room-object interaction, and scene-state validation.
-- **Complex node material editor:** evaluate as a future material-authoring layer only after the lighting pipeline is stable; do not block probes, debug views, or WebGPU experiments on this.
-
-Decision rule: these tracks are urgent to study, but the shipping product must remain coherent. Do not create a half-finished engine that makes the baker harder to use.
+- Write a design document for compute-based bake and probe generation.
+- Prototype one small WebGPU-only pass behind an experimental flag.
+- Investigate node-based shaders for optional companion post-processing.
+- Preserve the current public WebGL API and fallback path.
 
 ### 7. Headless and automation
 
-Headless is still important, but it must follow the renderer strategy rather than pretending Node can bake today.
+- Keep the renderer-injected API as the stable boundary. Done.
+- Keep the optional context/renderer adapter interface for offscreen-browser test ownership. Done.
+- Continue Node-safe capability reporting through `getLightmapRuntimeCapabilities()`. Done for the unsupported Node bake path.
+- Prototype a true non-browser runtime only after selecting a rendering backend: headless-gl, browser automation, WebGPU, or another explicit strategy.
+- Do not claim Node baking before a real runtime passes the same visual and lifecycle checks as the browser path.
 
-- Keep renderer-injected API as the stable contract boundary. Done.
-- Keep optional context/renderer adapter interface for offscreen browser workers and test harnesses. Done.
-- Continue Node-safe capability reporting through `getLightmapRuntimeCapabilities()`. Done for current unsupported Node bake path.
-- Prototype true non-browser runtime only after choosing the rendering backend: headless-gl, browser automation, WebGPU, or another explicit renderer strategy.
+## Aggressive R&D Tracks
 
-## Urgent Showcase Work
+These remain evaluation tracks, not current product requirements:
 
-- Custom interior/architectural room is now urgent, not postponed. Cornell proves correctness; the room proves product value.
-- Larger-scene visual regression should be added once the custom room exists.
-- Top-of-README GIF/video should show: texel density, bake, atlas, GI result, probe grid, moving dynamic object, final composite.
-- Technical breakdown should show: before, texel density, UV2/atlas, direct, indirect, AO, probes, dynamic object, final.
+- Full SSGI sibling renderer.
+- Full WebGPU-native baker and probe generator.
+- Full real-time GI mode combining optional screen-space effects, probes, temporal accumulation, and baked fallback.
+- Physics/editor interactions that directly improve lighting demonstrations.
+- Complex node-material editing only after the lighting pipeline is validated and packaged.
+
+Decision rule: prototype and measure before replacing stable systems. Do not turn the baker into a collection of half-finished rendering modes.
 
 ## Later
 
-Only non-critical polish belongs here:
-
-- Minor editor chrome polish not connected to lighting workflows.
+- Minor editor chrome polish unrelated to lighting workflows.
 - Additional sample assets after the main hybrid-lighting showcase exists.
 - Extra themes and layout preferences.
-- Additional documentation examples after the core hybrid lighting pipeline is demonstrable.
+- Additional documentation examples after the current probe workflow is validated.
