@@ -78,28 +78,33 @@ export function installProbeIntegration(app: CornellBoxExample): ProbeController
     host.sceneController.scene,
     () => host.bakeController.bakeResult,
   );
+  let activeProbeAbort: AbortController | null = null;
+
+  const invalidate = (): void => {
+    activeProbeAbort?.abort();
+    activeProbeAbort = null;
+    controller.clear();
+    resetStatus(host.options);
+    bumpOptions();
+  };
+
   host.probeController = controller;
   host.renderModeRunner.setProbeOnlyHandler((active) => {
     controller.setProbeOnly(active);
     return active ? controller.hasVolume : true;
   });
-  host.renderModeRunner.setBeforeBakeHandler(() => {
-    if (!controller.hasVolume) return;
-    controller.clear();
-    resetStatus(host.options);
-    bumpOptions();
-  });
+  host.renderModeRunner.setBeforeBakeHandler(invalidate);
 
   const previousOnSceneLoad = host.externalHooks.onSceneLoad;
   host.externalHooks.onSceneLoad = () => {
-    controller.clear();
-    resetStatus(host.options);
-    bumpOptions();
+    invalidate();
     previousOnSceneLoad?.();
   };
 
   host.generateProbes = async (): Promise<void> => {
     if (host.options.probeStatus === 'generating') return;
+    const abort = new AbortController();
+    activeProbeAbort = abort;
     host.options.probeStatus = 'generating';
     host.options.probeProgress = 0;
     bumpOptions();
@@ -107,7 +112,9 @@ export function installProbeIntegration(app: CornellBoxExample): ProbeController
     let reported = -1;
     try {
       const stats = await controller.generate(readControllerOptions(host.options), {
+        signal: abort.signal,
         onProgress: (progress) => {
+          if (abort.signal.aborted) return;
           const quantized = Math.floor(progress * 100);
           if (quantized === reported && progress < 1) return;
           reported = quantized;
@@ -115,6 +122,7 @@ export function installProbeIntegration(app: CornellBoxExample): ProbeController
           bumpOptions();
         },
       });
+      if (abort.signal.aborted) return;
       host.options.probeStatus = 'ready';
       host.options.probeProgress = 1;
       host.options.probeCount = controller.probeCount;
@@ -125,34 +133,40 @@ export function installProbeIntegration(app: CornellBoxExample): ProbeController
       if (host.options.layer === 'probes') controller.setProbeOnly(true);
       console.info('[baker:probes] generated', stats);
     } catch (error) {
-      host.options.probeStatus = 'error';
-      host.options.probeProgress = 0;
-      host.options.probeCount = 0;
-      const message = error instanceof Error ? error.message : String(error);
-      console.error('[baker:probes] generation failed:', error);
-      host.externalHooks.onBakeError?.(`Probe generation failed: ${message}`);
+      const aborted = abort.signal.aborted || (error instanceof Error && error.name === 'AbortError');
+      if (aborted) {
+        if (activeProbeAbort === abort) resetStatus(host.options);
+      } else {
+        host.options.probeStatus = 'error';
+        host.options.probeProgress = 0;
+        host.options.probeCount = 0;
+        const message = error instanceof Error ? error.message : String(error);
+        console.error('[baker:probes] generation failed:', error);
+        host.externalHooks.onBakeError?.(`Probe generation failed: ${message}`);
+      }
     } finally {
+      if (activeProbeAbort === abort) activeProbeAbort = null;
       bumpOptions();
     }
   };
 
-  host.clearProbes = (): void => {
-    controller.clear();
-    resetStatus(host.options);
-    bumpOptions();
-  };
+  host.clearProbes = invalidate;
   host.setProbeVisibility = (visible): void => controller.setShowProbes(visible);
   host.setProbeDemoEnabled = (enabled): void => controller.setDemoEnabled(enabled);
   host.setProbeDemoAnimation = (enabled): void => controller.setDemoAnimation(enabled);
   host.setProbeIntensity = (intensity): void => controller.setIntensity(intensity);
 
-  installPersistence(host, controller);
+  installPersistence(host, controller, invalidate);
   installProjectFileSurface(host);
   startProbeLoop(controller);
   return controller;
 }
 
-function installPersistence(host: ProbeHost, controller: ProbeController): void {
+function installPersistence(
+  host: ProbeHost,
+  controller: ProbeController,
+  invalidate: () => void,
+): void {
   const originalSerialize = host.serializeProject.bind(host);
   host.serializeProject = (): ProbeProject => {
     const project = originalSerialize();
@@ -168,6 +182,7 @@ function installPersistence(host: ProbeHost, controller: ProbeController): void 
 
   const originalLoad = host.loadProject.bind(host);
   host.loadProject = async (project: ProbeProject): Promise<void> => {
+    invalidate();
     await originalLoad(project);
     installDefaults(host.options);
     applyPersistedOptions(host.options, project.options);
@@ -179,7 +194,6 @@ function installPersistence(host: ProbeHost, controller: ProbeController): void 
       host.options.probeCount = controller.probeCount;
       if (host.options.layer === 'probes') controller.setProbeOnly(true);
     } else {
-      controller.clear();
       resetStatus(host.options);
     }
     bumpOptions();
