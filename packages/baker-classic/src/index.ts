@@ -61,6 +61,30 @@ export type { PackedLight, LightType } from './lightmap/Lights';
 export { TexelDensityMaterial } from './lightmap/TexelDensityMaterial';
 export type { TexelDensityMaterialOptions } from './lightmap/TexelDensityMaterial';
 
+// --- Baked light probes for dynamic objects ---
+export {
+  ProbeVolume,
+  generateProbeGrid,
+  bakeProbeIrradianceFromLightmaps,
+  ProbeDebugView,
+  createProbeDebugView,
+  ProbeLightingBinding,
+  bindProbeLighting,
+} from './probes';
+export type {
+  GenerateProbeVolumeOptions,
+  ProbeBakeHooks,
+  ProbeBakeOptions,
+  ProbeBakeSource,
+  ProbeBakeStats,
+  ProbeDebugViewOptions,
+  ProbeGridCounts,
+  ProbeGridOptions,
+  ProbeGridSpacing,
+  ProbeLightingBindingOptions,
+  ProbeVolumeJSON,
+} from './probes';
+
 // --- Errors ---
 export { BakeError } from './errors';
 export type { BakeErrorPhase } from './errors';
