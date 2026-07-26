@@ -1,3 +1,4 @@
+var _a2;
 import { Vector3, BufferAttribute, ShaderMaterial, GLSL3, DoubleSide, Uniform, Vector2, Scene, OrthographicCamera, RGBAFormat, FloatType, HalfFloatType, NearestFilter, NoBlending, WebGLRenderTarget, Color, Mesh, PointLight, DirectionalLight, SpotLight, RectAreaLight, DataTexture, ClampToEdgeWrapping, Matrix4, WebGLMultipleRenderTargets, LinearFilter, PlaneGeometry, BufferGeometry, DataUtils, Vector4, Box3, Group, SphereGeometry, MeshBasicMaterial, InstancedMesh } from "three";
 import { UVUnwrapper } from "xatlas-three";
 import { MeshBVHUniformStruct, shaderStructs, shaderIntersectFunction, MeshBVH } from "three-mesh-bvh";
@@ -37,13 +38,13 @@ function computeMeshSurfaceArea(mesh) {
   return area;
 }
 function resolveDensityTexelsPerMeter(meshes, opts) {
-  var _a2, _b2, _c;
+  var _a3, _b2, _c;
   if (!Number.isFinite(opts.densityMultiplier) || opts.densityMultiplier <= 0 || !Number.isFinite(opts.atlasResolution) || opts.atlasResolution <= 0) {
     return 0;
   }
   let weightedSurfaceArea = 0;
   for (const mesh of meshes) {
-    const scale = (_b2 = (_a2 = opts.perMeshScale) == null ? void 0 : _a2[mesh.uuid]) != null ? _b2 : 1;
+    const scale = (_b2 = (_a3 = opts.perMeshScale) == null ? void 0 : _a3[mesh.uuid]) != null ? _b2 : 1;
     weightedSurfaceArea += computeMeshSurfaceArea(mesh) * scale * scale;
   }
   if (!Number.isFinite(weightedSurfaceArea) || weightedSurfaceArea <= 0)
@@ -54,14 +55,14 @@ function resolveDensityTexelsPerMeter(meshes, opts) {
   return baseline * opts.densityMultiplier;
 }
 function binPackMeshes(meshes, opts) {
-  var _a2;
-  const fillRatio = (_a2 = opts.fillRatio) != null ? _a2 : DEFAULT_DENSITY_FILL_RATIO;
+  var _a3;
+  const fillRatio = (_a3 = opts.fillRatio) != null ? _a3 : DEFAULT_DENSITY_FILL_RATIO;
   const atlasTexels = opts.atlasResolution * opts.atlasResolution;
   const tpm2 = opts.texelsPerMeter * opts.texelsPerMeter;
   const items = meshes.map((mesh, inputIdx) => {
-    var _a3, _b2;
+    var _a4, _b2;
     const surfaceArea = computeMeshSurfaceArea(mesh);
-    const scale = (_b2 = (_a3 = opts.perMeshScale) == null ? void 0 : _a3[mesh.uuid]) != null ? _b2 : 1;
+    const scale = (_b2 = (_a4 = opts.perMeshScale) == null ? void 0 : _a4[mesh.uuid]) != null ? _b2 : 1;
     const texelsNeeded = surfaceArea * tpm2 * scale * scale;
     const uvFraction = atlasTexels > 0 ? texelsNeeded / atlasTexels : 0;
     return { mesh, inputIdx, surfaceArea, uvFraction };
@@ -99,10 +100,18 @@ function binPackMeshes(meshes, opts) {
   }
   return out;
 }
+const DEBUG = ((_a2 = { "VITE_BASE_PATH": "/three-lightmap-baker/", "BASE_URL": "/", "MODE": "production", "DEV": false, "PROD": true }) == null ? void 0 : _a2.DEV) === true;
 const unwrapper = new UVUnwrapper({ BufferAttribute });
 const worldScale = new Vector3();
 const UV_EPSILON = 1e-4;
 const MAX_DENSITY_PACK_ATTEMPTS = 6;
+var ProgressCategory = /* @__PURE__ */ ((ProgressCategory2) => {
+  ProgressCategory2[ProgressCategory2["AddMesh"] = 0] = "AddMesh";
+  ProgressCategory2[ProgressCategory2["ComputeCharts"] = 1] = "ComputeCharts";
+  ProgressCategory2[ProgressCategory2["PackCharts"] = 2] = "PackCharts";
+  ProgressCategory2[ProgressCategory2["BuildOutputMeshes"] = 3] = "BuildOutputMeshes";
+  return ProgressCategory2;
+})(ProgressCategory || {});
 function getUv2Bounds(meshs) {
   let min = Infinity;
   let max = -Infinity;
@@ -160,20 +169,32 @@ function setPackTexelsPerUnit(enabled, texelsPerUnit) {
   }
 }
 const loadXAtlasThree = async () => {
+  const lastSeen = {};
   const onProgress = (mode, progress) => {
-    return;
+    if (!DEBUG)
+      return;
+    if (progress < 100) {
+      lastSeen[mode] = progress;
+      return;
+    }
+    if (lastSeen[mode] === 100)
+      return;
+    lastSeen[mode] = 100;
+    console.info(`[baker] xatlas ${ProgressCategory[mode]} done`);
   };
   await unwrapper.loadLibrary(
     onProgress,
     "https://cdn.jsdelivr.net/npm/xatlasjs@0.2.0/dist/xatlas.wasm",
     "https://cdn.jsdelivr.net/npm/xatlasjs@0.2.0/dist/xatlas.js"
   );
+  if (DEBUG)
+    console.info("[baker] xatlas loaded");
 };
 const generateAtlas = async (meshs, options = {}) => {
-  var _a2, _b2, _c, _d, _e, _f;
+  var _a3, _b2, _c, _d, _e, _f;
   const geometry = meshs.map((mesh) => mesh.geometry);
   const densityMode = options.texelsPerUnit !== void 0 && options.texelsPerUnit > 0;
-  const packResolution = densityMode ? (_a2 = options.resolution) != null ? _a2 : 1024 : 4096;
+  const packResolution = densityMode ? (_a3 = options.resolution) != null ? _a3 : 1024 : 4096;
   let texelsPerUnit = (_b2 = options.texelsPerUnit) != null ? _b2 : 0;
   if (densityMode) {
     const atlasTexels = packResolution * packResolution;
@@ -251,6 +272,8 @@ const generateAtlases = async (meshesByBin, options = {}) => {
     const bin = meshesByBin[i];
     if (!bin || bin.length === 0)
       continue;
+    if (DEBUG)
+      console.info(`[baker] xatlas bin ${i + 1}/${meshesByBin.length}: ${bin.length} meshes`);
     await generateAtlas(bin, options);
   }
 };
@@ -358,8 +381,8 @@ function makeAtlasMesh(mesh) {
   return clone;
 }
 function setAtlasOffset(material, x, y) {
-  var _a2;
-  const offset = (_a2 = material.uniforms.offset) == null ? void 0 : _a2.value;
+  var _a3;
+  const offset = (_a3 = material.uniforms.offset) == null ? void 0 : _a3.value;
   if (!offset)
     throw new Error("[baker] atlas material missing offset uniform");
   offset.set(x, y);
@@ -817,10 +840,10 @@ const LIGHT_TEX_WIDTH = 4;
 function collectLightsFromScene(scene2) {
   const out = [];
   scene2.traverse((obj) => {
-    var _a2;
+    var _a3;
     if (!obj.visible)
       return;
-    if ((_a2 = obj.userData) == null ? void 0 : _a2.lightmapIgnore)
+    if ((_a3 = obj.userData) == null ? void 0 : _a3.lightmapIgnore)
       return;
     if (obj instanceof PointLight) {
       out.push({
@@ -897,7 +920,7 @@ function disposeLightTexture(tex) {
   tex.dispose();
 }
 const generateLightmapper = (renderer, positions, normals, bvh, options) => {
-  var _a2, _b2;
+  var _a3, _b2;
   const lightBuild = buildLightTexture(options.lights);
   const lightTexture = lightBuild.texture;
   const raycastMaterial = new LightmapperMaterial({
@@ -909,7 +932,7 @@ const generateLightmapper = (renderer, positions, normals, bvh, options) => {
     emissiveTex: options.emissiveTexture,
     materialTextureSize: options.materialTextureSize,
     casts: options.casts,
-    bounces: (_a2 = options.bounces) != null ? _a2 : 1,
+    bounces: (_a3 = options.bounces) != null ? _a3 : 1,
     lightsTex: lightTexture,
     lightCount: lightBuild.count,
     skyColor: options.skyColor,
@@ -1201,7 +1224,7 @@ class AOMaterial extends ShaderMaterial {
   }
 }
 const generateAOMapper = (renderer, positions, normals, bvh, options) => {
-  var _a2;
+  var _a3;
   const material = new AOMaterial({
     bvh,
     invModelMatrix: new Matrix4().identity(),
@@ -1232,7 +1255,7 @@ const generateAOMapper = (renderer, positions, normals, bvh, options) => {
   let totalSamples = 0;
   const target = options.targetSamples | 0;
   const resolution = options.resolution;
-  let tileSize = Math.max(1, Math.min(resolution, (_a2 = options.tileSize) != null ? _a2 : resolution));
+  let tileSize = Math.max(1, Math.min(resolution, (_a3 = options.tileSize) != null ? _a3 : resolution));
   let pendingTileSize = null;
   let nextTileIndex = 0;
   const computeTileGrid = (s) => {
@@ -1490,7 +1513,7 @@ class DilationMaterial extends ShaderMaterial {
     return "DilationMaterial|glsl3|single-out";
   }
   constructor(opts = {}) {
-    var _a2, _b2, _c;
+    var _a3, _b2, _c;
     super({
       glslVersion: GLSL3,
       blending: NoBlending,
@@ -1498,7 +1521,7 @@ class DilationMaterial extends ShaderMaterial {
       depthWrite: false,
       depthTest: false,
       uniforms: {
-        map: { value: (_a2 = opts.map) != null ? _a2 : null },
+        map: { value: (_a3 = opts.map) != null ? _a3 : null },
         positions: { value: (_b2 = opts.positions) != null ? _b2 : null },
         resolution: { value: (_c = opts.resolution) != null ? _c : 1024 },
         useSourceAlpha: { value: false }
@@ -1571,7 +1594,7 @@ class DenoiseMaterial extends ShaderMaterial {
     return "DenoiseMaterial|glsl1|single-out";
   }
   constructor(options) {
-    var _a2, _b2, _c;
+    var _a3, _b2, _c;
     super({
       blending: NoBlending,
       transparent: false,
@@ -1581,7 +1604,7 @@ class DenoiseMaterial extends ShaderMaterial {
         USE_SLIDER: 0
       },
       uniforms: {
-        sigma: { value: (_a2 = options.sigma) != null ? _a2 : 5 },
+        sigma: { value: (_a3 = options.sigma) != null ? _a3 : 5 },
         threshold: { value: (_b2 = options.threshold) != null ? _b2 : 0.03 },
         kSigma: { value: (_c = options.kSigma) != null ? _c : 1 },
         map: { value: options.map }
@@ -1648,7 +1671,7 @@ class DenoiseMaterial extends ShaderMaterial {
 const fsQuad = new Mesh(new PlaneGeometry(2, 2));
 const fsCam$1 = new OrthographicCamera();
 const runPostProcess = async (renderer, src, positions, resolution, opts, onProgress) => {
-  var _a2, _b2, _c;
+  var _a3, _b2, _c;
   const makeRT = () => new WebGLRenderTarget(resolution, resolution, {
     type: FloatType,
     minFilter: LinearFilter,
@@ -1717,7 +1740,7 @@ const runPostProcess = async (renderer, src, positions, resolution, opts, onProg
     renderer.readRenderTargetPixels(read, x, x, 4, 4, buf);
     let r = 0, g = 0, b = 0;
     for (let i = 0; i < 16; i++) {
-      r += (_a2 = buf[i * 4]) != null ? _a2 : 0;
+      r += (_a3 = buf[i * 4]) != null ? _a3 : 0;
       g += (_b2 = buf[i * 4 + 1]) != null ? _b2 : 0;
       b += (_c = buf[i * 4 + 2]) != null ? _c : 0;
     }
@@ -2027,7 +2050,7 @@ const triangleCount = (mesh) => {
 };
 const WHITE_FALLBACK = { aR: 1, aG: 1, aB: 1, eR: 0, eG: 0, eB: 0 };
 const readMaterialColors = (material) => {
-  var _a2;
+  var _a3;
   if (Array.isArray(material)) {
     console.warn(
       "[baker] material array detected; using slot 0 only - per-face material groups not yet supported"
@@ -2037,7 +2060,7 @@ const readMaterialColors = (material) => {
   }
   const m = material;
   if ("emissive" in m && m.emissive) {
-    const intensity = (_a2 = m.emissiveIntensity) != null ? _a2 : 1;
+    const intensity = (_a3 = m.emissiveIntensity) != null ? _a3 : 1;
     return {
       aR: m.color.r,
       aG: m.color.g,
@@ -2056,7 +2079,7 @@ const readMaterialColors = (material) => {
   return WHITE_FALLBACK;
 };
 const extractPerTriangleMaterials = (merged, meshes) => {
-  var _a2, _b2, _c;
+  var _a3, _b2, _c;
   const indexAttr = merged.index;
   if (!indexAttr) {
     throw new BakeError(
@@ -2079,7 +2102,7 @@ const extractPerTriangleMaterials = (merged, meshes) => {
   const indexArr = indexAttr.array;
   const meshIdxArr = meshIdxAttr.array;
   for (let tri = 0; tri < totalTriangles; tri++) {
-    const v02 = (_a2 = indexArr[tri * 3]) != null ? _a2 : 0;
+    const v02 = (_a3 = indexArr[tri * 3]) != null ? _a3 : 0;
     const meshIdx = ((_b2 = meshIdxArr[v02]) != null ? _b2 : 0) | 0;
     const c = (_c = meshColors[meshIdx]) != null ? _c : WHITE_FALLBACK;
     const o = tri * 3;
@@ -2103,7 +2126,7 @@ const makeTexture = (data, side) => {
   return tex;
 };
 const buildMaterialTextures = (perTri) => {
-  var _a2, _b2, _c, _d, _e, _f;
+  var _a3, _b2, _c, _d, _e, _f;
   const N = perTri.totalTriangles;
   const side = Math.max(1, Math.ceil(Math.sqrt(N)));
   const texelCount = side * side;
@@ -2112,7 +2135,7 @@ const buildMaterialTextures = (perTri) => {
   for (let i = 0; i < N; i++) {
     const src = i * 3;
     const dst = i * 4;
-    albedoData[dst] = (_a2 = perTri.albedo[src]) != null ? _a2 : 0;
+    albedoData[dst] = (_a3 = perTri.albedo[src]) != null ? _a3 : 0;
     albedoData[dst + 1] = (_b2 = perTri.albedo[src + 1]) != null ? _b2 : 0;
     albedoData[dst + 2] = (_c = perTri.albedo[src + 2]) != null ? _c : 0;
     albedoData[dst + 3] = 1;
@@ -2367,7 +2390,7 @@ var wfblk = function(out, pos, dat) {
 var wblk = function(dat, out, final, syms, lf, df, eb, li, bs, bl, p) {
   wbits(out, p++, final);
   ++lf[256];
-  var _a2 = hTree(lf, 15), dlt = _a2[0], mlb = _a2[1];
+  var _a3 = hTree(lf, 15), dlt = _a3[0], mlb = _a3[1];
   var _b2 = hTree(df, 15), ddt = _b2[0], mdb = _b2[1];
   var _c = lc(dlt), lclt = _c[0], nlc = _c[1];
   var _d = lc(ddt), lcdt = _d[0], ndc = _d[1];
@@ -2924,7 +2947,7 @@ function triggerDownload(blob, filename) {
 }
 const ensureExt = (name, ext) => name.toLowerCase().endsWith(`.${ext}`) ? name : `${name}.${ext}`;
 async function exportPNG(renderer, source, resolution, filename) {
-  var _a2, _b2, _c;
+  var _a3, _b2, _c;
   const rt = renderToRT(renderer, source, resolution);
   const float = new Float32Array(resolution * resolution * 4);
   renderer.readRenderTargetPixels(rt, 0, 0, resolution, resolution, float);
@@ -2936,7 +2959,7 @@ async function exportPNG(renderer, source, resolution, filename) {
     for (let x = 0; x < resolution; x++) {
       const si = srcRow + x * 4;
       const di = dstRow + x * 4;
-      const r = Math.max((_a2 = float[si]) != null ? _a2 : 0, 0);
+      const r = Math.max((_a3 = float[si]) != null ? _a3 : 0, 0);
       const g = Math.max((_b2 = float[si + 1]) != null ? _b2 : 0, 0);
       const b = Math.max((_c = float[si + 2]) != null ? _c : 0, 0);
       u82[di] = Math.pow(r / (1 + r), 1 / 2.2) * 255;
@@ -2995,7 +3018,7 @@ async function exportLightmap(renderer, source, resolution, filename, format) {
 const HEADER_HEIGHT = 22;
 class AtlasViewer {
   constructor(opts = {}) {
-    var _a2, _b2, _c, _d;
+    var _a3, _b2, _c, _d;
     this.visible = true;
     this.collapsed = false;
     this.headerEl = null;
@@ -3003,7 +3026,7 @@ class AtlasViewer {
     this.textures = null;
     this.prevScissor = new Vector4();
     this.prevViewport = new Vector4();
-    this.size = (_a2 = opts.size) != null ? _a2 : 256;
+    this.size = (_a3 = opts.size) != null ? _a3 : 256;
     this.margin = (_b2 = opts.margin) != null ? _b2 : 20;
     this.corner = (_c = opts.corner) != null ? _c : "br";
     this.mat = new ShaderMaterial({
@@ -3107,8 +3130,8 @@ class AtlasViewer {
     this.refreshHeaderText();
   }
   detachHeader() {
-    var _a2;
-    (_a2 = this.headerEl) == null ? void 0 : _a2.remove();
+    var _a3;
+    (_a3 = this.headerEl) == null ? void 0 : _a3.remove();
     this.headerEl = null;
   }
   refreshHeaderText() {
@@ -3151,7 +3174,7 @@ class AtlasViewer {
     this.headerEl.style.top = `${canvasRect.top + headerTop}px`;
   }
   render(renderer) {
-    var _a2, _b2;
+    var _a3, _b2;
     if (!this.visible) {
       this.positionHeader(renderer.domElement.getBoundingClientRect());
       return;
@@ -3160,7 +3183,7 @@ class AtlasViewer {
     if (this.collapsed)
       return;
     const multi = this.textures;
-    const single = (_a2 = this.mat.uniforms.map) == null ? void 0 : _a2.value;
+    const single = (_a3 = this.mat.uniforms.map) == null ? void 0 : _a3.value;
     if (!multi && !single)
       return;
     const dpr = renderer.getPixelRatio();
@@ -3390,11 +3413,11 @@ class ProbeVolume {
     );
   }
   getIrradiance(index, target = new Color()) {
-    var _a2, _b2, _c;
+    var _a3, _b2, _c;
     this.validateIndex(index);
     const offset = index * 3;
     return target.setRGB(
-      (_a2 = this.irradiance[offset]) != null ? _a2 : 0,
+      (_a3 = this.irradiance[offset]) != null ? _a3 : 0,
       (_b2 = this.irradiance[offset + 1]) != null ? _b2 : 0,
       (_c = this.irradiance[offset + 2]) != null ? _c : 0
     );
@@ -3408,7 +3431,7 @@ class ProbeVolume {
     return this;
   }
   sample(position, target = new Color()) {
-    var _a2, _b2, _c;
+    var _a3, _b2, _c;
     const x = this.axisSample(position.x, this.bounds.min.x, this.bounds.max.x, this.counts[0]);
     const y = this.axisSample(position.y, this.bounds.min.y, this.bounds.max.y, this.counts[1]);
     const z = this.axisSample(position.z, this.bounds.min.z, this.bounds.max.z, this.counts[2]);
@@ -3428,7 +3451,7 @@ class ProbeVolume {
           if (weight <= 0)
             continue;
           const offset = this.index(xi, yi, zi) * 3;
-          r += ((_a2 = this.irradiance[offset]) != null ? _a2 : 0) * weight;
+          r += ((_a3 = this.irradiance[offset]) != null ? _a3 : 0) * weight;
           g += ((_b2 = this.irradiance[offset + 1]) != null ? _b2 : 0) * weight;
           b += ((_c = this.irradiance[offset + 2]) != null ? _c : 0) * weight;
         }
@@ -3479,9 +3502,9 @@ class ProbeVolume {
 }
 const MIN_SPACING = 1e-4;
 function generateProbeGrid(source, options = {}) {
-  var _a2, _b2;
+  var _a3, _b2;
   const bounds = resolveBounds(source, options);
-  const counts = options.counts ? normalizeCounts(options.counts) : countsFromSpacing(bounds, normalizeSpacing((_a2 = options.spacing) != null ? _a2 : 1));
+  const counts = options.counts ? normalizeCounts(options.counts) : countsFromSpacing(bounds, normalizeSpacing((_a3 = options.spacing) != null ? _a3 : 1));
   const probeCount = counts[0] * counts[1] * counts[2];
   const maxProbes = Math.max(1, Math.floor((_b2 = options.maxProbes) != null ? _b2 : 4096));
   if (probeCount > maxProbes) {
@@ -3492,12 +3515,12 @@ function generateProbeGrid(source, options = {}) {
   return new ProbeVolume(bounds, counts);
 }
 function resolveBounds(source, options) {
-  var _a2;
+  var _a3;
   const bounds = options.bounds ? options.bounds.clone() : source instanceof Box3 ? source.clone() : new Box3().setFromObject(source, true);
   if (bounds.isEmpty()) {
     throw new Error("[baker:probes] cannot derive probe bounds from an empty object");
   }
-  const padding = (_a2 = options.padding) != null ? _a2 : 0;
+  const padding = (_a3 = options.padding) != null ? _a3 : 0;
   if (!Number.isFinite(padding) || padding < 0) {
     throw new Error("[baker:probes] padding must be a finite non-negative number");
   }
@@ -3607,9 +3630,9 @@ function readFloatTexture(renderer, source, resolution) {
   return pixels;
 }
 async function bakeProbeIrradianceFromLightmaps(renderer, source, volume, options = {}, hooks = {}) {
-  var _a2, _b2, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y;
+  var _a3, _b2, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y;
   const started = now();
-  const sampleStride = positiveInteger((_a2 = options.sampleStride) != null ? _a2 : 2, "sampleStride");
+  const sampleStride = positiveInteger((_a3 = options.sampleStride) != null ? _a3 : 2, "sampleStride");
   const rowsPerYield = positiveInteger((_b2 = options.rowsPerYield) != null ? _b2 : 24, "rowsPerYield");
   const fillIterations = nonNegativeInteger((_c = options.fillIterations) != null ? _c : 4, "fillIterations");
   const intensity = finiteNonNegative$1((_d = options.intensity) != null ? _d : 1, "intensity");
@@ -3761,7 +3784,7 @@ async function bakeProbeIrradianceFromLightmaps(renderer, source, volume, option
   };
 }
 function diffuseEmptyProbes(values, valid, counts, iterations, hooks) {
-  var _a2, _b2, _c, _d;
+  var _a3, _b2, _c, _d;
   const [nx, ny, nz] = counts;
   const neighbours = [
     [-1, 0, 0],
@@ -3795,7 +3818,7 @@ function diffuseEmptyProbes(values, valid, counts, iterations, hooks) {
             if (!valid[neighbour])
               continue;
             const offset = neighbour * 3;
-            r += (_a2 = values[offset]) != null ? _a2 : 0;
+            r += (_a3 = values[offset]) != null ? _a3 : 0;
             g += (_b2 = values[offset + 1]) != null ? _b2 : 0;
             b += (_c = values[offset + 2]) != null ? _c : 0;
             count++;
@@ -3871,14 +3894,14 @@ async function generateProbeVolume(renderer, sourceObject, bakeSource, options =
 }
 class ProbeDebugView extends Group {
   constructor(volume, options = {}) {
-    var _a2, _b2, _c, _d, _e;
+    var _a3, _b2, _c, _d, _e;
     super();
     this.volume = volume;
     this.probePosition = new Vector3();
     this.probeMatrix = new Matrix4();
     this.color = new Color();
     this.name = "ProbeDebugView";
-    this.exposure = Math.max(0, (_a2 = options.exposure) != null ? _a2 : 1);
+    this.exposure = Math.max(0, (_a3 = options.exposure) != null ? _a3 : 1);
     const radius = Math.max(1e-4, (_b2 = options.radius) != null ? _b2 : defaultRadius(volume));
     const opacity = Math.min(1, Math.max(0, (_c = options.opacity) != null ? _c : 0.9));
     this.geometry = new SphereGeometry(
@@ -3945,14 +3968,14 @@ function defaultRadius(volume) {
 }
 class ProbeLightingBinding {
   constructor(mesh, volume, options = {}) {
-    var _a2, _b2, _c, _d, _e;
+    var _a3, _b2, _c, _d, _e;
     this.mesh = mesh;
     this.volume = volume;
     this.worldPosition = new Vector3();
     this.sampled = new Color();
     this.contribution = new Color();
     this.disposed = false;
-    this.intensity = finiteNonNegative((_a2 = options.intensity) != null ? _a2 : 1, "intensity");
+    this.intensity = finiteNonNegative((_a3 = options.intensity) != null ? _a3 : 1, "intensity");
     this.multiplyByAlbedo = (_b2 = options.multiplyByAlbedo) != null ? _b2 : true;
     this.maxIrradiance = finiteNonNegative((_c = options.maxIrradiance) != null ? _c : 4, "maxIrradiance");
     this.sampleOffset = (_e = (_d = options.sampleOffset) == null ? void 0 : _d.clone()) != null ? _e : new Vector3();
@@ -4058,10 +4081,10 @@ function classifyRenderer(renderer) {
   return "unknown";
 }
 function detectGPUCapabilities(renderer) {
-  var _a2, _b2;
+  var _a3, _b2;
   const gl = renderer.getContext();
   const ext = gl.getExtension("WEBGL_debug_renderer_info");
-  const vendor = ext ? String((_a2 = gl.getParameter(ext.UNMASKED_VENDOR_WEBGL)) != null ? _a2 : "") : "";
+  const vendor = ext ? String((_a3 = gl.getParameter(ext.UNMASKED_VENDOR_WEBGL)) != null ? _a3 : "") : "";
   const rendererStr = ext ? String((_b2 = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) != null ? _b2 : "") : "";
   const tier = classifyRenderer(rendererStr);
   const def = DEFAULTS[tier];
@@ -4084,8 +4107,8 @@ const DEFAULT_REFINEMENT = {
   denoiseKSigma: 1
 };
 function validateOptions(opts) {
-  var _a2, _b2, _c, _d, _e, _f, _g, _h;
-  const samples = (_a2 = opts.samples) != null ? _a2 : 96;
+  var _a3, _b2, _c, _d, _e, _f, _g, _h;
+  const samples = (_a3 = opts.samples) != null ? _a3 : 96;
   if (!Number.isFinite(samples) || samples < 1 || samples > 4096)
     throw new BakeError(`samples must be 1-4096, got ${samples}`, "validation");
   const casts = (_b2 = opts.castsPerFrame) != null ? _b2 : 5;
@@ -4179,8 +4202,8 @@ function validateOptions(opts) {
     );
 }
 function resolveTimeoutProtection(user, caps) {
-  var _a2, _b2, _c, _d, _e;
-  const safe = (_a2 = user == null ? void 0 : user.safeMode) != null ? _a2 : false;
+  var _a3, _b2, _c, _d, _e;
+  const safe = (_a3 = user == null ? void 0 : user.safeMode) != null ? _a3 : false;
   return {
     safeMode: safe,
     initialTileSize: (_b2 = user == null ? void 0 : user.initialTileSize) != null ? _b2 : safe ? 64 : caps.initialTileSize,
@@ -4254,11 +4277,11 @@ function createDownscale(renderer, source, targetResolution) {
   };
 }
 function partitionByResolution(meshes, perMesh, globalRes) {
-  var _a2, _b2;
+  var _a3, _b2;
   const excluded = [];
   const groups = /* @__PURE__ */ new Map();
   for (const m of meshes) {
-    const override = (_a2 = perMesh[m.uuid]) != null ? _a2 : {};
+    const override = (_a3 = perMesh[m.uuid]) != null ? _a3 : {};
     if (override.exclude === true) {
       excluded.push(m);
       continue;
@@ -4272,19 +4295,19 @@ function partitionByResolution(meshes, perMesh, globalRes) {
     groups.set(
       globalRes,
       meshes.filter((m) => {
-        var _a3;
-        return !((_a3 = perMesh[m.uuid]) == null ? void 0 : _a3.exclude);
+        var _a4;
+        return !((_a4 = perMesh[m.uuid]) == null ? void 0 : _a4.exclude);
       })
     );
   }
   return { excluded, groups, resolution: globalRes };
 }
 function partitionByDensity(meshes, perMesh, atlasResolution, texelsPerMeter) {
-  var _a2, _b2;
+  var _a3, _b2;
   const excluded = [];
   const eligible = [];
   for (const m of meshes) {
-    if (((_a2 = perMesh[m.uuid]) == null ? void 0 : _a2.exclude) === true)
+    if (((_a3 = perMesh[m.uuid]) == null ? void 0 : _a3.exclude) === true)
       excluded.push(m);
     else
       eligible.push(m);
@@ -4328,7 +4351,7 @@ class LightmapBakeResult {
   }
   get groups() {
     return this.internals.groups.map((g) => {
-      var _a2, _b2;
+      var _a3, _b2;
       return {
         meshes: g.meshes,
         resolution: g.resolution,
@@ -4340,7 +4363,7 @@ class LightmapBakeResult {
           indirect: g.lightmapper.textures.indirect,
           ao: g.aoMapper.texture,
           composite: g.composite.texture,
-          refinement: (_b2 = (_a2 = g.refinement) == null ? void 0 : _a2.texture) != null ? _b2 : null,
+          refinement: (_b2 = (_a3 = g.refinement) == null ? void 0 : _a3.texture) != null ? _b2 : null,
           position: g.positionTex,
           normal: g.normalTex
         }
@@ -4348,7 +4371,7 @@ class LightmapBakeResult {
     });
   }
   getGroupForMesh(mesh) {
-    var _a2, _b2;
+    var _a3, _b2;
     for (const g of this.internals.groups) {
       if (g.meshes.includes(mesh)) {
         return {
@@ -4362,7 +4385,7 @@ class LightmapBakeResult {
             indirect: g.lightmapper.textures.indirect,
             ao: g.aoMapper.texture,
             composite: g.composite.texture,
-            refinement: (_b2 = (_a2 = g.refinement) == null ? void 0 : _a2.texture) != null ? _b2 : null,
+            refinement: (_b2 = (_a3 = g.refinement) == null ? void 0 : _a3.texture) != null ? _b2 : null,
             position: g.positionTex,
             normal: g.normalTex
           }
@@ -4383,8 +4406,8 @@ class LightmapBakeResult {
     }
   }
   async export(pathOrName = "lightmap", opts = {}) {
-    var _a2, _b2, _c, _d, _e;
-    const fmt = (_a2 = opts.format) != null ? _a2 : "png";
+    var _a3, _b2, _c, _d, _e;
+    const fmt = (_a3 = opts.format) != null ? _a3 : "png";
     const base = pathOrName.replace(/[\/\\]+$/, "").split(/[\/\\]/).pop() || "lightmap";
     const groups = this.internals.groups;
     for (let i = 0; i < groups.length; i++) {
@@ -4395,9 +4418,9 @@ class LightmapBakeResult {
     }
   }
   dispose() {
-    var _a2, _b2;
+    var _a3, _b2;
     for (const g of this.internals.groups) {
-      (_a2 = g.downscale) == null ? void 0 : _a2.dispose();
+      (_a3 = g.downscale) == null ? void 0 : _a3.dispose();
       (_b2 = g.refinement) == null ? void 0 : _b2.dispose();
       g.composite.dispose();
       g.aoMapper.dispose();
@@ -4434,8 +4457,8 @@ class LightmapBakeResult {
         gi,
         groups.length,
         (p) => {
-          var _a2;
-          return (_a2 = hooks.onProgress) == null ? void 0 : _a2.call(hooks, "bake", (gi + p) / groups.length);
+          var _a3;
+          return (_a3 = hooks.onProgress) == null ? void 0 : _a3.call(hooks, "bake", (gi + p) / groups.length);
         }
       );
       if (g.refinement) {
@@ -4470,8 +4493,8 @@ function rebakeAOForGroup(renderer, bvh, group, aoOpts, hooks, groupIndex, total
   group.composite.refresh({ aoTex: newAO.texture });
   return new Promise((resolve, reject) => {
     const tick = () => {
-      var _a2, _b2;
-      if ((_a2 = hooks.signal) == null ? void 0 : _a2.aborted) {
+      var _a3, _b2;
+      if ((_a3 = hooks.signal) == null ? void 0 : _a3.aborted) {
         const err = new BakeError("aborted by signal", "bake");
         err.name = "AbortError";
         reject(err);
@@ -4530,9 +4553,9 @@ function buildAORaycastOpts(opts, resolution, tp) {
   };
 }
 async function runGroupBake(ctx, groupIndex, totalGroups, groupMeshes, resolution, internalResolution, hooks, checkAbort2) {
-  var _a2, _b2, _c;
+  var _a3, _b2, _c;
   const { renderer, opts, bvh, sceneLights, skyColor, matTex, tp, ctxState } = ctx;
-  (_a2 = hooks.onProgress) == null ? void 0 : _a2.call(hooks, "bake", groupIndex / totalGroups);
+  (_a3 = hooks.onProgress) == null ? void 0 : _a3.call(hooks, "bake", groupIndex / totalGroups);
   checkAbort2("bake");
   let atlas = null;
   let lightmapper = null;
@@ -4587,8 +4610,8 @@ async function runGroupBake(ctx, groupIndex, totalGroups, groupMeshes, resolutio
       groupIndex,
       totalGroups,
       (p) => {
-        var _a3;
-        return (_a3 = hooks.onProgress) == null ? void 0 : _a3.call(hooks, "bake", (groupIndex + p) / totalGroups);
+        var _a4;
+        return (_a4 = hooks.onProgress) == null ? void 0 : _a4.call(hooks, "bake", (groupIndex + p) / totalGroups);
       }
     );
     if (opts.denoise || opts.refinementOptions.dilationIterations > 0) {
@@ -4649,8 +4672,8 @@ function runMappersWithTimeoutProtection(lightmapper, aoMapper, composite, targe
     let lastRaf = performance.now();
     let tileSize = tp.initialTileSize;
     const tick = () => {
-      var _a2, _b2;
-      if ((_a2 = hooks.signal) == null ? void 0 : _a2.aborted) {
+      var _a3, _b2;
+      if ((_a3 = hooks.signal) == null ? void 0 : _a3.aborted) {
         const err = new BakeError("aborted by signal", "bake");
         err.name = "AbortError";
         reject(err);
@@ -4707,12 +4730,12 @@ function runMappersWithTimeoutProtection(lightmapper, aoMapper, composite, targe
 function collectBakeMeshes(scene2) {
   const out = [];
   scene2.traverse((obj) => {
-    var _a2;
+    var _a3;
     if (!obj.isMesh)
       return;
     if (!obj.visible)
       return;
-    if ((_a2 = obj.userData) == null ? void 0 : _a2.lightmapIgnore)
+    if ((_a3 = obj.userData) == null ? void 0 : _a3.lightmapIgnore)
       return;
     const mesh = obj;
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
@@ -4722,7 +4745,7 @@ function collectBakeMeshes(scene2) {
   return out;
 }
 async function runBakePipeline(args) {
-  var _a2, _b2, _c, _d, _e, _f;
+  var _a3, _b2, _c, _d, _e, _f;
   const { renderer, opts, scene: scene2, allMeshes, hooks, t0, tp, ctxState, checkAbort: checkAbort2 } = args;
   const densityMultiplier = opts.texelsPerMeter;
   const perMeshScale = {};
@@ -4732,8 +4755,8 @@ async function runBakePipeline(args) {
   }
   const densityTexelsPerMeter = densityMultiplier > 0 ? resolveDensityTexelsPerMeter(
     allMeshes.filter((mesh) => {
-      var _a3;
-      return ((_a3 = opts.perMesh[mesh.uuid]) == null ? void 0 : _a3.exclude) !== true;
+      var _a4;
+      return ((_a4 = opts.perMesh[mesh.uuid]) == null ? void 0 : _a4.exclude) !== true;
     }),
     {
       atlasResolution: opts.resolution,
@@ -4745,7 +4768,7 @@ async function runBakePipeline(args) {
   const { excluded, groups } = partition;
   const groupResolution = (key) => densityTexelsPerMeter > 0 ? partition.resolution : key;
   const tUV0 = performance.now();
-  (_a2 = hooks.onProgress) == null ? void 0 : _a2.call(hooks, "uv-unwrap", 0);
+  (_a3 = hooks.onProgress) == null ? void 0 : _a3.call(hooks, "uv-unwrap", 0);
   const meshesByGroup = [...groups.values()];
   if (densityTexelsPerMeter > 0) {
     await generateAtlases(meshesByGroup, {
@@ -4842,19 +4865,19 @@ async function runBakePipeline(args) {
   });
 }
 function createRendererAdapter(renderer, options = {}) {
-  var _a2;
+  var _a3;
   return {
     renderer,
-    contextLossTarget: (_a2 = options.contextLossTarget) != null ? _a2 : renderer.domElement,
+    contextLossTarget: (_a3 = options.contextLossTarget) != null ? _a3 : renderer.domElement,
     label: options.label
   };
 }
 function isLightmapRendererAdapter(value) {
-  var _a2;
-  return !!value && typeof value === "object" && "renderer" in value && value.renderer !== null && typeof ((_a2 = value.renderer) == null ? void 0 : _a2.isWebGLRenderer) === "boolean";
+  var _a3;
+  return !!value && typeof value === "object" && "renderer" in value && value.renderer !== null && typeof ((_a3 = value.renderer) == null ? void 0 : _a3.isWebGLRenderer) === "boolean";
 }
 function resolveGIOptions(gi) {
-  var _a2, _b2, _c, _d;
+  var _a3, _b2, _c, _d;
   if (typeof gi === "boolean") {
     return {
       enabled: gi,
@@ -4864,14 +4887,14 @@ function resolveGIOptions(gi) {
     };
   }
   return {
-    enabled: (_a2 = gi == null ? void 0 : gi.enabled) != null ? _a2 : true,
+    enabled: (_a3 = gi == null ? void 0 : gi.enabled) != null ? _a3 : true,
     intensity: (_b2 = gi == null ? void 0 : gi.intensity) != null ? _b2 : 1,
     skyColor: (_c = gi == null ? void 0 : gi.skyColor) != null ? _c : 16777215,
     skyIntensity: (_d = gi == null ? void 0 : gi.skyIntensity) != null ? _d : 0
   };
 }
 function resolveAOOptions(ao, castsPerFrame) {
-  var _a2, _b2, _c, _d, _e, _f;
+  var _a3, _b2, _c, _d, _e, _f;
   if (typeof ao === "boolean") {
     return {
       enabled: ao,
@@ -4882,7 +4905,7 @@ function resolveAOOptions(ao, castsPerFrame) {
     };
   }
   return {
-    enabled: (_a2 = ao == null ? void 0 : ao.enabled) != null ? _a2 : true,
+    enabled: (_a3 = ao == null ? void 0 : ao.enabled) != null ? _a3 : true,
     distance: (_b2 = ao == null ? void 0 : ao.distance) != null ? _b2 : 0.5,
     intensity: (_c = ao == null ? void 0 : ao.intensity) != null ? _c : 1,
     exponent: (_d = ao == null ? void 0 : ao.exponent) != null ? _d : 1.5,
@@ -4891,12 +4914,12 @@ function resolveAOOptions(ao, castsPerFrame) {
 }
 class LightmapBaker {
   constructor(rendererOrOptions = {}, maybeOptions = {}) {
-    var _a2, _b2, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w;
+    var _a3, _b2, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w;
     this._rendererAdapter = null;
     const usesRendererArg = (v) => !!v && typeof v === "object" && ("isWebGLRenderer" in v && v.isWebGLRenderer === true || "getContext" in v && "domElement" in v);
     const rawOptions = isLightmapRendererAdapter(rendererOrOptions) ? { ...maybeOptions, rendererAdapter: rendererOrOptions } : usesRendererArg(rendererOrOptions) ? { ...maybeOptions, renderer: rendererOrOptions } : { ...rendererOrOptions, ...maybeOptions };
     validateOptions(rawOptions);
-    this._rendererAdapter = (_a2 = rawOptions.rendererAdapter) != null ? _a2 : rawOptions.renderer ? createRendererAdapter(rawOptions.renderer) : null;
+    this._rendererAdapter = (_a3 = rawOptions.rendererAdapter) != null ? _a3 : rawOptions.renderer ? createRendererAdapter(rawOptions.renderer) : null;
     this.opts = {
       samples: (_b2 = rawOptions.samples) != null ? _b2 : 96,
       castsPerFrame: (_c = rawOptions.castsPerFrame) != null ? _c : 5,
@@ -4925,8 +4948,8 @@ class LightmapBaker {
     };
   }
   get renderer() {
-    var _a2, _b2;
-    return (_b2 = (_a2 = this._rendererAdapter) == null ? void 0 : _a2.renderer) != null ? _b2 : null;
+    var _a3, _b2;
+    return (_b2 = (_a3 = this._rendererAdapter) == null ? void 0 : _a3.renderer) != null ? _b2 : null;
   }
   get rendererAdapter() {
     return this._rendererAdapter;
@@ -4940,9 +4963,9 @@ class LightmapBaker {
     return this;
   }
   async bake(scene2, hooks = {}) {
-    var _a2, _b2;
+    var _a3, _b2;
     const rendererAdapter = this._rendererAdapter;
-    const renderer = (_a2 = rendererAdapter == null ? void 0 : rendererAdapter.renderer) != null ? _a2 : null;
+    const renderer = (_a3 = rendererAdapter == null ? void 0 : rendererAdapter.renderer) != null ? _a3 : null;
     if (!renderer)
       throw new BakeError(
         "renderer is required: use `new LightmapBaker(renderer, opts)`, `new LightmapBaker({ renderer, ...opts })`, `new LightmapBaker({ rendererAdapter, ...opts })`, `baker.setRenderer(renderer)`, or `baker.setRendererAdapter(adapter)`",
@@ -4976,8 +4999,8 @@ class LightmapBaker {
     };
     scene2.updateMatrixWorld(true);
     const checkAbort2 = (phase) => {
-      var _a3;
-      if ((_a3 = hooks.signal) == null ? void 0 : _a3.aborted) {
+      var _a4;
+      if ((_a4 = hooks.signal) == null ? void 0 : _a4.aborted) {
         const err = new BakeError("aborted by signal", phase);
         err.name = "AbortError";
         throw err;
@@ -5006,8 +5029,8 @@ function currentGlobals() {
   return globalThis;
 }
 function hasNodeProcess(globals) {
-  var _a2, _b2;
-  return typeof ((_b2 = (_a2 = globals.process) == null ? void 0 : _a2.versions) == null ? void 0 : _b2.node) === "string";
+  var _a3, _b2;
+  return typeof ((_b2 = (_a3 = globals.process) == null ? void 0 : _a3.versions) == null ? void 0 : _b2.node) === "string";
 }
 function hasBrowserWindow(globals) {
   return typeof globals.window !== "undefined" && typeof globals.document !== "undefined";
@@ -5022,10 +5045,10 @@ function detectRuntime(globals) {
   return "unknown";
 }
 function hasWebGL2Constructor(globals) {
-  var _a2, _b2;
+  var _a3, _b2;
   if (typeof globals.WebGL2RenderingContext !== "function")
     return "unavailable";
-  if (typeof ((_a2 = globals.document) == null ? void 0 : _a2.createElement) !== "function")
+  if (typeof ((_a3 = globals.document) == null ? void 0 : _a3.createElement) !== "function")
     return "available";
   try {
     const canvas = globals.document.createElement("canvas");
@@ -5035,12 +5058,12 @@ function hasWebGL2Constructor(globals) {
   }
 }
 function probeOffscreenWebGL2(globals) {
-  var _a2;
+  var _a3;
   if (typeof globals.OffscreenCanvas !== "function")
     return "unavailable";
   try {
     const canvas = new globals.OffscreenCanvas(1, 1);
-    return ((_a2 = canvas.getContext) == null ? void 0 : _a2.call(canvas, "webgl2")) ? "available" : "unavailable";
+    return ((_a3 = canvas.getContext) == null ? void 0 : _a3.call(canvas, "webgl2")) ? "available" : "unavailable";
   } catch {
     return "unavailable";
   }
@@ -5090,10 +5113,10 @@ class Diagnostics {
     this.lastTriangles = 0;
   }
   banner() {
-    var _a2, _b2;
+    var _a3, _b2;
     const gl = this.renderer.getContext();
     const debugInfo = gl.getExtension("WEBGL_debug_renderer_info");
-    const vendor = debugInfo ? String((_a2 = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL)) != null ? _a2 : "") : "<masked>";
+    const vendor = debugInfo ? String((_a3 = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL)) != null ? _a3 : "") : "<masked>";
     const rendererStr = debugInfo ? String((_b2 = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)) != null ? _b2 : "") : "<masked>";
     const attrs = gl.getContextAttributes();
     const limits = {
@@ -5138,7 +5161,7 @@ class Diagnostics {
     console.groupEnd();
   }
   snap(label) {
-    var _a2, _b2, _c;
+    var _a3, _b2, _c;
     const gl = this.renderer.getContext();
     let glErrCode = 0;
     let lastErr = 0;
@@ -5148,7 +5171,7 @@ class Diagnostics {
         glErrCode = lastErr;
     } while (lastErr !== 0);
     const info = this.renderer.info;
-    const programs = (_b2 = (_a2 = info.programs) == null ? void 0 : _a2.length) != null ? _b2 : 0;
+    const programs = (_b2 = (_a3 = info.programs) == null ? void 0 : _a3.length) != null ? _b2 : 0;
     const dCalls = info.render.calls - this.lastCalls;
     const dTris = info.render.triangles - this.lastTriangles;
     this.lastCalls = info.render.calls;
@@ -5175,7 +5198,7 @@ class Diagnostics {
     return snap;
   }
   measure(label, fn) {
-    var _a2;
+    var _a3;
     const gl = this.renderer.getContext();
     while (gl.getError() !== 0) {
     }
@@ -5191,16 +5214,16 @@ class Diagnostics {
         err = lastErr;
     } while (lastErr !== 0);
     console.log(
-      `[diag] MEASURE ${label}: ${dt.toFixed(1)}ms gl=${(_a2 = GL_ERR[err]) != null ? _a2 : `0x${err.toString(16)}`}`
+      `[diag] MEASURE ${label}: ${dt.toFixed(1)}ms gl=${(_a3 = GL_ERR[err]) != null ? _a3 : `0x${err.toString(16)}`}`
     );
     return r;
   }
   contextLossInfo() {
-    var _a2, _b2;
+    var _a3, _b2;
     const gl = this.renderer.getContext();
     const ext = gl.getExtension("WEBGL_lose_context");
     console.group("[diag] === CONTEXT LOSS DUMP ===");
-    console.log("isContextLost:", (_a2 = gl.isContextLost) == null ? void 0 : _a2.call(gl));
+    console.log("isContextLost:", (_a3 = gl.isContextLost) == null ? void 0 : _a3.call(gl));
     console.log("snapshot history (last 10):", this.snapshots.slice(-10));
     console.log("threejs info at loss:", {
       geometries: this.renderer.info.memory.geometries,
