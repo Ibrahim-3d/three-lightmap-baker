@@ -65,7 +65,7 @@ export interface BakerOptions {
   probeShow?: boolean;
   probeDemoEnabled?: boolean;
   probeDemoAnimate?: boolean;
-  probeStatus?: 'idle' | 'generating' | 'ready' | 'error';
+  probeStatus?: 'idle' | 'preview' | 'generating' | 'ready' | 'error';
   probeProgress?: number;
   probeCount?: number;
 }
@@ -82,6 +82,7 @@ export interface BakerOrchestrator extends Orchestrator {
   exportSceneGLB(): Promise<void>;
   getAtlasPreviewInfo(): { layer: string; count: number; resolution: number };
   renderAtlasPreview(canvas: HTMLCanvasElement): boolean;
+  previewProbes?(): void;
   generateProbes?(): Promise<void>;
   clearProbes?(): void;
   setProbeVisibility?(visible: boolean): void;
