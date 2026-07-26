@@ -40,8 +40,10 @@ type ProbeHost = {
     onSceneLoad?: () => void;
     onBakeError?: (message: string) => void;
   };
+  projectFileInput?: HTMLInputElement;
   serializeProject(): ProbeProject;
   loadProject(project: ProbeProject): Promise<void>;
+  saveProject(): void;
   generateProbes?: () => Promise<void>;
   clearProbes?: () => void;
   setProbeVisibility?: (visible: boolean) => void;
@@ -145,6 +147,7 @@ export function installProbeIntegration(app: CornellBoxExample): ProbeController
   host.setProbeIntensity = (intensity): void => controller.setIntensity(intensity);
 
   installPersistence(host, controller);
+  installProjectFileSurface(host);
   startProbeLoop(controller);
   return controller;
 }
@@ -180,6 +183,23 @@ function installPersistence(host: ProbeHost, controller: ProbeController): void 
       resetStatus(host.options);
     }
     bumpOptions();
+  };
+}
+
+function installProjectFileSurface(host: ProbeHost): void {
+  if (host.projectFileInput) {
+    host.projectFileInput.accept = '.3dl,.json,application/json';
+  }
+  host.saveProject = (): void => {
+    const blob = new Blob([JSON.stringify(host.serializeProject(), null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'three-lightmap-baker-project.3dl';
+    anchor.click();
+    URL.revokeObjectURL(url);
   };
 }
 
