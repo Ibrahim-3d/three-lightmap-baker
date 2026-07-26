@@ -1,4 +1,4 @@
-import { Vector3, BufferAttribute, ShaderMaterial, GLSL3, DoubleSide, Uniform, Vector2, Scene, OrthographicCamera, RGBAFormat, FloatType, HalfFloatType, NearestFilter, NoBlending, WebGLRenderTarget, Color, Mesh, PointLight, DirectionalLight, SpotLight, RectAreaLight, DataTexture, ClampToEdgeWrapping, Matrix4, WebGLMultipleRenderTargets, LinearFilter, PlaneGeometry, BufferGeometry, DataUtils, Vector4 } from "three";
+import { Vector3, BufferAttribute, ShaderMaterial, GLSL3, DoubleSide, Uniform, Vector2, Scene, OrthographicCamera, RGBAFormat, FloatType, HalfFloatType, NearestFilter, NoBlending, WebGLRenderTarget, Color, Mesh, PointLight, DirectionalLight, SpotLight, RectAreaLight, DataTexture, ClampToEdgeWrapping, Matrix4, WebGLMultipleRenderTargets, LinearFilter, PlaneGeometry, BufferGeometry, DataUtils, Vector4, Box3, Group, SphereGeometry, MeshBasicMaterial, InstancedMesh } from "three";
 import { UVUnwrapper } from "xatlas-three";
 import { MeshBVHUniformStruct, shaderStructs, shaderIntersectFunction, MeshBVH } from "three-mesh-bvh";
 const v0 = new Vector3();
@@ -3339,6 +3339,701 @@ class TexelDensityMaterial extends ShaderMaterial {
       u.value = v;
   }
 }
+const EPSILON = 1e-8;
+class ProbeVolume {
+  constructor(bounds, counts, irradiance) {
+    if (bounds.isEmpty())
+      throw new Error("[baker:probes] probe bounds cannot be empty");
+    const normalizedCounts = [
+      ProbeVolume.validateCount(counts[0], "x"),
+      ProbeVolume.validateCount(counts[1], "y"),
+      ProbeVolume.validateCount(counts[2], "z")
+    ];
+    const probeCount = normalizedCounts[0] * normalizedCounts[1] * normalizedCounts[2];
+    const expectedValues = probeCount * 3;
+    if (irradiance && irradiance.length !== expectedValues) {
+      throw new Error(
+        `[baker:probes] irradiance length ${irradiance.length} does not match ${expectedValues}`
+      );
+    }
+    this.bounds = bounds.clone();
+    this.counts = normalizedCounts;
+    const size = this.bounds.getSize(new Vector3());
+    this.spacing = new Vector3(
+      normalizedCounts[0] > 1 ? size.x / (normalizedCounts[0] - 1) : 0,
+      normalizedCounts[1] > 1 ? size.y / (normalizedCounts[1] - 1) : 0,
+      normalizedCounts[2] > 1 ? size.z / (normalizedCounts[2] - 1) : 0
+    );
+    this.irradiance = irradiance ? irradiance.slice() : new Float32Array(expectedValues);
+  }
+  get probeCount() {
+    return this.counts[0] * this.counts[1] * this.counts[2];
+  }
+  index(x, y, z) {
+    const [nx, ny, nz] = this.counts;
+    if (!Number.isInteger(x) || !Number.isInteger(y) || !Number.isInteger(z) || x < 0 || y < 0 || z < 0 || x >= nx || y >= ny || z >= nz) {
+      throw new RangeError(`[baker:probes] probe coordinate out of range: ${x}, ${y}, ${z}`);
+    }
+    return x + nx * (y + ny * z);
+  }
+  getPosition(index, target = new Vector3()) {
+    this.validateIndex(index);
+    const [nx, ny] = this.counts;
+    const x = index % nx;
+    const yz = Math.floor(index / nx);
+    const y = yz % ny;
+    const z = Math.floor(yz / ny);
+    return target.set(
+      this.bounds.min.x + this.spacing.x * x,
+      this.bounds.min.y + this.spacing.y * y,
+      this.bounds.min.z + this.spacing.z * z
+    );
+  }
+  getIrradiance(index, target = new Color()) {
+    var _a2, _b2, _c;
+    this.validateIndex(index);
+    const offset = index * 3;
+    return target.setRGB(
+      (_a2 = this.irradiance[offset]) != null ? _a2 : 0,
+      (_b2 = this.irradiance[offset + 1]) != null ? _b2 : 0,
+      (_c = this.irradiance[offset + 2]) != null ? _c : 0
+    );
+  }
+  setIrradiance(index, color) {
+    this.validateIndex(index);
+    const offset = index * 3;
+    this.irradiance[offset] = color.r;
+    this.irradiance[offset + 1] = color.g;
+    this.irradiance[offset + 2] = color.b;
+    return this;
+  }
+  sample(position, target = new Color()) {
+    var _a2, _b2, _c;
+    const x = this.axisSample(position.x, this.bounds.min.x, this.bounds.max.x, this.counts[0]);
+    const y = this.axisSample(position.y, this.bounds.min.y, this.bounds.max.y, this.counts[1]);
+    const z = this.axisSample(position.z, this.bounds.min.z, this.bounds.max.z, this.counts[2]);
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    for (let dz = 0; dz <= 1; dz++) {
+      const zi = dz === 0 ? z.low : z.high;
+      const wz = dz === 0 ? 1 - z.t : z.t;
+      for (let dy = 0; dy <= 1; dy++) {
+        const yi = dy === 0 ? y.low : y.high;
+        const wy = dy === 0 ? 1 - y.t : y.t;
+        for (let dx = 0; dx <= 1; dx++) {
+          const xi = dx === 0 ? x.low : x.high;
+          const wx = dx === 0 ? 1 - x.t : x.t;
+          const weight = wx * wy * wz;
+          if (weight <= 0)
+            continue;
+          const offset = this.index(xi, yi, zi) * 3;
+          r += ((_a2 = this.irradiance[offset]) != null ? _a2 : 0) * weight;
+          g += ((_b2 = this.irradiance[offset + 1]) != null ? _b2 : 0) * weight;
+          b += ((_c = this.irradiance[offset + 2]) != null ? _c : 0) * weight;
+        }
+      }
+    }
+    return target.setRGB(r, g, b);
+  }
+  clone() {
+    return new ProbeVolume(this.bounds, this.counts, this.irradiance);
+  }
+  toJSON() {
+    return {
+      version: 1,
+      bounds: {
+        min: [this.bounds.min.x, this.bounds.min.y, this.bounds.min.z],
+        max: [this.bounds.max.x, this.bounds.max.y, this.bounds.max.z]
+      },
+      counts: [...this.counts],
+      irradiance: Array.from(this.irradiance)
+    };
+  }
+  static fromJSON(json) {
+    if (json.version !== 1) {
+      throw new Error(`[baker:probes] unsupported probe volume version: ${String(json.version)}`);
+    }
+    const bounds = new Box3(new Vector3(...json.bounds.min), new Vector3(...json.bounds.max));
+    return new ProbeVolume(bounds, json.counts, new Float32Array(json.irradiance));
+  }
+  axisSample(value, min, max, count) {
+    if (count <= 1 || Math.abs(max - min) <= EPSILON)
+      return { low: 0, high: 0, t: 0 };
+    const normalized = Math.min(1, Math.max(0, (value - min) / (max - min))) * (count - 1);
+    const low = Math.floor(normalized);
+    const high = Math.min(count - 1, low + 1);
+    return { low, high, t: normalized - low };
+  }
+  validateIndex(index) {
+    if (!Number.isInteger(index) || index < 0 || index >= this.probeCount) {
+      throw new RangeError(`[baker:probes] probe index out of range: ${index}`);
+    }
+  }
+  static validateCount(value, axis) {
+    if (!Number.isInteger(value) || value < 1) {
+      throw new Error(`[baker:probes] ${axis} probe count must be a positive integer`);
+    }
+    return value;
+  }
+}
+const MIN_SPACING = 1e-4;
+function generateProbeGrid(source, options = {}) {
+  var _a2, _b2;
+  const bounds = resolveBounds(source, options);
+  const counts = options.counts ? normalizeCounts(options.counts) : countsFromSpacing(bounds, normalizeSpacing((_a2 = options.spacing) != null ? _a2 : 1));
+  const probeCount = counts[0] * counts[1] * counts[2];
+  const maxProbes = Math.max(1, Math.floor((_b2 = options.maxProbes) != null ? _b2 : 4096));
+  if (probeCount > maxProbes) {
+    throw new Error(
+      `[baker:probes] grid requires ${probeCount} probes, exceeding maxProbes=${maxProbes}`
+    );
+  }
+  return new ProbeVolume(bounds, counts);
+}
+function resolveBounds(source, options) {
+  var _a2;
+  const bounds = options.bounds ? options.bounds.clone() : source instanceof Box3 ? source.clone() : new Box3().setFromObject(source, true);
+  if (bounds.isEmpty()) {
+    throw new Error("[baker:probes] cannot derive probe bounds from an empty object");
+  }
+  const padding = (_a2 = options.padding) != null ? _a2 : 0;
+  if (!Number.isFinite(padding) || padding < 0) {
+    throw new Error("[baker:probes] padding must be a finite non-negative number");
+  }
+  if (padding > 0)
+    bounds.expandByScalar(padding);
+  return bounds;
+}
+function normalizeCounts(counts) {
+  const normalized = counts.map((value) => Math.floor(value));
+  if (normalized.some(
+    (value, axis) => !Number.isFinite(value) || value < 1 || value !== counts[axis]
+  )) {
+    throw new Error("[baker:probes] counts must contain positive integers");
+  }
+  return normalized;
+}
+function normalizeSpacing(spacing) {
+  if (typeof spacing === "number") {
+    validateSpacingValue(spacing);
+    return new Vector3(spacing, spacing, spacing);
+  }
+  if (spacing instanceof Vector3) {
+    validateSpacingValue(spacing.x);
+    validateSpacingValue(spacing.y);
+    validateSpacingValue(spacing.z);
+    return spacing.clone();
+  }
+  const result = new Vector3(spacing[0], spacing[1], spacing[2]);
+  validateSpacingValue(result.x);
+  validateSpacingValue(result.y);
+  validateSpacingValue(result.z);
+  return result;
+}
+function countsFromSpacing(bounds, spacing) {
+  const size = bounds.getSize(new Vector3());
+  return [
+    countForAxis(size.x, spacing.x),
+    countForAxis(size.y, spacing.y),
+    countForAxis(size.z, spacing.z)
+  ];
+}
+function countForAxis(size, spacing) {
+  if (size <= MIN_SPACING)
+    return 1;
+  return Math.max(2, Math.ceil(size / spacing) + 1);
+}
+function validateSpacingValue(value) {
+  if (!Number.isFinite(value) || value < MIN_SPACING) {
+    throw new Error(`[baker:probes] spacing must be at least ${MIN_SPACING}`);
+  }
+}
+const vertexShader = `
+  out vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = vec4(position, 1.0);
+  }
+`;
+const fragmentShader = `
+  uniform sampler2D sourceTexture;
+  in vec2 vUv;
+  out vec4 fragColor;
+  void main() {
+    fragColor = texture(sourceTexture, vUv);
+  }
+`;
+function readFloatTexture(renderer, source, resolution) {
+  if (!Number.isInteger(resolution) || resolution < 1) {
+    throw new Error("[baker:probes] texture readback resolution must be a positive integer");
+  }
+  const target = new WebGLRenderTarget(resolution, resolution, {
+    type: FloatType,
+    minFilter: NearestFilter,
+    magFilter: NearestFilter,
+    depthBuffer: false,
+    stencilBuffer: false,
+    generateMipmaps: false
+  });
+  const material = new ShaderMaterial({
+    glslVersion: GLSL3,
+    vertexShader,
+    fragmentShader,
+    uniforms: { sourceTexture: { value: source } },
+    blending: NoBlending,
+    depthTest: false,
+    depthWrite: false,
+    transparent: false
+  });
+  const geometry = new PlaneGeometry(2, 2);
+  const quad = new Mesh(geometry, material);
+  const camera = new OrthographicCamera();
+  const pixels = new Float32Array(resolution * resolution * 4);
+  const previousTarget = renderer.getRenderTarget();
+  const previousAutoClear = renderer.autoClear;
+  try {
+    renderer.autoClear = true;
+    renderer.setRenderTarget(target);
+    renderer.render(quad, camera);
+    renderer.readRenderTargetPixels(target, 0, 0, resolution, resolution, pixels);
+  } finally {
+    renderer.setRenderTarget(previousTarget);
+    renderer.autoClear = previousAutoClear;
+    target.dispose();
+    material.dispose();
+    geometry.dispose();
+  }
+  return pixels;
+}
+async function bakeProbeIrradianceFromLightmaps(renderer, source, volume, options = {}, hooks = {}) {
+  var _a2, _b2, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y;
+  const started = now();
+  const sampleStride = positiveInteger((_a2 = options.sampleStride) != null ? _a2 : 2, "sampleStride");
+  const rowsPerYield = positiveInteger((_b2 = options.rowsPerYield) != null ? _b2 : 24, "rowsPerYield");
+  const fillIterations = nonNegativeInteger((_c = options.fillIterations) != null ? _c : 4, "fillIterations");
+  const intensity = finiteNonNegative$1((_d = options.intensity) != null ? _d : 1, "intensity");
+  const defaultOffset = smallestPositiveSpacing(volume) * 0.2;
+  const surfaceOffset = finiteNonNegative$1(
+    (_e = options.surfaceOffset) != null ? _e : defaultOffset,
+    "surfaceOffset"
+  );
+  const accum = new Float64Array(volume.probeCount * 3);
+  const weights = new Float64Array(volume.probeCount);
+  let sampledTexels = 0;
+  let contributingTexels = 0;
+  checkAbort(hooks.signal);
+  const groups = source.groups;
+  for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+    const group = groups[groupIndex];
+    const resolution = group.internalResolution;
+    const positions = readFloatTexture(renderer, group.textures.position, resolution);
+    const normals = readFloatTexture(renderer, group.textures.normal, resolution);
+    const radiance = readFloatTexture(
+      renderer,
+      (_f = group.textures.refinement) != null ? _f : group.textures.composite,
+      resolution
+    );
+    for (let y = 0; y < resolution; y += sampleStride) {
+      for (let x = 0; x < resolution; x += sampleStride) {
+        const pixel = (y * resolution + x) * 4;
+        if (((_g = positions[pixel + 3]) != null ? _g : 0) < 0.5)
+          continue;
+        sampledTexels++;
+        const px = (_h = positions[pixel]) != null ? _h : 0;
+        const py = (_i = positions[pixel + 1]) != null ? _i : 0;
+        const pz = (_j = positions[pixel + 2]) != null ? _j : 0;
+        let nx = (_k = normals[pixel]) != null ? _k : 0;
+        let ny = (_l = normals[pixel + 1]) != null ? _l : 0;
+        let nz = (_m = normals[pixel + 2]) != null ? _m : 0;
+        const normalLength = Math.hypot(nx, ny, nz);
+        if (normalLength < 1e-6)
+          continue;
+        nx /= normalLength;
+        ny /= normalLength;
+        nz /= normalLength;
+        const rr = Math.max(0, (_n = radiance[pixel]) != null ? _n : 0);
+        const rg = Math.max(0, (_o = radiance[pixel + 1]) != null ? _o : 0);
+        const rb = Math.max(0, (_p = radiance[pixel + 2]) != null ? _p : 0);
+        if (![px, py, pz, rr, rg, rb].every(Number.isFinite))
+          continue;
+        const sx = px + nx * surfaceOffset;
+        const sy = py + ny * surfaceOffset;
+        const sz = pz + nz * surfaceOffset;
+        const cx = axisCell(sx, volume.bounds.min.x, volume.bounds.max.x, volume.counts[0]);
+        const cy = axisCell(sy, volume.bounds.min.y, volume.bounds.max.y, volume.counts[1]);
+        const cz = axisCell(sz, volume.bounds.min.z, volume.bounds.max.z, volume.counts[2]);
+        let contributed = false;
+        for (let dz = 0; dz <= 1; dz++) {
+          const zi = dz === 0 ? cz.low : cz.high;
+          const wz = dz === 0 ? 1 - cz.t : cz.t;
+          for (let dy = 0; dy <= 1; dy++) {
+            const yi = dy === 0 ? cy.low : cy.high;
+            const wy = dy === 0 ? 1 - cy.t : cy.t;
+            for (let dx = 0; dx <= 1; dx++) {
+              const xi = dx === 0 ? cx.low : cx.high;
+              const wx = dx === 0 ? 1 - cx.t : cx.t;
+              const trilinearWeight = wx * wy * wz;
+              if (trilinearWeight <= 0)
+                continue;
+              const probeX = volume.bounds.min.x + volume.spacing.x * xi;
+              const probeY = volume.bounds.min.y + volume.spacing.y * yi;
+              const probeZ = volume.bounds.min.z + volume.spacing.z * zi;
+              const dxp = probeX - px;
+              const dyp = probeY - py;
+              const dzp = probeZ - pz;
+              const distance = Math.hypot(dxp, dyp, dzp);
+              const facing = distance > 1e-6 ? Math.max(0, (nx * dxp + ny * dyp + nz * dzp) / distance) : 1;
+              const weight = trilinearWeight * Math.max(0.05, facing);
+              if (weight <= 0)
+                continue;
+              const index = xi + volume.counts[0] * (yi + volume.counts[1] * zi);
+              const offset = index * 3;
+              accum[offset] += rr * weight;
+              accum[offset + 1] += rg * weight;
+              accum[offset + 2] += rb * weight;
+              weights[index] += weight;
+              contributed = true;
+            }
+          }
+        }
+        if (contributed)
+          contributingTexels++;
+      }
+      if (Math.floor(y / sampleStride) % rowsPerYield === 0) {
+        checkAbort(hooks.signal);
+        const groupProgress = Math.min(1, (y + sampleStride) / resolution);
+        (_q = hooks.onProgress) == null ? void 0 : _q.call(hooks, (groupIndex + groupProgress) / Math.max(1, groups.length) * 0.9);
+        await yieldToBrowser();
+      }
+    }
+  }
+  const values = new Float32Array(volume.probeCount * 3);
+  const valid = new Uint8Array(volume.probeCount);
+  let emptyBeforeFill = 0;
+  let averageR = 0;
+  let averageG = 0;
+  let averageB = 0;
+  let validCount = 0;
+  for (let index = 0; index < volume.probeCount; index++) {
+    const weight = (_r = weights[index]) != null ? _r : 0;
+    const offset = index * 3;
+    if (weight > 1e-8) {
+      const r = ((_s = accum[offset]) != null ? _s : 0) / weight;
+      const g = ((_t = accum[offset + 1]) != null ? _t : 0) / weight;
+      const b = ((_u = accum[offset + 2]) != null ? _u : 0) / weight;
+      values[offset] = r;
+      values[offset + 1] = g;
+      values[offset + 2] = b;
+      valid[index] = 1;
+      averageR += r;
+      averageG += g;
+      averageB += b;
+      validCount++;
+    } else {
+      emptyBeforeFill++;
+    }
+  }
+  diffuseEmptyProbes(values, valid, volume.counts, fillIterations, hooks);
+  const fallback = options.fallbackColor ? new Color(options.fallbackColor) : validCount > 0 ? new Color(averageR / validCount, averageG / validCount, averageB / validCount) : new Color(0, 0, 0);
+  let emptyAfterFill = 0;
+  for (let index = 0; index < volume.probeCount; index++) {
+    const offset = index * 3;
+    if (!valid[index]) {
+      values[offset] = fallback.r;
+      values[offset + 1] = fallback.g;
+      values[offset + 2] = fallback.b;
+      emptyAfterFill++;
+    }
+    values[offset] = ((_v = values[offset]) != null ? _v : 0) * intensity;
+    values[offset + 1] = ((_w = values[offset + 1]) != null ? _w : 0) * intensity;
+    values[offset + 2] = ((_x = values[offset + 2]) != null ? _x : 0) * intensity;
+  }
+  volume.irradiance.set(values);
+  (_y = hooks.onProgress) == null ? void 0 : _y.call(hooks, 1);
+  return {
+    probeCount: volume.probeCount,
+    sampledTexels,
+    contributingTexels,
+    emptyBeforeFill,
+    emptyAfterFill,
+    durationMs: now() - started
+  };
+}
+function diffuseEmptyProbes(values, valid, counts, iterations, hooks) {
+  var _a2, _b2, _c, _d;
+  const [nx, ny, nz] = counts;
+  const neighbours = [
+    [-1, 0, 0],
+    [1, 0, 0],
+    [0, -1, 0],
+    [0, 1, 0],
+    [0, 0, -1],
+    [0, 0, 1]
+  ];
+  for (let iteration = 0; iteration < iterations; iteration++) {
+    checkAbort(hooks.signal);
+    const nextValues = values.slice();
+    const nextValid = valid.slice();
+    for (let z = 0; z < nz; z++) {
+      for (let y = 0; y < ny; y++) {
+        for (let x = 0; x < nx; x++) {
+          const index = x + nx * (y + ny * z);
+          if (valid[index])
+            continue;
+          let r = 0;
+          let g = 0;
+          let b = 0;
+          let count = 0;
+          for (const [ox, oy, oz] of neighbours) {
+            const xx = x + ox;
+            const yy = y + oy;
+            const zz = z + oz;
+            if (xx < 0 || yy < 0 || zz < 0 || xx >= nx || yy >= ny || zz >= nz)
+              continue;
+            const neighbour = xx + nx * (yy + ny * zz);
+            if (!valid[neighbour])
+              continue;
+            const offset = neighbour * 3;
+            r += (_a2 = values[offset]) != null ? _a2 : 0;
+            g += (_b2 = values[offset + 1]) != null ? _b2 : 0;
+            b += (_c = values[offset + 2]) != null ? _c : 0;
+            count++;
+          }
+          if (count > 0) {
+            const offset = index * 3;
+            nextValues[offset] = r / count;
+            nextValues[offset + 1] = g / count;
+            nextValues[offset + 2] = b / count;
+            nextValid[index] = 1;
+          }
+        }
+      }
+    }
+    values.set(nextValues);
+    valid.set(nextValid);
+    (_d = hooks.onProgress) == null ? void 0 : _d.call(hooks, 0.9 + (iteration + 1) / Math.max(1, iterations) * 0.1);
+  }
+}
+function axisCell(value, min, max, count) {
+  if (count <= 1 || Math.abs(max - min) <= 1e-8)
+    return { low: 0, high: 0, t: 0 };
+  const normalized = Math.min(1, Math.max(0, (value - min) / (max - min))) * (count - 1);
+  const low = Math.floor(normalized);
+  return { low, high: Math.min(count - 1, low + 1), t: normalized - low };
+}
+function smallestPositiveSpacing(volume) {
+  const values = [volume.spacing.x, volume.spacing.y, volume.spacing.z].filter((v) => v > 0);
+  return values.length ? Math.min(...values) : 0.5;
+}
+function positiveInteger(value, name) {
+  if (!Number.isInteger(value) || value < 1)
+    throw new Error(`[baker:probes] ${name} must be >= 1`);
+  return value;
+}
+function nonNegativeInteger(value, name) {
+  if (!Number.isInteger(value) || value < 0)
+    throw new Error(`[baker:probes] ${name} must be >= 0`);
+  return value;
+}
+function finiteNonNegative$1(value, name) {
+  if (!Number.isFinite(value) || value < 0)
+    throw new Error(`[baker:probes] ${name} must be finite and >= 0`);
+  return value;
+}
+function checkAbort(signal) {
+  if (!(signal == null ? void 0 : signal.aborted))
+    return;
+  const error = new Error("[baker:probes] probe generation aborted");
+  error.name = "AbortError";
+  throw error;
+}
+function yieldToBrowser() {
+  if (typeof requestAnimationFrame === "function") {
+    return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+  }
+  return Promise.resolve();
+}
+function now() {
+  return typeof performance !== "undefined" ? performance.now() : Date.now();
+}
+async function generateProbeVolume(renderer, sourceObject, bakeSource, options = {}, hooks = {}) {
+  const { bake, ...gridOptions } = options;
+  const volume = generateProbeGrid(sourceObject, gridOptions);
+  const stats = await bakeProbeIrradianceFromLightmaps(
+    renderer,
+    bakeSource,
+    volume,
+    bake,
+    hooks
+  );
+  return { volume, stats };
+}
+class ProbeDebugView extends Group {
+  constructor(volume, options = {}) {
+    var _a2, _b2, _c, _d, _e;
+    super();
+    this.volume = volume;
+    this.probePosition = new Vector3();
+    this.probeMatrix = new Matrix4();
+    this.color = new Color();
+    this.name = "ProbeDebugView";
+    this.exposure = Math.max(0, (_a2 = options.exposure) != null ? _a2 : 1);
+    const radius = Math.max(1e-4, (_b2 = options.radius) != null ? _b2 : defaultRadius(volume));
+    const opacity = Math.min(1, Math.max(0, (_c = options.opacity) != null ? _c : 0.9));
+    this.geometry = new SphereGeometry(
+      radius,
+      Math.max(4, Math.floor((_d = options.widthSegments) != null ? _d : 8)),
+      Math.max(3, Math.floor((_e = options.heightSegments) != null ? _e : 6))
+    );
+    this.material = new MeshBasicMaterial({
+      vertexColors: true,
+      toneMapped: false,
+      transparent: opacity < 1,
+      opacity,
+      depthWrite: opacity >= 1
+    });
+    this.mesh = new InstancedMesh(this.geometry, this.material, volume.probeCount);
+    this.mesh.name = "ProbeDebugSpheres";
+    this.mesh.frustumCulled = false;
+    this.add(this.mesh);
+    this.refresh();
+  }
+  setExposure(exposure) {
+    this.exposure = Math.max(0, exposure);
+    this.refreshColors();
+  }
+  refresh() {
+    for (let index = 0; index < this.volume.probeCount; index++) {
+      this.volume.getPosition(index, this.probePosition);
+      this.probeMatrix.makeTranslation(
+        this.probePosition.x,
+        this.probePosition.y,
+        this.probePosition.z
+      );
+      this.mesh.setMatrixAt(index, this.probeMatrix);
+    }
+    this.mesh.instanceMatrix.needsUpdate = true;
+    this.refreshColors();
+  }
+  refreshColors() {
+    for (let index = 0; index < this.volume.probeCount; index++) {
+      this.volume.getIrradiance(index, this.color);
+      this.color.multiplyScalar(this.exposure);
+      this.color.setRGB(
+        this.color.r / (1 + this.color.r),
+        this.color.g / (1 + this.color.g),
+        this.color.b / (1 + this.color.b)
+      );
+      this.mesh.setColorAt(index, this.color);
+    }
+    if (this.mesh.instanceColor)
+      this.mesh.instanceColor.needsUpdate = true;
+  }
+  dispose() {
+    this.remove(this.mesh);
+    this.geometry.dispose();
+    this.material.dispose();
+  }
+}
+function createProbeDebugView(volume, options = {}) {
+  return new ProbeDebugView(volume, options);
+}
+function defaultRadius(volume) {
+  const spacing = [volume.spacing.x, volume.spacing.y, volume.spacing.z].filter((value) => value > 0);
+  return (spacing.length ? Math.min(...spacing) : 1) * 0.08;
+}
+class ProbeLightingBinding {
+  constructor(mesh, volume, options = {}) {
+    var _a2, _b2, _c, _d, _e;
+    this.mesh = mesh;
+    this.volume = volume;
+    this.worldPosition = new Vector3();
+    this.sampled = new Color();
+    this.contribution = new Color();
+    this.disposed = false;
+    this.intensity = finiteNonNegative((_a2 = options.intensity) != null ? _a2 : 1, "intensity");
+    this.multiplyByAlbedo = (_b2 = options.multiplyByAlbedo) != null ? _b2 : true;
+    this.maxIrradiance = finiteNonNegative((_c = options.maxIrradiance) != null ? _c : 4, "maxIrradiance");
+    this.sampleOffset = (_e = (_d = options.sampleOffset) == null ? void 0 : _d.clone()) != null ? _e : new Vector3();
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    this.states = materials.filter((material) => {
+      return "isMeshStandardMaterial" in material && material.isMeshStandardMaterial === true;
+    }).map((material) => this.installMaterialHook(material));
+    if (!this.states.length) {
+      throw new Error("[baker:probes] probe lighting requires MeshStandardMaterial");
+    }
+    this.update();
+  }
+  update() {
+    if (this.disposed)
+      return;
+    this.mesh.updateWorldMatrix(true, false);
+    this.mesh.getWorldPosition(this.worldPosition).add(this.sampleOffset);
+    this.volume.sample(this.worldPosition, this.sampled);
+    this.contribution.copy(this.sampled);
+    this.contribution.setRGB(
+      Math.min(this.maxIrradiance, Math.max(0, this.contribution.r)),
+      Math.min(this.maxIrradiance, Math.max(0, this.contribution.g)),
+      Math.min(this.maxIrradiance, Math.max(0, this.contribution.b))
+    );
+    this.contribution.multiplyScalar(this.intensity);
+    for (const state of this.states)
+      state.uniform.value.copy(this.contribution);
+  }
+  getLastIrradiance(target = new Color()) {
+    return target.copy(this.sampled);
+  }
+  dispose() {
+    if (this.disposed)
+      return;
+    this.disposed = true;
+    for (const state of this.states) {
+      state.material.onBeforeCompile = state.originalOnBeforeCompile;
+      state.material.customProgramCacheKey = state.originalCustomProgramCacheKey;
+      state.material.needsUpdate = true;
+    }
+  }
+  installMaterialHook(material) {
+    const uniform = { value: new Color() };
+    const originalOnBeforeCompile = material.onBeforeCompile;
+    const originalCustomProgramCacheKey = material.customProgramCacheKey;
+    const mode = this.multiplyByAlbedo ? "diffuse-brdf" : "raw";
+    const multiplyExpression = this.multiplyByAlbedo ? "bakerProbeIrradiance * material.diffuseColor * RECIPROCAL_PI" : "bakerProbeIrradiance";
+    material.onBeforeCompile = (shader, renderer) => {
+      originalOnBeforeCompile.call(material, shader, renderer);
+      shader.uniforms.bakerProbeIrradiance = uniform;
+      shader.fragmentShader = `uniform vec3 bakerProbeIrradiance;
+${shader.fragmentShader}`;
+      const marker = "#include <lights_fragment_begin>";
+      if (!shader.fragmentShader.includes(marker)) {
+        throw new Error("[baker:probes] MeshStandardMaterial lights fragment hook was not found");
+      }
+      shader.fragmentShader = shader.fragmentShader.replace(
+        marker,
+        `${marker}
+reflectedLight.indirectDiffuse += ${multiplyExpression};`
+      );
+    };
+    material.customProgramCacheKey = () => `${originalCustomProgramCacheKey.call(material)}|baker-probe-pbr-v1|${mode}`;
+    material.needsUpdate = true;
+    return {
+      material,
+      uniform,
+      originalOnBeforeCompile,
+      originalCustomProgramCacheKey
+    };
+  }
+}
+function bindProbeLighting(mesh, volume, options = {}) {
+  return new ProbeLightingBinding(mesh, volume, options);
+}
+function finiteNonNegative(value, name) {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`[baker:probes] ${name} must be finite and >= 0`);
+  }
+  return value;
+}
 const DEFAULTS = {
   discrete: { initialTileSize: 1024, maxBatchMs: 500 },
   integrated: { initialTileSize: 256, maxBatchMs: 250 },
@@ -3834,11 +4529,11 @@ function buildAORaycastOpts(opts, resolution, tp) {
     tileSize: tp.initialTileSize
   };
 }
-async function runGroupBake(ctx, groupIndex, totalGroups, groupMeshes, resolution, internalResolution, hooks, checkAbort) {
+async function runGroupBake(ctx, groupIndex, totalGroups, groupMeshes, resolution, internalResolution, hooks, checkAbort2) {
   var _a2, _b2, _c;
   const { renderer, opts, bvh, sceneLights, skyColor, matTex, tp, ctxState } = ctx;
   (_a2 = hooks.onProgress) == null ? void 0 : _a2.call(hooks, "bake", groupIndex / totalGroups);
-  checkAbort("bake");
+  checkAbort2("bake");
   let atlas = null;
   let lightmapper = null;
   let aoMapper = null;
@@ -3965,11 +4660,11 @@ function runMappersWithTimeoutProtection(lightmapper, aoMapper, composite, targe
         reject(new BakeError("webgl context lost during bake", "context-loss"));
         return;
       }
-      const now = performance.now();
-      intervals.push(now - lastRaf);
+      const now2 = performance.now();
+      intervals.push(now2 - lastRaf);
       if (intervals.length > 8)
         intervals.shift();
-      lastRaf = now;
+      lastRaf = now2;
       if (tp.autoAdapt) {
         const next = adaptiveTileSize(intervals, tileSize, tp);
         if (next !== tileSize) {
@@ -4028,7 +4723,7 @@ function collectBakeMeshes(scene2) {
 }
 async function runBakePipeline(args) {
   var _a2, _b2, _c, _d, _e, _f;
-  const { renderer, opts, scene: scene2, allMeshes, hooks, t0, tp, ctxState, checkAbort } = args;
+  const { renderer, opts, scene: scene2, allMeshes, hooks, t0, tp, ctxState, checkAbort: checkAbort2 } = args;
   const densityMultiplier = opts.texelsPerMeter;
   const perMeshScale = {};
   for (const [uuid, override] of Object.entries(opts.perMesh)) {
@@ -4062,7 +4757,7 @@ async function runBakePipeline(args) {
     await generateAtlas(meshesByGroup.flat());
   }
   (_b2 = hooks.onProgress) == null ? void 0 : _b2.call(hooks, "uv-unwrap", 1);
-  checkAbort("unwrap");
+  checkAbort2("unwrap");
   const tUV1 = performance.now();
   const tG0 = performance.now();
   (_c = hooks.onProgress) == null ? void 0 : _c.call(hooks, "geometry", 0);
@@ -4072,7 +4767,7 @@ async function runBakePipeline(args) {
   const perTri = extractPerTriangleMaterials(merged, allMeshes);
   const matTex = buildMaterialTextures(perTri);
   (_e = hooks.onProgress) == null ? void 0 : _e.call(hooks, "geometry", 1);
-  checkAbort("geometry");
+  checkAbort2("geometry");
   const tG1 = performance.now();
   const skyColor = toLinearColor(opts.gi.skyColor, 16777215);
   const sceneLights = collectLightsFromScene(scene2);
@@ -4104,7 +4799,7 @@ async function runBakePipeline(args) {
       res,
       internalRes,
       hooks,
-      checkAbort
+      checkAbort2
     );
     groupResults.push(group);
     for (const m of groupMeshes) {
@@ -4280,7 +4975,7 @@ class LightmapBaker {
       contextLossTarget.removeEventListener("webglcontextlost", onLost, false);
     };
     scene2.updateMatrixWorld(true);
-    const checkAbort = (phase) => {
+    const checkAbort2 = (phase) => {
       var _a3;
       if ((_a3 = hooks.signal) == null ? void 0 : _a3.aborted) {
         const err = new BakeError("aborted by signal", phase);
@@ -4300,7 +4995,7 @@ class LightmapBaker {
         t0,
         tp,
         ctxState,
-        checkAbort
+        checkAbort: checkAbort2
       });
     } finally {
       releaseContextGuard();
@@ -4521,4 +5216,4 @@ class Diagnostics {
     return this.snapshots.slice();
   }
 }
-export { AtlasViewer, BakeError, Diagnostics, LightmapBakeResult, LightmapBaker, TexelDensityMaterial, binPackMeshes, buildLightTexture, buildMaterialTextures, classifyRenderer, collectLightsFromScene, computeMeshSurfaceArea, createRendererAdapter, detectGPUCapabilities, disposeLightTexture, exportEXR, exportLightmap, exportPNG, exportRaw, extractPerTriangleMaterials, generateAOMapper, generateAtlas, generateAtlases, generateLightmapper, getLightmapRuntimeCapabilities, isLightmapRendererAdapter, loadXAtlasThree, mergeGeometry, renderAtlas, resolveDensityTexelsPerMeter, runComposite, runPostProcess as runRefinement };
+export { AtlasViewer, BakeError, Diagnostics, LightmapBakeResult, LightmapBaker, ProbeDebugView, ProbeLightingBinding, ProbeVolume, TexelDensityMaterial, bakeProbeIrradianceFromLightmaps, binPackMeshes, bindProbeLighting, buildLightTexture, buildMaterialTextures, classifyRenderer, collectLightsFromScene, computeMeshSurfaceArea, createProbeDebugView, createRendererAdapter, detectGPUCapabilities, disposeLightTexture, exportEXR, exportLightmap, exportPNG, exportRaw, extractPerTriangleMaterials, generateAOMapper, generateAtlas, generateAtlases, generateLightmapper, generateProbeGrid, generateProbeVolume, getLightmapRuntimeCapabilities, isLightmapRendererAdapter, loadXAtlasThree, mergeGeometry, renderAtlas, resolveDensityTexelsPerMeter, runComposite, runPostProcess as runRefinement };
