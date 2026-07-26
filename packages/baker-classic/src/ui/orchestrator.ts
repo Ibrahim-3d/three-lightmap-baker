@@ -59,6 +59,19 @@ export interface BakerOptions {
   refinementStatus: string;
   exportFormat: ExportFormat;
   perMesh: Record<string, { scaleInLightmap: number; exclude: boolean }>;
+
+  probeSpacing: number;
+  probePadding: number;
+  probeIntensity: number;
+  probeSampleStride: number;
+  probeFillIterations: number;
+  probeMaxProbes: number;
+  probeShow: boolean;
+  probeDemoEnabled: boolean;
+  probeDemoAnimate: boolean;
+  probeStatus: 'idle' | 'generating' | 'ready' | 'error';
+  probeProgress: number;
+  probeCount: number;
 }
 
 export interface BakerOrchestrator extends Orchestrator {
@@ -73,6 +86,12 @@ export interface BakerOrchestrator extends Orchestrator {
   exportSceneGLB(): Promise<void>;
   getAtlasPreviewInfo(): { layer: string; count: number; resolution: number };
   renderAtlasPreview(canvas: HTMLCanvasElement): boolean;
+  generateProbes(): Promise<void>;
+  clearProbes(): void;
+  setProbeVisibility(visible: boolean): void;
+  setProbeDemoEnabled(enabled: boolean): void;
+  setProbeDemoAnimation(enabled: boolean): void;
+  setProbeIntensity(intensity: number): void;
   /**
    * View-time refresh of every group's composite RT with new intensity
    * uniforms. Cheap - no rebake. Used by per-layer intensity sliders.
