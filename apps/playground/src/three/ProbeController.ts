@@ -151,20 +151,34 @@ export class ProbeController {
     this.debugView?.setExposure(Math.max(0, intensity));
   }
 
-  /** Hide regular scene meshes and leave only the colored probe debug instances. */
+  /** Hide normal renderables and leave only the colored probe debug instances. */
   setProbeOnly(active: boolean): void {
+    if (active && !this.debugView) return;
     if (active === this.probeOnly) return;
     this.probeOnly = active;
 
     if (active) {
       this.hiddenForProbeLayer.clear();
       this.scene.traverse((obj) => {
-        if (!(obj as Mesh).isMesh) return;
+        const renderable = obj as Object3D & {
+          isMesh?: boolean;
+          isLine?: boolean;
+          isPoints?: boolean;
+          isSprite?: boolean;
+        };
+        if (
+          !renderable.isMesh &&
+          !renderable.isLine &&
+          !renderable.isPoints &&
+          !renderable.isSprite
+        ) {
+          return;
+        }
         if (obj.userData?.bakerProbeDebug) return;
         this.hiddenForProbeLayer.set(obj, obj.visible);
         obj.visible = false;
       });
-      if (this.debugView) this.debugView.visible = true;
+      this.debugView.visible = true;
       return;
     }
 
