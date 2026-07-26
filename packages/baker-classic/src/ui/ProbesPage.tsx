@@ -14,9 +14,9 @@ export function ProbesPage() {
   const app = getBakerOrchestrator();
   if (!app) return null;
   const o = app.options;
-  const spacing = o.probeSpacing ?? 0.65;
-  const padding = o.probePadding ?? 0.1;
-  const maxProbes = o.probeMaxProbes ?? 2048;
+  const spacing = o.probeSpacing ?? 1.25;
+  const padding = o.probePadding ?? 0;
+  const maxProbes = o.probeMaxProbes ?? 4096;
   const sampleStride = o.probeSampleStride ?? 3;
   const fillIterations = o.probeFillIterations ?? 5;
   const intensity = o.probeIntensity ?? 1;
@@ -29,44 +29,54 @@ export function ProbesPage() {
   const generating = status === 'generating';
   const available = !!app.generateProbes;
 
+  const refreshPreview = (): void => {
+    bumpOptions();
+    app.previewProbes?.();
+  };
+
   return (
     <div class="text-[12px]">
       <Section title="Probe volume">
-        <Row label="Spacing" hint="World-space distance between probes. Smaller is denser and slower.">
+        <Row label="Spacing" hint="World-space distance between probes. The blue grid updates immediately.">
           <RangeField
             value={spacing}
             min={0.2}
-            max={2}
+            max={3}
             step={0.05}
             onChange={(value) => {
               o.probeSpacing = value;
-              bumpOptions();
+              refreshPreview();
             }}
           />
         </Row>
-        <Row label="Padding">
+        <Row label="Padding" hint="Expands the probe volume around the scene. Preview updates without rebaking.">
           <RangeField
             value={padding}
             min={0}
-            max={1}
+            max={2}
             step={0.05}
             onChange={(value) => {
               o.probePadding = value;
-              bumpOptions();
+              refreshPreview();
             }}
           />
         </Row>
-        <Row label="Maximum">
+        <Row label="Maximum" hint="Safety cap. Spacing is fitted upward automatically when the grid would exceed it.">
           <NumberField
             value={maxProbes}
             min={64}
-            max={8192}
+            max={16384}
             step={64}
             onChange={(value) => {
               o.probeMaxProbes = Math.floor(value);
-              bumpOptions();
+              refreshPreview();
             }}
           />
+        </Row>
+        <Row label="Layout">
+          <div class="flex-1 text-right font-mono text-[11px] text-text-2">
+            {probeCount > 0 ? `${probeCount} probes` : 'No preview'}
+          </div>
         </Row>
       </Section>
 
@@ -100,8 +110,10 @@ export function ProbesPage() {
             {status === 'generating'
               ? `${Math.round(progress * 100)}%`
               : status === 'ready'
-                ? `${probeCount} probes`
-                : status}
+                ? `${probeCount} lit probes`
+                : status === 'preview'
+                  ? `${probeCount} layout preview`
+                  : status}
           </div>
         </Row>
         <div class="px-3 pb-3 flex gap-2">
@@ -111,7 +123,7 @@ export function ProbesPage() {
             class="flex-1 px-3 py-1.5 rounded bg-accent text-white disabled:opacity-40 hover:brightness-110 transition"
             onClick={() => void app.generateProbes?.()}
           >
-            {generating ? 'Generating…' : 'Generate Probes'}
+            {generating ? 'Generating…' : 'Generate Probe Lighting'}
           </button>
           <button
             type="button"
@@ -174,8 +186,7 @@ export function ProbesPage() {
       </Section>
 
       <div class="px-3 py-2 text-[11px] leading-4 text-text-3">
-        Probe lighting is injected into MeshStandardMaterial indirect diffuse. The demo object is excluded
-        from static lightmap baking.
+        Blue spheres are a layout-only preview. Generate Probe Lighting replaces them with colors sampled from the current baked lightmap. The demo object remains physically based and is excluded from static baking.
       </div>
     </div>
   );
