@@ -33,6 +33,7 @@ import {
 import { CornellBoxExample } from './CornellBoxExample';
 import { LAYERS } from './three/modes';
 import { AddCommand, RemoveCommand, TransformCommand } from './three/commands';
+import { installProbeIntegration } from './three/installProbeIntegration';
 
 /**
  * Playground entry. With no `?scene=` param renders the gallery landing.
@@ -60,10 +61,7 @@ function mountGallery(): void {
   render(<GalleryPage />, mount);
 }
 
-/**
- * 4Hz poll bridging vanilla bake state into reactive signals. Replaced by
- * signal-emitting controllers in a later phase if polling shows up in perf.
- */
+/** 4Hz poll bridging vanilla bake state into reactive signals. */
 function startStatusSync(app: CornellBoxExample): void {
   setInterval(() => {
     const status = app.getBakeStatus();
@@ -94,8 +92,6 @@ function wireSelectionEffects(app: CornellBoxExample): void {
   });
   effect(() => {
     void optionsTick.value;
-    // When global or per-mesh options change (like texelsPerMeter), refresh
-    // the active layer. Specifically needed for Texel Density real-time preview.
     app.setLayer(renderMode.peek());
   });
   effect(() => {
@@ -107,10 +103,6 @@ function wireSelectionEffects(app: CornellBoxExample): void {
   effect(() => {
     app.sceneController.setCameraFov(cameraFOV.value);
   });
-  // Auto-switch inspector tab on selection: lights → Light; meshes → Object.
-  // Read current tab via `.peek()` so this effect only re-runs on selection
-  // change, not on its own write - otherwise clicking Light/Post FX/World/Bake
-  // while a mesh is selected immediately reverts the tab back to Object.
   effect(() => {
     const id = selectedId.value;
     if (!id) return;
@@ -119,7 +111,6 @@ function wireSelectionEffects(app: CornellBoxExample): void {
     if (obj?.userData?.bakerLightType) {
       if (t !== 'light') inspectorTab.value = 'light';
     } else if (obj) {
-      // Keep current tab if already on a per-mesh tab (Material / Lightmap).
       if (t !== 'material' && t !== 'lightmap' && t !== 'object') {
         inspectorTab.value = 'object';
       }
@@ -147,14 +138,9 @@ function selectSceneNodeRelative(delta: -1 | 1): void {
   if (next) selectedId.value = next;
 }
 
-/** W/E/R = translate/rotate/scale. Escape = deselect. Delete = remove node.
- *  B = re-bake when stale. 1/3/7/0 = view orbits
- *  (front / right / top / persp - Blender numpad convention; Shift+ = back/
- *  left/bottom). ArrowUp/ArrowDown steps through outliner selection. */
 function wireHotkeys(app: CornellBoxExample): void {
   window.addEventListener('keydown', (e) => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-    // Undo / Redo - check BEFORE key-letter routing so 'z' doesn't fall through.
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
       e.preventDefault();
       if (e.shiftKey) commandHistory.redo();
@@ -167,7 +153,6 @@ function wireHotkeys(app: CornellBoxExample): void {
       return;
     }
     const k = e.key.toLowerCase();
-    // Fly mode owns WASD/QE/Shift - don't let them double-fire as gizmo shortcuts.
     if (
       flyActive.value &&
       (k === 'w' || k === 'a' || k === 's' || k === 'd' || k === 'q' || k === 'e')
@@ -187,7 +172,6 @@ function wireHotkeys(app: CornellBoxExample): void {
     else if (e.key === 'Delete' || e.key === 'Backspace') {
       const id = selectedId.value;
       if (!id) return;
-      // Undoable delete - detach (no dispose), retain on the command.
       const detached = app.sceneController.detachNode(id);
       if (detached) {
         commandHistory.push(new RemoveCommand(app.sceneController, detached.node, detached.parent));
@@ -196,12 +180,10 @@ function wireHotkeys(app: CornellBoxExample): void {
     } else if (k === 'b') {
       if (isStale.value && bakeStatus.value !== 'baking') void app.requestBake();
     } else if (k === 'f') {
-      // Maya/Blender/Unreal "frame selected" - center selection in view.
       const id = selectedId.value;
       const obj = id ? app.sceneController.lookupObject(id) : null;
       if (obj) app.sceneController.frameObject(obj);
     } else if (k === 'g') {
-      // Toggle ground grid (matches Unity / common viewport "show grid").
       showGrid.value = !showGrid.value;
     } else if (e.key === '1') {
       app.sceneController.setView(e.shiftKey ? 'back' : 'front');
@@ -240,7 +222,6 @@ function wireDragDrop(app: CornellBoxExample): void {
     if (uuid) {
       selectedId.value = uuid;
       const node = app.lookupObject(uuid);
-      // Primitives are parented to cornellRoot; lights are direct scene children.
       const parent =
         spec.kind === 'primitive'
           ? app.sceneController.getCornellRoot()
@@ -253,8 +234,6 @@ function wireDragDrop(app: CornellBoxExample): void {
 }
 
 void (async () => {
-  // Gallery landing: no scene param, not legacy, not test → render static
-  // gallery and stop. The orchestrator (and THREE renderer) never spin up.
   const sceneParam = getSceneParam();
   if (!sceneParam && !isLegacy() && !isTestMode()) {
     mountGallery();
@@ -266,13 +245,8 @@ void (async () => {
   const app = new CornellBoxExample();
   setOrchestrator(app);
   registerBakerClassicUI();
-  // registerPTRendererUI(); // disabled 2026-05-19 - see top-of-file note
 
-  // Publish app-side view-layer table to the shell so `<ViewportToggle/>` can
-  // render the top-right pass picker without importing app internals.
   viewLayers.value = LAYERS.map((l) => ({ id: l.id, label: l.label, group: l.group }));
-
-  // Generic Post-FX tab (renderer-agnostic; reads the `postFXSettings` signal).
   panelRegistry.register({ id: 'postfx', label: 'Post FX', component: PostFXPage });
 
   app.externalHooks = {
@@ -289,8 +263,6 @@ void (async () => {
       showToast('error', `Bake failed: ${msg}`);
     },
     onTransformChange: (obj, before, after) => {
-      // Light dummy position is queried at bake time, so its transforms don't
-      // dirty the bake - mirror the producer-side rule in SceneController.
       const skipStale = obj === app.sceneController.lightDummy;
       commandHistory.push(
         new TransformCommand(obj, before, after, () => {
@@ -298,15 +270,13 @@ void (async () => {
         }),
       );
     },
-    // Full scene replacement (preset load / GLB import) invalidates every
-    // retained Object3D in history - clear the stack and dispose orphans.
     onSceneLoad: () => {
       commandHistory.clear();
     },
   };
 
-  // URL-driven initial scene. Falls back silently to the default Cornell that
-  // the orchestrator built in its constructor if the id is unknown.
+  installProbeIntegration(app);
+
   if (sceneParam) {
     activeSceneId.value = sceneParam;
     try {
@@ -317,9 +287,6 @@ void (async () => {
   }
 
   sceneTree.value = app.getSceneTree();
-  // Pre-select the default area light if the freshly-loaded preset didn't
-  // bring its own lights - gives the Lights page something to show on boot
-  // without locking the selection to a magic id.
   const initialLight = app.sceneController.scene.children.find(
     (c) => c.userData?.bakerLightType && c.visible,
   );
