@@ -2,36 +2,48 @@ import { Color, type Mesh, type MeshStandardMaterial, Vector3 } from 'three';
 import { ProbeVolume } from './ProbeVolume';
 
 export type ProbeLightingBindingOptions = {
+  /** Overall probe-light multiplier. Default 1. */
   intensity?: number;
+  /** Multiply irradiance by the material base color in the PBR shader. Default true. */
   multiplyByAlbedo?: boolean;
+  /** Clamp each irradiance channel before applying intensity. Default 4. */
   maxIrradiance?: number;
+  /** World-space offset from the mesh origin used to sample the volume. */
   sampleOffset?: Vector3;
 };
 
+type ProbeUniform = { value: Color };
+
 type MaterialState = {
   material: MeshStandardMaterial;
-  emissive: Color;
-  emissiveIntensity: number;
+  uniform: ProbeUniform;
+  originalOnBeforeCompile: MeshStandardMaterial['onBeforeCompile'];
+  originalCustomProgramCacheKey: MeshStandardMaterial['customProgramCacheKey'];
 };
 
 /**
- * Lightweight runtime bridge for the MVP probe system.
+ * Runtime PBR integration for baked probe irradiance.
  *
- * The binding samples the volume at the mesh world position and folds the
- * diffuse probe contribution into MeshStandardMaterial.emissive. This keeps
- * the integration renderer-native and updateable per frame without replacing
- * the material shader. Call `dispose()` to restore original emissive settings.
+ * The binding keeps the original MeshStandardMaterial and injects one uniform
+ * contribution into `reflectedLight.indirectDiffuse`. Unlike the original MVP,
+ * this does not write to `material.emissive`: probe light therefore remains
+ * diffuse lighting and continues through the standard Three.js material,
+ * tone-mapping, fog, direct-light, shadow, roughness, and metalness pipeline.
+ *
+ * Call `update()` after moving the mesh (normally once per frame). Call
+ * `dispose()` before discarding the binding so the original shader hooks are
+ * restored.
  */
 export class ProbeLightingBinding {
   private readonly states: MaterialState[];
   private readonly worldPosition = new Vector3();
   private readonly sampled = new Color();
   private readonly contribution = new Color();
-  private readonly combined = new Color();
   private readonly intensity: number;
   private readonly multiplyByAlbedo: boolean;
   private readonly maxIrradiance: number;
   private readonly sampleOffset: Vector3;
+  private disposed = false;
 
   constructor(
     readonly mesh: Mesh,
@@ -42,40 +54,36 @@ export class ProbeLightingBinding {
     this.multiplyByAlbedo = options.multiplyByAlbedo ?? true;
     this.maxIrradiance = finiteNonNegative(options.maxIrradiance ?? 4, 'maxIrradiance');
     this.sampleOffset = options.sampleOffset?.clone() ?? new Vector3();
+
     const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     this.states = materials
       .filter((material): material is MeshStandardMaterial => {
         return 'isMeshStandardMaterial' in material && material.isMeshStandardMaterial === true;
       })
-      .map((material) => ({
-        material,
-        emissive: material.emissive.clone(),
-        emissiveIntensity: material.emissiveIntensity,
-      }));
+      .map((material) => this.installMaterialHook(material));
+
     if (!this.states.length) {
       throw new Error('[baker:probes] probe lighting requires MeshStandardMaterial');
     }
+
+    this.update();
   }
 
   update(): void {
+    if (this.disposed) return;
     this.mesh.updateWorldMatrix(true, false);
     this.mesh.getWorldPosition(this.worldPosition).add(this.sampleOffset);
     this.volume.sample(this.worldPosition, this.sampled);
 
-    for (const state of this.states) {
-      this.contribution.copy(this.sampled);
-      if (this.multiplyByAlbedo) this.contribution.multiply(state.material.color);
-      this.contribution.setRGB(
-        Math.min(this.maxIrradiance, Math.max(0, this.contribution.r)),
-        Math.min(this.maxIrradiance, Math.max(0, this.contribution.g)),
-        Math.min(this.maxIrradiance, Math.max(0, this.contribution.b)),
-      );
-      this.contribution.multiplyScalar(this.intensity);
-      this.combined.copy(state.emissive).multiplyScalar(state.emissiveIntensity);
-      this.combined.add(this.contribution);
-      state.material.emissive.copy(this.combined);
-      state.material.emissiveIntensity = 1;
-    }
+    this.contribution.copy(this.sampled);
+    this.contribution.setRGB(
+      Math.min(this.maxIrradiance, Math.max(0, this.contribution.r)),
+      Math.min(this.maxIrradiance, Math.max(0, this.contribution.g)),
+      Math.min(this.maxIrradiance, Math.max(0, this.contribution.b)),
+    );
+    this.contribution.multiplyScalar(this.intensity);
+
+    for (const state of this.states) state.uniform.value.copy(this.contribution);
   }
 
   getLastIrradiance(target: Color = new Color()): Color {
@@ -83,10 +91,51 @@ export class ProbeLightingBinding {
   }
 
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
     for (const state of this.states) {
-      state.material.emissive.copy(state.emissive);
-      state.material.emissiveIntensity = state.emissiveIntensity;
+      state.material.onBeforeCompile = state.originalOnBeforeCompile;
+      state.material.customProgramCacheKey = state.originalCustomProgramCacheKey;
+      state.material.needsUpdate = true;
     }
+  }
+
+  private installMaterialHook(material: MeshStandardMaterial): MaterialState {
+    const uniform: ProbeUniform = { value: new Color() };
+    const originalOnBeforeCompile = material.onBeforeCompile;
+    const originalCustomProgramCacheKey = material.customProgramCacheKey;
+    const multiplyExpression = this.multiplyByAlbedo
+      ? 'bakerProbeIrradiance * diffuseColor.rgb * RECIPROCAL_PI'
+      : 'bakerProbeIrradiance';
+
+    material.onBeforeCompile = function probeOnBeforeCompile(shader, renderer): void {
+      originalOnBeforeCompile.call(this, shader, renderer);
+      shader.uniforms.bakerProbeIrradiance = uniform;
+      shader.fragmentShader = `uniform vec3 bakerProbeIrradiance;\n${shader.fragmentShader}`;
+
+      const marker = '#include <lights_fragment_begin>';
+      if (!shader.fragmentShader.includes(marker)) {
+        throw new Error('[baker:probes] MeshStandardMaterial lights fragment hook was not found');
+      }
+      shader.fragmentShader = shader.fragmentShader.replace(
+        marker,
+        `${marker}\nreflectedLight.indirectDiffuse += ${multiplyExpression};`,
+      );
+    };
+
+    material.customProgramCacheKey = function probeProgramCacheKey(): string {
+      return `${originalCustomProgramCacheKey.call(this)}|baker-probe-pbr-v1|${
+        this === material && multiplyExpression.includes('diffuseColor') ? 'albedo' : 'raw'
+      }`;
+    };
+    material.needsUpdate = true;
+
+    return {
+      material,
+      uniform,
+      originalOnBeforeCompile,
+      originalCustomProgramCacheKey,
+    };
   }
 }
 
