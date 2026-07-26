@@ -5,7 +5,10 @@ import type { ProbeGridCounts, ProbeGridOptions, ProbeGridSpacing } from './type
 const MIN_SPACING = 1.0e-4;
 
 /** Build an empty regular probe volume from an object or explicit Box3. */
-export function generateProbeGrid(source: Object3D | Box3, options: ProbeGridOptions = {}): ProbeVolume {
+export function generateProbeGrid(
+  source: Object3D | Box3,
+  options: ProbeGridOptions = {},
+): ProbeVolume {
   const bounds = resolveBounds(source, options);
   const counts = options.counts
     ? normalizeCounts(options.counts)
@@ -43,7 +46,11 @@ function resolveBounds(source: Object3D | Box3, options: ProbeGridOptions): Box3
 
 function normalizeCounts(counts: ProbeGridCounts): [number, number, number] {
   const normalized = counts.map((value) => Math.floor(value)) as [number, number, number];
-  if (normalized.some((value, axis) => !Number.isFinite(value) || value < 1 || value !== counts[axis])) {
+  if (
+    normalized.some(
+      (value, axis) => !Number.isFinite(value) || value < 1 || value !== counts[axis],
+    )
+  ) {
     throw new Error('[baker:probes] counts must contain positive integers');
   }
   return normalized;
@@ -54,17 +61,17 @@ function normalizeSpacing(spacing: ProbeGridSpacing): Vector3 {
     validateSpacingValue(spacing);
     return new Vector3(spacing, spacing, spacing);
   }
-  if (Array.isArray(spacing)) {
-    const result = new Vector3(spacing[0], spacing[1], spacing[2]);
-    validateSpacingValue(result.x);
-    validateSpacingValue(result.y);
-    validateSpacingValue(result.z);
-    return result;
+  if (spacing instanceof Vector3) {
+    validateSpacingValue(spacing.x);
+    validateSpacingValue(spacing.y);
+    validateSpacingValue(spacing.z);
+    return spacing.clone();
   }
-  validateSpacingValue(spacing.x);
-  validateSpacingValue(spacing.y);
-  validateSpacingValue(spacing.z);
-  return spacing.clone();
+  const result = new Vector3(spacing[0], spacing[1], spacing[2]);
+  validateSpacingValue(result.x);
+  validateSpacingValue(result.y);
+  validateSpacingValue(result.z);
+  return result;
 }
 
 function countsFromSpacing(bounds: Box3, spacing: Vector3): [number, number, number] {
