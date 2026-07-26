@@ -6,8 +6,6 @@ export type ProbeDebugViewOptions = {
     opacity?: number;
     widthSegments?: number;
     heightSegments?: number;
-    /** Normalize dim probe fields for inspection without changing runtime lighting values. */
-    autoExposure?: boolean;
 };
 /** Colored instanced spheres for inspecting probe placement and irradiance. */
 export declare class ProbeDebugView extends Group {
@@ -18,7 +16,6 @@ export declare class ProbeDebugView extends Group {
     private readonly probePosition;
     private readonly probeMatrix;
     private readonly color;
-    private readonly displayScale;
     private exposure;
     constructor(volume: ProbeVolume, options?: ProbeDebugViewOptions);
     setExposure(exposure: number): void;
