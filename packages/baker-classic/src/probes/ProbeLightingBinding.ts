@@ -4,7 +4,7 @@ import { ProbeVolume } from './ProbeVolume';
 export type ProbeLightingBindingOptions = {
   /** Overall probe-light multiplier. Default 1. */
   intensity?: number;
-  /** Multiply irradiance by the material base color in the PBR shader. Default true. */
+  /** Multiply irradiance by the material diffuse BRDF. Default true. */
   multiplyByAlbedo?: boolean;
   /** Clamp each irradiance channel before applying intensity. Default 4. */
   maxIrradiance?: number;
@@ -28,7 +28,7 @@ type MaterialState = {
  * contribution into `reflectedLight.indirectDiffuse`. Unlike the original MVP,
  * this does not write to `material.emissive`: probe light therefore remains
  * diffuse lighting and continues through the standard Three.js material,
- * tone-mapping, fog, direct-light, shadow, roughness, and metalness pipeline.
+ * tone-mapping, fog, direct-light, shadow, roughness, metalness, and AO pipeline.
  *
  * Call `update()` after moving the mesh (normally once per frame). Call
  * `dispose()` before discarding the binding so the original shader hooks are
@@ -104,9 +104,9 @@ export class ProbeLightingBinding {
     const uniform: ProbeUniform = { value: new Color() };
     const originalOnBeforeCompile = material.onBeforeCompile;
     const originalCustomProgramCacheKey = material.customProgramCacheKey;
-    const mode = this.multiplyByAlbedo ? 'albedo' : 'raw';
+    const mode = this.multiplyByAlbedo ? 'diffuse-brdf' : 'raw';
     const multiplyExpression = this.multiplyByAlbedo
-      ? 'bakerProbeIrradiance * diffuseColor.rgb * RECIPROCAL_PI'
+      ? 'bakerProbeIrradiance * material.diffuseColor * RECIPROCAL_PI'
       : 'bakerProbeIrradiance';
 
     material.onBeforeCompile = (shader, renderer): void => {
