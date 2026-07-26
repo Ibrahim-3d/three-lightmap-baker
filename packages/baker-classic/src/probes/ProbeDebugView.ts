@@ -15,6 +15,8 @@ export type ProbeDebugViewOptions = {
   opacity?: number;
   widthSegments?: number;
   heightSegments?: number;
+  /** Normalize dim probe fields for inspection without changing runtime lighting values. */
+  autoExposure?: boolean;
 };
 
 /** Colored instanced spheres for inspecting probe placement and irradiance. */
@@ -25,6 +27,7 @@ export class ProbeDebugView extends Group {
   private readonly probePosition = new Vector3();
   private readonly probeMatrix = new Matrix4();
   private readonly color = new Color();
+  private readonly displayScale: number;
   private exposure: number;
 
   constructor(
@@ -34,6 +37,7 @@ export class ProbeDebugView extends Group {
     super();
     this.name = 'ProbeDebugView';
     this.exposure = Math.max(0, options.exposure ?? 1);
+    this.displayScale = options.autoExposure === false ? 1 : computeDisplayScale(volume);
     const radius = Math.max(1.0e-4, options.radius ?? defaultRadius(volume));
     const opacity = Math.min(1, Math.max(0, options.opacity ?? 0.9));
     this.geometry = new SphereGeometry(
@@ -75,9 +79,10 @@ export class ProbeDebugView extends Group {
   }
 
   refreshColors(): void {
+    const scale = this.exposure * this.displayScale;
     for (let index = 0; index < this.volume.probeCount; index++) {
       this.volume.getIrradiance(index, this.color);
-      this.color.multiplyScalar(this.exposure);
+      this.color.multiplyScalar(scale);
       this.color.setRGB(
         this.color.r / (1 + this.color.r),
         this.color.g / (1 + this.color.g),
@@ -105,4 +110,13 @@ export function createProbeDebugView(
 function defaultRadius(volume: ProbeVolume): number {
   const spacing = [volume.spacing.x, volume.spacing.y, volume.spacing.z].filter((value) => value > 0);
   return (spacing.length ? Math.min(...spacing) : 1) * 0.08;
+}
+
+function computeDisplayScale(volume: ProbeVolume): number {
+  let maxChannel = 0;
+  for (const value of volume.irradiance) {
+    if (Number.isFinite(value)) maxChannel = Math.max(maxChannel, value);
+  }
+  if (maxChannel <= 1.0e-6) return 1;
+  return Math.min(64, Math.max(1, 0.8 / maxChannel));
 }
