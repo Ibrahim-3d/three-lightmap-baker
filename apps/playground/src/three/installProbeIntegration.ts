@@ -33,7 +33,7 @@ type ProbeHost = {
   sceneController: { renderer: WebGLRenderer; scene: Scene };
   bakeController: { bakeResult: LightmapBakeResult | null };
   renderModeRunner: {
-    setProbeOnlyHandler(handler: (active: boolean) => void): void;
+    setProbeOnlyHandler(handler: (active: boolean) => boolean): void;
     setBeforeBakeHandler(handler: () => void): void;
   };
   externalHooks: {
@@ -77,7 +77,10 @@ export function installProbeIntegration(app: CornellBoxExample): ProbeController
     () => host.bakeController.bakeResult,
   );
   host.probeController = controller;
-  host.renderModeRunner.setProbeOnlyHandler((active) => controller.setProbeOnly(active));
+  host.renderModeRunner.setProbeOnlyHandler((active) => {
+    controller.setProbeOnly(active);
+    return active ? controller.hasVolume : true;
+  });
   host.renderModeRunner.setBeforeBakeHandler(() => {
     if (!controller.hasVolume) return;
     controller.clear();
