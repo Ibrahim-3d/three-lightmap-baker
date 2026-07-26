@@ -135,12 +135,12 @@ export class RenderModeRunner {
   private texelDensityMats: Map<Mesh, TexelDensityMaterial> = new Map();
   private albedoUnlitMats: Map<Mesh, MeshBasicMaterial> = new Map();
   private originalMaterials = new WeakMap<Mesh, Mesh['material']>();
-  private setProbeOnly: (active: boolean) => void = () => {};
+  private setProbeOnly: (active: boolean) => boolean = (active) => !active;
   private beforeBake: () => void = () => {};
 
   constructor(private deps: RenderModeRunnerDeps) {}
 
-  setProbeOnlyHandler(handler: (active: boolean) => void): void {
+  setProbeOnlyHandler(handler: (active: boolean) => boolean): void {
     this.setProbeOnly(false);
     this.setProbeOnly = handler;
   }
@@ -180,10 +180,12 @@ export class RenderModeRunner {
     const meshToGroup = this.deps.getMeshToGroup();
     const visualLight = this.deps.getVisualLight();
     const lightMarker = this.deps.getLightMarker();
-    const layer = LAYERS.find((l) => l.id === opts.layer) ?? LAYERS[0]!;
+    const requestedLayer = LAYERS.find((l) => l.id === opts.layer) ?? LAYERS[0]!;
+    const probeActive =
+      requestedLayer.id === 'probes' ? this.setProbeOnly(true) : (this.setProbeOnly(false), false);
+    const layer = requestedLayer.id === 'probes' && !probeActive ? LAYERS[0]! : requestedLayer;
 
-    this.setProbeOnly(layer.id === 'probes');
-    if (layer.id === 'probes') {
+    if (requestedLayer.id === 'probes' && probeActive) {
       this.restoreSwappedMaterials();
       visualLight.visible = false;
       return;
@@ -255,7 +257,8 @@ export class RenderModeRunner {
 
     if (DEBUG) {
       console.info('[baker:debug] applyRenderMode', {
-        layer: layer.id,
+        requestedLayer: requestedLayer.id,
+        effectiveLayer: layer.id,
         meshes: meshes.length,
         mounted,
         nullLM,
