@@ -3,806 +3,419 @@
 Last audited: 2026-07-26  
 Repository: `Ibrahim-3d/three-lightmap-baker`  
 Authoritative branch: `master`  
-Audited HEAD: `00845a20b09b41fb9f982128c4ef0ab38e9b1a9c`  
+Pre-handoff audited HEAD: `00845a20b09b41fb9f982128c4ef0ab38e9b1a9c`  
 Latest code-bearing integration: PR #15, merged as `145d9c37029d8349f90e43d6860f66c2502a8510`
 
-## 1. Why this file exists
+## 1. Important correction
 
-This is the continuation handoff for finishing the Three.js light-baking project.
+The baseline does **not** need to be built again.
 
-The repository was left in a confusing state because the final commits were planning and roadmap updates rather than implementation. The browser lightmap baker itself is substantially built and hardened. The project stopped immediately before the next major product phase: baked light probes, dynamic-object GI, stronger debug views, and the broader hybrid-lighting workflow.
+The debug system also does **not** need to be designed from zero. It already exists in the playground and has dedicated Playwright coverage.
 
-This file separates:
+The repository stopped after the stable browser baker, editor, project persistence, package hardening, and most core debug modes were implemented. The actual next major feature is **baked light probes for dynamic objects**.
 
-- what is actually implemented,
-- what was only planned,
-- what must not be regressed,
-- what decisions remain open,
-- and the recommended order for completing the product.
+The work before probe implementation is only a short verification pass: install dependencies, run the existing checks, confirm the current UI manually, and then continue from the existing architecture.
 
 The separate Blender lightmap project is not part of this repository or this handoff.
 
-## 2. Decision frame
+## 2. Product goal
 
-### Goal
-
-Finish Three Lightmap Baker as a coherent browser-first lighting system for Three.js, not merely a Cornell-box experiment or a collection of unrelated rendering prototypes.
-
-### Product hierarchy
+Finish Three Lightmap Baker as a coherent browser-first lighting system for Three.js:
 
 ```text
-stable baked lightmaps
+existing stable baked lightmaps
     ↓
-baked light probes for dynamic objects
+existing inspection and debug workflow
     ↓
-clear debug and inspection workflow
+new baked light probes for dynamic objects
     ↓
-optional real-time companion lighting
+probe-lit dynamic-object demonstration
     ↓
-future WebGPU acceleration
+probe persistence and package-facing APIs
+    ↓
+strong architectural/interior showcase
+    ↓
+optional runtime companion lighting and future WebGPU work
 ```
 
-The baked-lighting product remains the foundation. SSGI, GTAO, SSR, WebGPU, and the experimental path-tracing packages must not erase or destabilize the core baker.
+The baked-lighting product remains the foundation. SSGI, GTAO, SSR, WebGPU, and the experimental path-tracing packages must not replace or destabilize the classic baker.
 
-### Success criteria
+## 3. What is already implemented
 
-The project is considered meaningfully finished when a user can:
+### 3.1 Core browser baker baseline
 
-1. Load or construct a Three.js scene.
-2. Bake stable static lightmaps in the browser.
-3. Inspect texel density, atlas layout, direct, indirect, AO, and final lighting.
-4. Generate a probe volume from the baked static scene.
-5. Move a dynamic object through the scene and see its lighting change from interpolated probe data.
-6. Save and reload both lightmaps and probe data in the demo project format.
-7. Use the core system through a documented package API.
-8. Run automated tests that prove the main workflow still works.
-9. View a convincing architectural/interior showcase rather than only a Cornell box.
-10. Install the package from npm after the first real release.
+The baseline is substantially complete:
 
-### Constraints
-
-- Browser/WebGL remains the shipping baseline.
-- Three.js version is currently `r161`.
-- TypeScript is strict.
-- The classic two-pass lightmap architecture is non-negotiable.
-- Existing WebGL resource ownership and cleanup rules must remain explicit.
-- New features must not require Blender, Unity, or a server-side rendering backend.
-- True Node.js baking is not currently supported and must not be implied.
-- Experimental path-tracing packages are separate from the classic baker.
-
-## 3. Repository state at the stop point
-
-### Branch and PR state
-
-- Default and authoritative branch: `master`.
-- No open pull requests were found during this audit.
-- No open issues were found during this audit.
-- The latest repository commit is documentation-only: `00845a2` — `docs: add aggressive rendering research tracks`.
-- The last major implementation merge is PR #15: `feat: pnpm migration, automation infrastructure, and lightmap persistence`.
-- Closed but unmerged PRs must not be treated as shipped code. In particular, PRs #9, #10, and #11 were closed without merge.
-
-### Important interpretation
-
-The project did not stop because the existing baker was broken. It stopped after a major hardening phase, when the roadmap was expanded toward hybrid lighting. The probe system was specified in documentation but no probe implementation was added.
-
-## 4. What is implemented now
-
-## 4.1 Classic browser lightmap baker
-
-The main library lives under:
-
-```text
-packages/baker-classic/src/
-```
-
-Implemented capabilities include:
-
-- Browser/WebGL lightmap baking.
-- Two-pass UV-space pipeline.
-- `xatlas-three` automatic UV2 generation.
-- Shared `three-mesh-bvh` acceleration structure.
-- Direct and indirect global-illumination accumulation.
-- Configurable multi-bounce path tracing.
+- Browser/WebGL2 lightmap baking.
+- Path-traced direct and indirect global illumination.
+- Configurable multi-bounce lighting.
+- `three-mesh-bvh` acceleration.
+- Automatic UV2 generation through `xatlas-three`.
 - Per-triangle albedo and emissive material data.
-- Standalone AO pass.
-- Progressive accumulation and progress hooks.
-- Bake cancellation through `AbortSignal`.
-- Dilation/padding to prevent UV-island seams.
-- Bilateral denoising.
+- Separate direct, indirect, AO, and composite outputs.
+- Progressive accumulation hooks.
 - Supersampling and downscaling.
-- Runtime/GPU capability detection.
-- Explicit result lifecycle with apply, export, AO refresh/rebake, and disposal.
+- Gap flood / dilation.
+- Bilateral denoising.
+- Bake cancellation.
+- Stable `LightmapBakeResult` lifecycle with `apply()`, `export()`, AO refresh/rebake, and `dispose()`.
+- Explicit renderer and renderer-adapter constructor paths.
+- Node-safe runtime capability reporting that truthfully reports Node baking as unsupported.
 
-Current public construction styles:
+### 3.2 Editor and workflow baseline
 
-```ts
-new LightmapBaker(renderer, options?)
-new LightmapBaker({ renderer, ...options })
-new LightmapBaker({ rendererAdapter, ...options })
-```
+The playground already contains a substantial DCC-style workflow:
 
-Current result lifecycle:
-
-```ts
-const result = await baker.bake(scene, hooks);
-result.apply();
-await result.export(...);
-result.refreshAO(...);
-result.rebakeAO(...);
-result.dispose();
-```
-
-## 4.2 Classic baker architecture
-
-Relevant paths:
-
-```text
-packages/baker-classic/src/
-  LightmapBaker.ts
-  rendererAdapter.ts
-  runtimeCapabilities.ts
-  bake/
-  atlas/
-  lightmap/
-  gpu/
-  utils/
-```
-
-Current pipeline:
-
-1. Validate options and runtime capabilities.
-2. Partition meshes by resolution or texel-density mode.
-3. Generate or update UV2 charts.
-4. Merge scene geometry.
-5. Build the shared BVH.
-6. Extract per-triangle material data after BVH index reordering.
-7. Rasterize UV-space position and normal buffers.
-8. Trace direct and indirect lighting progressively.
-9. Run AO.
-10. Composite direct, indirect, and AO.
-11. Dilate and optionally denoise.
-12. Assemble a disposable `LightmapBakeResult`.
-13. Explicitly drain the GPU queue before returning.
-
-## 4.3 Demo/editor
-
-The main browser application lives in:
-
-```text
-apps/playground/
-```
-
-The editor shell and shared UI are split across:
-
-```text
-packages/demo-shell/
-packages/shared/
-```
-
-Implemented editor capabilities include:
-
-- Scene gallery and built-in presets.
-- Asset Library for primitives, lights, and cameras.
-- Outliner selection.
-- Keyboard selection stepping.
-- Frame-to-object behavior.
+- Scene presets and gallery.
+- Asset Library add path.
+- Outliner selection and framing.
 - Transform controls.
-- Add/remove/transform undo and redo.
-- Topbar menus and settings navigation.
-- Bake controls and cancellation.
-- 3D camera objects.
-- Camera-specific FOV, aspect, and clipping controls.
-- View-through-camera mode.
-- Move-camera-with-viewport workflow.
-- Blender-style camera portal rendering.
+- Undo and redo for add, remove, and transform operations.
+- Three-dimensional camera objects.
+- Camera view-through and viewport synchronization.
+- Bake controls and presets.
+- Inspector panels.
+- Post-processing controls.
+- Project JSON (`.3dl`) save and load.
+- Imported GLB/glTF persistence.
+- Baked final lightmap persistence, allowing a saved project to restore lighting without rebaking.
 
-## 4.4 Project persistence
+### 3.3 Existing debug and inspection system
 
-The demo project format can preserve:
+The current debug system is functional. `apps/playground/src/three/modes.ts` already defines these render layers:
 
-- built-in scene presets,
-- imported GLB/glTF data,
-- asset-library additions,
-- bake options,
-- editor options,
-- and baked final lightmap atlas payloads.
+#### Output views
 
-Baked lightmaps are stored in the project JSON as encoded floating-point atlas data, allowing a project to reload without rebaking.
+- `combined` — current final output.
+- `combinedPost` — refined combined output.
+- `combinedRaw` — raw combined output.
+- `direct` — direct-light contribution.
+- `indirect` — indirect/GI contribution.
+- `ao` — ambient-occlusion contribution.
 
-The demo format is an editor convenience format, not the public npm API.
+#### Debug views
 
-The roadmap refers to it as `.3dl`, while some older wording calls it Project JSON v1. Keep one canonical extension and schema name during the next implementation pass.
+- `lightmapRaw` — raw lightmap texture.
+- `albedo` — normal albedo view.
+- `albedoUnlit` — diffuse texture without lighting.
+- `positions` — world-position atlas data.
+- `normals` — world-normal atlas data.
+- `texelDensity` — per-mesh texel-density visualization.
 
-## 4.5 Testing and automation
+The inspector also includes a working Atlas view that paints the current bake atlas.
 
-The repository uses pnpm through Corepack.
+The debug mode runner already handles non-destructive material swapping, restores real materials before rebaking, preserves the pinned `USE_LIGHTMAP` shader variant, and cleans up generated debug materials.
 
-Primary commands:
+### 3.4 Existing debug tests
+
+`tests/e2e/render-modes.spec.ts` already tests that:
+
+- Every existing layer can be selected after a bake without runtime errors.
+- Rebaking from Texel Density restores the real scene materials before baking.
+- Rebaking from Direct does not leave the final Combined output black.
+- The Atlas inspector paints real atlas content.
+
+Therefore, debug views are an implemented subsystem, not an unstarted phase.
+
+### 3.5 Package and validation baseline
+
+Already implemented:
+
+- Strict TypeScript.
+- pnpm workspace and authoritative lockfile.
+- ESM, CJS, and declaration builds.
+- Tarball import smoke test.
+- `release:check` with typecheck, lint, formatting, builds, bundle budget, package import test, and npm dry run.
+- Playwright browser smoke tests.
+- Cornell visual bake regression.
+- Launch screenshot and benchmark capture scripts.
+- Runtime and bundle budget scripts.
+
+The package is prepared for publishing but has not completed its first real npm publish.
+
+## 4. What the debug system still needs
+
+This is refinement and exposure work, not baseline implementation.
+
+### 4.1 Not yet package-facing
+
+Most debug modes currently live inside the playground/editor layer. The public library does not yet expose a clean, supported debug API for applications that consume `three-lightmap-baker` without the demo shell.
+
+A later API could provide access to bake outputs and helper materials without coupling the npm package to the editor UI.
+
+### 4.2 Incomplete launch presentation
+
+The views work, but the repository still lacks a complete visual explanation in the README:
+
+- Texel-density capture.
+- Atlas capture.
+- Direct-only capture.
+- Indirect/GI-only capture.
+- AO-only capture.
+- Raw versus refined comparison.
+- A compact technical breakdown sequence.
+
+This is capture and documentation work, not renderer work.
+
+### 4.3 Test integration gap
+
+`render-modes.spec.ts` exists, but it is not included in the current `test:browser-smoke` script. It should either be added to that gate or placed in a clearly named extended visual/debug gate.
+
+### 4.4 Diagnostics panel gap
+
+Runtime capability reporting exists, but a complete user-facing diagnostics panel for renderer, ANGLE backend, WebGL2, float-buffer support, timeout-protection mode, and performance budget status still needs consolidation.
+
+### 4.5 Probe debug modes are genuinely missing
+
+Probe-only view, probe grid, influence visualization, interpolation preview, and probe heatmap cannot exist yet because the probe system itself has not been implemented.
+
+## 5. Exact stop point
+
+The final code-bearing work was merged through PR #15. It hardened package management, tests, project persistence, runtime capability reporting, editor functions, and lightmap restoration.
+
+The commits after that were mainly documentation changes defining the hybrid-lighting direction.
+
+No baked probe implementation was found under `packages/baker-classic/src/probes/` or elsewhere in the current package.
+
+The project therefore stopped at this boundary:
+
+```text
+static lightmap baker: implemented
+editor workflow: implemented
+core debug views: implemented
+saved lightmaps: implemented
+baked probe volume: missing
+dynamic object probe lighting: missing
+probe persistence: missing
+probe-facing API: missing
+probe showcase: missing
+```
+
+## 6. Critical architecture that must not regress
+
+### 6.1 Keep the classic two-pass bake
+
+1. UV-space rasterization produces world-position and world-normal textures.
+2. BVH ray tracing produces direct, indirect, AO, and composite lighting.
+
+Do not merge these phases into one shader.
+
+### 6.2 Preserve BVH/material extraction order
+
+`MeshBVH` reorders the merged index buffer. Per-triangle material extraction must happen after BVH construction, while preserving mesh ordering.
+
+### 6.3 Preserve shader variant pinning
+
+The shared dummy lightmap keeps `USE_LIGHTMAP` compiled before heavy GPU work. Do not set lightmaps to `null` during normal layer switching and do not force unnecessary `needsUpdate` recompiles.
+
+### 6.4 Preserve the explicit GPU drain
+
+The baker calls `gl.finish()` after the group loop to avoid moving a large GPU queue drain into the first post-bake viewport render.
+
+### 6.5 Preserve context-loss handling
+
+Bake work must stop safely on WebGL context loss, listeners must be removed in `finally`, and queued progressive callbacks must not outlive the bake.
+
+### 6.6 Preserve resource ownership
+
+Every probe texture, geometry, helper material, debug mesh, render target, and data buffer added by the new work needs explicit ownership and idempotent disposal.
+
+### 6.7 Keep experimental renderers separate
+
+`packages/pt-renderer/` and `packages/pt-baker/` are experimental sibling paths. They are not the classic baker and should not become dependencies of the probe MVP unless a deliberate architecture decision proves that necessary.
+
+## 7. Correct continuation plan
+
+### Step 0 — Verify, do not rebuild
+
+Run:
 
 ```bash
 corepack enable
 pnpm install
-pnpm run typecheck
-pnpm run typecheck:examples
-pnpm run lint
-pnpm run format:check
-pnpm run build
-pnpm run test:browser-smoke
 pnpm run release:check
+pnpm run test:browser-smoke
+pnpm exec playwright test tests/e2e/render-modes.spec.ts
 ```
 
-The browser smoke suite currently covers:
+Then manually confirm:
 
-- renderer-adapter runtime,
-- Cornell Draft visual bake,
-- bake cancellation,
-- project save/load,
-- outliner selection,
-- editor history,
-- asset-library add path,
-- topbar controls.
+- Cornell bake.
+- Combined/raw/refined switching.
+- Direct, indirect, and AO switching.
+- Position, normal, atlas, and texel-density views.
+- Project save/load with restored lightmaps.
 
-Additional automation exists for:
+This step should only identify regressions. It is not a development phase.
 
-- launch screenshots,
-- benchmark capture,
-- expected-GPU validation,
-- bundle-size budget,
-- runtime benchmark budget,
-- tarball import testing,
-- npm publish dry run,
-- manual npm publishing with provenance.
+### Step 1 — Define the probe data model
 
-The documentation reports that `release:check` passed at the last audit. It was not re-executed during this repository-context pass and must be rerun before feature work is merged.
-
-## 4.6 Package and release status
-
-- Package version: `1.0.0`.
-- ESM build exists.
-- CJS build exists.
-- Type declarations exist.
-- Tarball import smoke exists.
-- npm dry-run validation exists.
-- Manual publish workflow exists.
-- The package has not been published to npm yet.
-
-## 4.7 Experimental path-tracing packages
-
-These paths exist separately from the classic baker:
-
-```text
-packages/pt-renderer/
-packages/pt-baker/
-apps/pt-preview/
-apps/pt-baked/
-```
-
-They were created for real-time path-tracing preview and experimental bake comparison. Their UI was intentionally hidden from the main editor during the polish phase.
-
-Rules:
-
-- Do not confuse `pt-renderer` with the classic lightmap baker.
-- Do not make probe implementation depend on reviving the PT editor mode.
-- Reuse low-level logic only when it is demonstrably cleaner than extending the stable classic pipeline.
-- Keep these packages experimental until they have a clear product role and automated coverage.
-
-## 5. Critical invariants that must not be regressed
-
-## 5.1 BVH reorder and material extraction
-
-`MeshBVH` reorders the merged index buffer during construction.
-
-Therefore:
-
-- build the BVH first,
-- extract per-triangle materials after BVH construction,
-- preserve mesh ordering across geometry merge and material extraction.
-
-Changing this order breaks material lookup during ray tracing.
-
-## 5.2 `USE_LIGHTMAP` shader variant pinning
-
-A shared 1×1 dummy lightmap is installed on every `MeshStandardMaterial` during scene initialization with zero intensity.
-
-This forces the lightmap shader variant to compile before heavy GPU work. Post-bake texture replacement must not trigger an expensive shader recompile.
-
-## 5.3 GPU queue drain
-
-`LightmapBaker.bake()` must call `gl.finish()` after the per-group loop.
-
-Without the explicit drain, the first post-bake scene render may inherit queued work and trigger a driver timeout on NVIDIA/D3D11.
-
-## 5.4 Context-loss handling
-
-The baker installs a `webglcontextlost` listener before the pipeline starts and removes it in `finally`.
-
-New progressive passes must check the shared context-loss state before scheduling more GPU work.
-
-## 5.5 Resource ownership
-
-`LightmapBakeResult` owns generated textures, render targets, atlas internals, AO/composite outputs, and the shared BVH view returned by the bake.
-
-Probe resources must follow the same explicit ownership model. Every texture, target, material, helper geometry, and debug object needs a clear `dispose()` path.
-
-## 5.6 Package boundaries
-
-- Reusable feature code belongs under `packages/`.
-- `apps/*` should remain thin integration layers.
-- Packages must not import from apps.
-- Cross-package shared behavior belongs in `packages/shared/` only when it is genuinely shared.
-- Avoid circular imports.
-
-## 6. What is not implemented
-
-The following items exist only in roadmap and status documents:
-
-### Light probes
-
-- Probe grid generation.
-- Probe bounds override.
-- Probe spacing controls.
-- Probe validity testing.
-- Irradiance capture per probe.
-- Directional probe representation.
-- Probe interpolation.
-- Probe debug spheres.
-- Probe influence visualization.
-- Probe heatmap.
-- Dynamic-object probe lighting.
-- Probe persistence in `.3dl`.
-- Probe import/export.
-- Probe lifecycle/disposal API.
-- Public probe-generation API.
-
-### Debug workflow
-
-- Stable direct-only view.
-- Stable indirect-only view.
-- Stable AO-only view.
-- Stable atlas view suitable for capture.
-- Raw-versus-dilated-versus-denoised comparison.
-- Probe-only view.
-- Playwright hooks for all debug modes.
-- Complete committed debug-view screenshot set.
-
-Texel-density tooling exists, but the full debug showcase was not completed.
-
-### Hybrid companion lighting
-
-- SSGI companion pass.
-- GTAO-style contact occlusion.
-- SSR/reflection companion.
-- Temporal accumulation for companion passes.
-- Companion-pass denoising.
-- Clear baked/probe/screen-space contribution controls.
-
-### WebGPU
-
-- WebGPU capability reporting.
-- WebGPU compute design.
-- WebGPU bake prototype.
-- WebGPU probe-generation prototype.
-
-### Headless runtime
-
-- True Node.js baker.
-- Node-compatible WebGL/WebGPU backend.
-- Real non-browser CI bake.
-
-The current Node capability API correctly reports that baking is unsupported.
-
-### Product proof
-
-- Custom architectural/interior showcase scene.
-- Larger-scene visual regression.
-- Top-of-README product video or GIF.
-- Complete technical breakdown images.
-
-### Release
-
-- Actual first npm publish.
-- Post-publish README install update.
-
-## 7. Light-probe design decision
-
-The old roadmap proposes storing one RGB irradiance value per probe. That is acceptable for a throwaway ambient-color demo but is weak as the final architecture because it has no directionality. A surface facing away from a bright wall would receive the same light as a surface facing toward it.
-
-### Evaluation matrix
-
-| Representation | Directional quality | Storage | Runtime cost | Implementation risk | Long-term value |
-|---|---:|---:|---:|---:|---:|
-| One RGB value | Very low | Very low | Very low | Low | Low |
-| RGB + dominant direction | Medium-low | Low | Low | Medium | Medium-low |
-| First-order SH, 4 coefficients/channel | Medium | Medium | Low | Medium | Medium |
-| Second-order SH, 9 coefficients/channel | High for diffuse GI | Medium-high | Low-medium | Medium | High |
-| Cubemap per probe | High | Very high | High | High | Low for dense volumes |
-
-### Recommended direction
-
-Use second-order spherical harmonics, matching Three.js `SphericalHarmonics3` / `LightProbe` conventions, as the persisted probe representation.
-
-Why:
-
-- It preserves directional diffuse irradiance.
-- It is standard for light probes.
-- Nine coefficients per RGB channel are compact compared with cubemaps.
-- It provides a credible foundation rather than an RGB-only dead end.
-- It aligns with Three.js concepts even if the runtime application needs a per-object material adapter.
-
-A temporary RGB preview may be used for debugging, but it should be derived from the SH data rather than becoming the canonical storage format.
-
-## 8. Recommended probe-generation path
-
-### First implementation path: baked-scene cubemap capture to SH
-
-For the first production-capable version:
-
-1. Bake the static scene normally.
-2. Apply the final lightmaps to the static scene.
-3. Generate probe positions inside a configurable volume.
-4. At each valid probe position, render the baked static scene into a low-resolution cubemap.
-5. Project the cubemap radiance into second-order SH coefficients.
-6. Persist the SH coefficients and volume metadata.
-7. Interpolate neighboring SH probes at runtime.
-
-Advantages:
-
-- Reuses the existing final baked result.
-- Avoids immediately building a second probe-specific ray tracer.
-- Produces directional data.
-- Is easy to validate visually against the baked room.
-- Keeps the first probe system browser/WebGL-compatible.
-
-Costs:
-
-- Six renders per probe.
-- Must hide dynamic objects and debug helpers during capture.
-- Requires probe validity and near-geometry checks.
-- Large volumes need batching, progress reporting, cancellation, and performance limits.
-
-### Later optimization path
-
-After correctness is proven, evaluate a batched reduced-ray probe pass using the existing BVH/material textures. Do not begin with this unless cubemap capture proves inadequate.
-
-## 9. Recommended probe module boundary
+Create an isolated package boundary under:
 
 ```text
 packages/baker-classic/src/probes/
-  types.ts
-  ProbeVolume.ts
-  generateProbeGrid.ts
-  validateProbePositions.ts
-  captureProbeCubemap.ts
-  projectCubemapToSH.ts
-  interpolateProbeSH.ts
-  applyProbeLighting.ts
-  ProbeDebugView.ts
-  serialization.ts
-  index.ts
 ```
 
-Suggested responsibilities:
+Recommended initial modules:
 
-### `types.ts`
+```text
+ProbeVolume.ts
+ProbeTypes.ts
+generateProbeGrid.ts
+bakeProbeVolume.ts
+interpolateProbes.ts
+ProbeDebugView.ts
+index.ts
+```
 
-- `ProbeVolumeOptions`
-- `ProbeRecord`
-- `SerializedProbeVolume`
-- `ProbeGenerationHooks`
-- schema version types
+The volume should initially store:
 
-### `ProbeVolume.ts`
-
-Owns:
-
-- volume bounds,
-- grid dimensions,
-- spacing,
-- SH coefficients,
-- validity flags,
-- interpolation,
-- serialization,
-- disposal of debug/runtime resources.
-
-### `generateProbeGrid.ts`
-
-Generates deterministic positions from:
-
-- scene bounds,
-- explicit bounds override,
-- grid spacing,
-- padding,
-- maximum probe count.
-
-### `validateProbePositions.ts`
-
-Rejects or relocates probes:
-
-- inside solid geometry,
-- too close to a surface,
-- outside the configured volume,
-- or outside navigable/meaningful space when a custom mask is supplied.
-
-### `captureProbeCubemap.ts`
-
-- Captures only the static baked scene.
-- Preserves renderer state with `try/finally`.
-- Supports cancellation.
-- Reuses render targets where possible.
-- Does not leak cube targets, materials, or helper cameras.
-
-### `projectCubemapToSH.ts`
-
-Produces `THREE.SphericalHarmonics3`-compatible coefficients and documents color-space handling.
-
-### `interpolateProbeSH.ts`
-
-Begins with trilinear interpolation on a regular grid. Invalid corners must be renormalized rather than contributing black energy.
-
-### `applyProbeLighting.ts`
-
-Must support the moving-object demo without globally applying one probe to the entire scene.
-
-Likely implementation:
-
-- sample the probe volume per object,
-- pass SH coefficients to that object's material through a controlled `onBeforeCompile`/`onBeforeRender` adapter,
-- keep original material behavior reversible,
-- and dispose shader hooks cleanly.
-
-A single global `THREE.LightProbe` is acceptable only for the earliest one-object proof, not as the final multi-object architecture.
-
-### `ProbeDebugView.ts`
-
-Provides:
-
-- colored probe spheres,
-- valid/invalid state,
-- selected probe details,
-- optional influence cells,
-- optional interpolation preview,
-- and explicit disposal.
-
-### `serialization.ts`
-
-Persists:
-
-- schema version,
 - bounds,
 - dimensions,
 - spacing,
-- coefficient layout,
-- coefficients,
-- validity flags,
-- generation settings.
+- probe positions,
+- validity state,
+- irradiance coefficients,
+- version information,
+- and explicit disposal or release behavior where GPU resources are owned.
 
-## 10. Recommended continuation plan
+### Step 2 — Implement grid generation
 
-## Phase 0 — Re-establish a trustworthy baseline
+Requirements:
 
-Before changing architecture:
+- Generate a regular three-dimensional grid from scene bounds.
+- Allow explicit bounds override.
+- Allow configurable spacing or explicit grid dimensions.
+- Avoid probes outside the usable volume where possible.
+- Keep generation deterministic for persistence and tests.
 
-1. Pull `master`.
-2. Install through Corepack and pnpm.
-3. Run `pnpm run release:check`.
-4. Run `pnpm run test:browser-smoke`.
-5. Run the demo with hardware acceleration.
-6. Verify Cornell Draft and Production bakes manually.
-7. Save and reload a baked `.3dl` project.
-8. Record any environment-specific failures before feature work.
+### Step 3 — Implement probe lighting bake
 
-Exit condition: the existing project is green and behavior is documented.
+Recommended quality direction: diffuse irradiance stored as low-order spherical harmonics, preferably SH9 RGB coefficients per probe.
 
-## Phase 1 — Finish the debug-view foundation
+MVP generation path:
 
-Implement stable internal/debug access to:
+1. Trace a reduced ray set around each probe using the existing scene BVH and material data.
+2. Accumulate incident radiance from direct and bounced lighting.
+3. Project the samples into SH9.
+4. Store coefficients in a compact CPU structure first.
+5. Add a GPU texture representation only when runtime application needs it.
 
-- texel density,
-- atlas,
-- direct,
-- indirect,
-- AO,
-- raw composite,
-- dilated result,
-- denoised final.
+Do not begin with a full WebGPU rewrite or SSGI system.
 
-Add deterministic UI hooks and Playwright selectors before probes. Probe debugging will depend on the same mode system.
+### Step 4 — Add probe visualization
 
-Exit condition: each debug mode can be selected, captured, and restored without rebaking.
+Add:
 
-## Phase 2 — Probe data model and grid
+- Colored probe spheres.
+- Probe-grid visibility toggle.
+- Probe-only render layer.
+- Invalid-probe indication.
+- Optional influence or interpolation preview.
 
-Implement:
+Reuse the existing render-mode architecture rather than introducing a second debug framework.
 
-- probe types,
-- regular grid generation,
-- bounds override,
-- spacing controls,
-- count limit,
-- position validation,
-- debug spheres,
-- deterministic interpolation tests.
+### Step 5 — Add runtime interpolation
 
-Do not generate lighting yet.
+Implement trilinear interpolation between the eight neighboring probes.
 
-Exit condition: a visible, valid, disposable probe grid can be created and edited in the room.
+Acceptance test:
 
-## Phase 3 — Baked-scene capture and SH generation
+- A moving diffuse sphere changes its received ambient/indirect color smoothly.
+- The transition does not visibly jump at cell boundaries.
+- Nearby red, green, or warm surfaces visibly influence the dynamic object.
 
-Implement:
+### Step 6 — Integrate dynamic object shading
 
-- baked cubemap capture,
-- cubemap-to-SH projection,
-- generation progress,
-- cancellation,
-- resource reuse,
-- validity handling,
-- probe color visualization.
+Start with a controlled demonstration material or material patch.
 
-Exit condition: probe colors and directions visibly match the room's baked bounce lighting.
+The first goal is proof, not universal material support:
 
-## Phase 4 — Dynamic-object GI
+- One moving diffuse object.
+- Probe-derived indirect lighting.
+- Existing direct real-time light can remain separate.
+- Clear toggles for baked room, probe lighting, and final output.
 
-Implement:
+After proof, define the supported integration path for `MeshStandardMaterial` and custom shaders.
 
-- per-object probe sampling,
-- trilinear SH interpolation,
-- reversible material integration,
-- moving sphere/product demo,
-- baked-only/probe-only/final modes.
+### Step 7 — Persist probes in `.3dl`
 
-Exit condition: a dynamic object visibly receives different bounced light while moving through the room.
+Extend the demo project format with a versioned probe payload containing:
 
-## Phase 5 — Persistence and API
+- volume bounds,
+- grid dimensions and spacing,
+- coefficient encoding,
+- validity data,
+- and a schema version.
 
-Implement:
+Add a save/load round-trip test comparable to the existing baked-lightmap persistence test.
 
-- `.3dl` probe schema,
-- schema versioning,
-- save/load round trip,
-- import/export behavior,
-- public or semi-public probe API,
-- explicit disposal rules.
+### Step 8 — Expose a clean package API
 
-Recommended API direction:
+A likely direction:
 
 ```ts
-const result = await baker.bake(scene, hooks);
-const probes = await baker.generateProbes(scene, result, options, hooks);
-
-const sample = probes.sample(worldPosition);
-probes.applyTo(object);
-probes.removeFrom(object);
-
-const json = probes.serialize();
+const result = await baker.bake(scene);
+const probes = await baker.bakeProbes(scene, probeOptions);
+const irradiance = probes.sample(position, normal);
 probes.dispose();
 ```
 
-Keep `bake()` stable. Probe generation should be additive rather than changing the existing result shape in a breaking way.
+The final API should be decided after the internal probe MVP proves the data model. Do not freeze the public API before the runtime path works.
 
-Exit condition: lightmaps and probes survive save/load and can be used without the editor.
+### Step 9 — Build the flagship interior showcase
 
-## Phase 6 — Automated proof
+Cornell proves correctness. A custom room proves product value.
 
-Add tests for:
+The showcase should demonstrate:
 
-- deterministic grid dimensions,
-- interpolation at corners/edges/center,
-- invalid-probe renormalization,
-- SH serialization round trip,
-- probe generation cancellation,
-- resource disposal,
-- project save/load with probes,
-- dynamic-object color response in two different room regions,
-- debug-mode switching.
+- Static baked room lighting.
+- Direct, indirect, AO, atlas, and texel-density views.
+- Probe grid generation.
+- A moving product/furniture object receiving colored bounce.
+- Final composite.
 
-Exit condition: probe correctness is protected before hybrid companion passes begin.
+### Step 10 — Finish release and launch proof
 
-## Phase 7 — Flagship interior showcase
+After the probe workflow is stable:
 
-Build one custom room designed to expose:
+- Add the full technical capture sequence.
+- Add probe and dynamic-object tests to CI.
+- Run the complete release gate.
+- Publish the npm package.
+- Update README installation text.
 
-- warm and cool color zones,
-- shadowed corners,
-- open bright regions,
-- different surface materials,
-- a moving product object,
-- probe grid and interpolation.
+## 8. Work that should not block the probe system
 
-Produce:
+These remain later tracks:
 
-- top README video/GIF,
-- before/after images,
-- atlas view,
-- direct/indirect/AO breakdown,
-- probe visualization,
-- moving-object proof,
-- final composite.
+- Full SSGI renderer.
+- GTAO integration.
+- SSR.
+- Full WebGPU rewrite.
+- True Node.js headless baking.
+- Complex node-material editor.
+- Large editor-chrome redesign.
 
-Exit condition: the value is obvious without reading implementation details.
+They may be researched in isolation, but they should not delay a working probe volume and dynamic-object GI demonstration.
 
-## Phase 8 — First npm release
+## 9. Definition of done
 
-Only after baseline checks remain green:
+The project is meaningfully complete when:
 
-1. Configure trusted publishing or repository token.
-2. Run the manual npm publish workflow for version `1.0.0` or intentionally bump the version.
-3. Verify registry install in a clean external sample.
-4. Update README installation instructions.
-5. Tag the release.
+1. Existing lightmap and debug functionality still passes.
+2. A probe volume can be generated from a baked scene.
+3. Probe data represents local bounced lighting.
+4. A dynamic object samples the probe volume smoothly.
+5. Probe debug views work through the existing render-mode system.
+6. Lightmaps and probes survive project save/load.
+7. Probe resources are disposed correctly.
+8. Automated tests cover generation, interpolation, persistence, and the visual workflow.
+9. A custom interior scene demonstrates the complete value proposition.
+10. The package is published with honest browser/WebGL support claims.
 
-The first npm release can ship before optional SSGI/WebGPU work, but probe support should be clearly versioned if it is not included in `1.0.0`.
+## 10. Immediate next move
 
-## Phase 9 — Optional hybrid runtime companion
+Do not spend a development cycle on baseline or generic debug work.
 
-After probes are stable, evaluate:
-
-- GTAO/contact-occlusion first,
-- small SSGI companion second,
-- SSR only for a proven configurator/interior need,
-- temporal accumulation only where the visual gain justifies complexity.
-
-Each pass must be separately toggleable and must not modify the meaning of the baked result.
-
-## Phase 10 — WebGPU and true headless research
-
-Only after the product workflow is complete:
-
-- extend runtime capabilities with WebGPU status,
-- prototype one isolated compute pass,
-- benchmark probe generation,
-- choose an explicit headless renderer strategy,
-- keep WebGL supported until a WebGPU path is proven.
-
-## 11. Definition of done
-
-### Core baker
-
-- Existing static bake quality does not regress.
-- Baseline release and browser tests pass.
-- Resource disposal remains correct.
-
-### Debug workflow
-
-- All major bake contributions are independently inspectable.
-- Debug views are deterministic and automation-friendly.
-
-### Probes
-
-- Directional SH probe data is generated.
-- Invalid probes are handled.
-- Interpolation is stable.
-- Dynamic objects respond to location.
-- Multiple objects can receive different samples.
-- Probe data persists.
-- Probe resources dispose cleanly.
-
-### Product proof
-
-- Custom interior scene exists.
-- Dynamic-object GI is obvious.
-- README explains the pipeline visually.
-
-### Release
-
-- Package installs from npm.
-- Documentation matches code.
-- Unsupported Node/WebGPU claims are not made.
-
-## 12. Immediate next move
-
-Create a dedicated implementation branch from current `master` and execute only Phase 0 and Phase 1 first.
-
-Recommended branch:
-
-```text
-feat/probe-foundation-and-debug-views
-```
-
-Do not start SSGI, WebGPU, a node editor, or a full engine rewrite before the probe foundation, dynamic-object proof, persistence, and automated coverage are complete.
-
-## 13. Audit limitations
-
-This handoff was produced from the GitHub repository contents, commit history, PR history, roadmap, API status, launch-readiness documentation, package configuration, and architecture documentation.
-
-No local clone, dependency installation, build, browser run, or GPU bake was executed during this audit. The first implementation session must therefore begin by validating the repository on a real development machine and updating this file where runtime reality differs from the documented state.
+Run the existing checks, fix only real regressions, then start the probe data model and grid generator under `packages/baker-classic/src/probes/`.
