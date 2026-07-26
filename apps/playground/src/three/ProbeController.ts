@@ -1,11 +1,13 @@
 import {
   Box3,
+  Color,
   Mesh,
   MeshStandardMaterial,
   Scene,
   SphereGeometry,
   Vector3,
   type Object3D,
+  type Texture,
   type WebGLRenderer,
 } from 'three';
 import {
@@ -13,11 +15,19 @@ import {
   ProbeLightingBinding,
   ProbeVolume,
   createProbeDebugView,
+  generateProbeGrid,
   generateProbeVolume,
+  type BakeGroupView,
   type LightmapBakeResult,
   type ProbeBakeStats,
   type ProbeVolumeJSON,
 } from 'baker-classic';
+
+type LiveBakeGroup = {
+  atlasIdx: number;
+  composite: { texture: Texture };
+  refinement: { texture: Texture } | null;
+};
 
 export type PlaygroundProbeOptions = {
   spacing: number;
@@ -36,6 +46,14 @@ export type ProbeGenerationHooks = {
   onProgress?: (progress: number) => void;
 };
 
+export type ProbeLayoutResult = {
+  probeCount: number;
+  effectiveSpacing: number;
+  spacingAdjusted: boolean;
+};
+
+export type ProbeGenerationResult = ProbeBakeStats & ProbeLayoutResult;
+
 /**
  * Playground-side owner for probe generation, visualization, persistence, and
  * the dynamic-object demonstration. The package owns probe algorithms; this
@@ -49,12 +67,14 @@ export class ProbeController {
 
   private readonly hiddenForProbeLayer = new Map<Object3D, boolean>();
   private probeOnly = false;
+  private previewOnly = false;
   private options: PlaygroundProbeOptions | null = null;
 
   constructor(
     private readonly renderer: WebGLRenderer,
     private readonly scene: Scene,
     private readonly getBakeResult: () => LightmapBakeResult | null,
+    private readonly getLiveBakeGroups: () => ReadonlyArray<LiveBakeGroup> = () => [],
   ) {}
 
   get probeCount(): number {
@@ -62,26 +82,60 @@ export class ProbeController {
   }
 
   get hasVolume(): boolean {
-    return this.volume !== null;
+    return this.volume !== null && !this.previewOnly;
+  }
+
+  get hasVisualization(): boolean {
+    return this.debugView !== null;
+  }
+
+  preview(options: PlaygroundProbeOptions): ProbeLayoutResult {
+    const bounds = this.resolveBounds();
+    const layout = fitProbeLayout(bounds, options);
+    const volume = generateProbeGrid(bounds, {
+      bounds,
+      spacing: layout.effectiveSpacing,
+      padding: options.padding,
+      maxProbes: options.maxProbes,
+    });
+    const previewColor = new Color(0.08, 0.35, 1);
+    for (let index = 0; index < volume.probeCount; index++) {
+      volume.setIrradiance(index, previewColor);
+    }
+    this.installVolume(
+      volume,
+      { ...options, spacing: layout.effectiveSpacing, showDemo: false },
+      true,
+    );
+    return layout;
   }
 
   async generate(
     options: PlaygroundProbeOptions,
     hooks: ProbeGenerationHooks = {},
-  ): Promise<ProbeBakeStats> {
+  ): Promise<ProbeGenerationResult> {
     const bakeResult = this.getBakeResult();
     if (!bakeResult) {
-      throw new Error('[baker:probes] bake the scene before generating probes');
+      throw new Error('[baker:probes] bake the scene before generating probe lighting');
     }
 
     const bounds = boundsFromBakeResult(bakeResult);
+    const layout = fitProbeLayout(bounds, options);
+    const liveGroups = this.getLiveBakeGroups();
+    const source = {
+      groups: bakeResult.groups.map((group, index) =>
+        withLiveFinalTexture(group, liveGroups.find((item) => item.atlasIdx === index) ?? liveGroups[index]),
+      ),
+    };
+
+    this.clear();
     const generated = await generateProbeVolume(
       this.renderer,
       bounds,
-      bakeResult,
+      source,
       {
         bounds,
-        spacing: options.spacing,
+        spacing: layout.effectiveSpacing,
         padding: options.padding,
         maxProbes: options.maxProbes,
         bake: {
@@ -93,16 +147,16 @@ export class ProbeController {
       hooks,
     );
 
-    this.installVolume(generated.volume, options);
-    return generated.stats;
+    this.installVolume(generated.volume, { ...options, spacing: layout.effectiveSpacing }, false);
+    return { ...generated.stats, ...layout };
   }
 
   restore(json: ProbeVolumeJSON, options: PlaygroundProbeOptions): void {
-    this.installVolume(ProbeVolume.fromJSON(json), options);
+    this.installVolume(ProbeVolume.fromJSON(json), options, false);
   }
 
   serialize(): ProbeVolumeJSON | undefined {
-    return this.volume?.toJSON();
+    return this.previewOnly ? undefined : this.volume?.toJSON();
   }
 
   clear(): void {
@@ -114,6 +168,7 @@ export class ProbeController {
       this.debugView = null;
     }
     this.volume = null;
+    this.previewOnly = false;
     this.options = null;
   }
 
@@ -128,7 +183,7 @@ export class ProbeController {
 
   setDemoEnabled(enabled: boolean): void {
     if (this.options) this.options.showDemo = enabled;
-    if (!enabled) {
+    if (!enabled || this.previewOnly) {
       this.destroyDemo();
       return;
     }
@@ -142,16 +197,16 @@ export class ProbeController {
   setIntensity(intensity: number): void {
     if (!this.options) return;
     this.options.intensity = Math.max(0, intensity);
-    if (this.demoMesh && this.volume) {
+    if (this.demoMesh && this.volume && !this.previewOnly) {
       this.demoBinding?.dispose();
       this.demoBinding = new ProbeLightingBinding(this.demoMesh, this.volume, {
         intensity: this.options.intensity,
       });
     }
-    this.debugView?.setExposure(Math.max(0, intensity));
+    this.debugView?.setExposure(this.previewOnly ? 1 : Math.max(0, intensity));
   }
 
-  /** Hide normal renderables and leave only the colored probe debug instances. */
+  /** Hide normal renderables and leave only the probe debug instances. */
   setProbeOnly(active: boolean): void {
     if (active) {
       const debugView = this.debugView;
@@ -193,7 +248,7 @@ export class ProbeController {
     const mesh = this.demoMesh;
     const volume = this.volume;
     const options = this.options;
-    if (!mesh || !volume || !options) return;
+    if (!mesh || !volume || !options || this.previewOnly) return;
 
     if (options.animateDemo) {
       const size = volume.bounds.getSize(_size);
@@ -216,26 +271,38 @@ export class ProbeController {
     this.clear();
   }
 
-  private installVolume(volume: ProbeVolume, options: PlaygroundProbeOptions): void {
+  private resolveBounds(): Box3 {
+    const bakeResult = this.getBakeResult();
+    return bakeResult ? boundsFromBakeResult(bakeResult) : boundsFromScene(this.scene);
+  }
+
+  private installVolume(
+    volume: ProbeVolume,
+    options: PlaygroundProbeOptions,
+    previewOnly: boolean,
+  ): void {
     this.clear();
     this.volume = volume;
+    this.previewOnly = previewOnly;
     this.options = { ...options };
 
     this.debugView = createProbeDebugView(volume, {
-      exposure: Math.max(0, options.intensity),
-      opacity: 0.95,
+      exposure: previewOnly ? 1 : Math.max(0, options.intensity),
+      opacity: previewOnly ? 0.55 : 0.95,
+      autoExposure: !previewOnly,
     });
+    this.debugView.name = previewOnly ? 'ProbeGridPreview' : 'ProbeDebugView';
     this.debugView.userData.bakerProbeDebug = true;
     this.debugView.mesh.userData.bakerProbeDebug = true;
     this.debugView.visible = options.showProbes;
     this.scene.add(this.debugView);
 
-    if (options.showDemo) this.createDemo(options);
+    if (!previewOnly && options.showDemo) this.createDemo(options);
   }
 
   private createDemo(options: PlaygroundProbeOptions): void {
     const volume = this.volume;
-    if (!volume || this.demoMesh) return;
+    if (!volume || this.demoMesh || this.previewOnly) return;
 
     const size = volume.bounds.getSize(_size);
     const radius = Math.min(0.3, Math.max(0.08, Math.min(size.x, size.y, size.z) * 0.055));
@@ -275,6 +342,45 @@ export class ProbeController {
 const _size = new Vector3();
 const _center = new Vector3();
 
+function withLiveFinalTexture(group: BakeGroupView, live: LiveBakeGroup | undefined): BakeGroupView {
+  if (!live) return group;
+  return {
+    ...group,
+    textures: {
+      ...group.textures,
+      composite: live.composite.texture,
+      refinement: live.refinement?.texture ?? null,
+    },
+  };
+}
+
+function fitProbeLayout(bounds: Box3, options: PlaygroundProbeOptions): ProbeLayoutResult {
+  const padded = bounds.clone();
+  if (options.padding > 0) padded.expandByScalar(options.padding);
+  const size = padded.getSize(new Vector3());
+  const requested = Math.max(0.05, options.spacing);
+  const maxProbes = Math.max(1, Math.floor(options.maxProbes));
+  let spacing = requested;
+  let probeCount = countForSize(size, spacing);
+
+  for (let attempt = 0; probeCount > maxProbes && attempt < 12; attempt++) {
+    spacing *= Math.max(1.02, Math.cbrt(probeCount / maxProbes) * 1.02);
+    probeCount = countForSize(size, spacing);
+  }
+
+  return {
+    probeCount,
+    effectiveSpacing: spacing,
+    spacingAdjusted: Math.abs(spacing - requested) > 1.0e-6,
+  };
+}
+
+function countForSize(size: Vector3, spacing: number): number {
+  const axis = (value: number): number =>
+    value <= 1.0e-4 ? 1 : Math.max(2, Math.ceil(value / spacing) + 1);
+  return axis(size.x) * axis(size.y) * axis(size.z);
+}
+
 function boundsFromBakeResult(result: LightmapBakeResult): Box3 {
   const bounds = new Box3();
   for (const group of result.groups) {
@@ -283,5 +389,22 @@ function boundsFromBakeResult(result: LightmapBakeResult): Box3 {
   if (bounds.isEmpty()) {
     throw new Error('[baker:probes] completed bake has no bounded meshes');
   }
+  return bounds;
+}
+
+function boundsFromScene(scene: Scene): Box3 {
+  const bounds = new Box3();
+  scene.traverse((object) => {
+    const mesh = object as Mesh;
+    if (!mesh.isMesh || !mesh.visible || object.userData?.lightmapIgnore || object.userData?.bakerProbeDebug) {
+      return;
+    }
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    const isSurface = materials.some(
+      (material) => material && (material as { isMeshStandardMaterial?: boolean }).isMeshStandardMaterial,
+    );
+    if (isSurface) bounds.expandByObject(mesh, true);
+  });
+  if (bounds.isEmpty()) throw new Error('[baker:probes] scene has no bounded lightmap surfaces');
   return bounds;
 }
