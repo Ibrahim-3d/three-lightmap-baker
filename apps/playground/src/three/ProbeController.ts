@@ -153,11 +153,11 @@ export class ProbeController {
 
   /** Hide normal renderables and leave only the colored probe debug instances. */
   setProbeOnly(active: boolean): void {
-    if (active && !this.debugView) return;
-    if (active === this.probeOnly) return;
-    this.probeOnly = active;
-
     if (active) {
+      const debugView = this.debugView;
+      if (!debugView || this.probeOnly) return;
+
+      this.probeOnly = true;
       this.hiddenForProbeLayer.clear();
       this.scene.traverse((obj) => {
         const renderable = obj as Object3D & {
@@ -178,10 +178,12 @@ export class ProbeController {
         this.hiddenForProbeLayer.set(obj, obj.visible);
         obj.visible = false;
       });
-      this.debugView.visible = true;
+      debugView.visible = true;
       return;
     }
 
+    if (!this.probeOnly) return;
+    this.probeOnly = false;
     for (const [obj, wasVisible] of this.hiddenForProbeLayer) obj.visible = wasVisible;
     this.hiddenForProbeLayer.clear();
     if (this.debugView) this.debugView.visible = this.options?.showProbes ?? false;
