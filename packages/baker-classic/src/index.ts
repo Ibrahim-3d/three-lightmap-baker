@@ -66,12 +66,14 @@ export {
   ProbeVolume,
   generateProbeGrid,
   bakeProbeIrradianceFromLightmaps,
+  generateProbeVolume,
   ProbeDebugView,
   createProbeDebugView,
   ProbeLightingBinding,
   bindProbeLighting,
 } from './probes';
 export type {
+  GeneratedProbeVolume,
   GenerateProbeVolumeOptions,
   ProbeBakeHooks,
   ProbeBakeOptions,
