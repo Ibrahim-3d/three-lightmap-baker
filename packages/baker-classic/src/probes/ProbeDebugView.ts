@@ -23,7 +23,7 @@ export class ProbeDebugView extends Group {
   private readonly geometry: SphereGeometry;
   private readonly material: MeshBasicMaterial;
   private readonly probePosition = new Vector3();
-  private readonly matrix = new Matrix4();
+  private readonly probeMatrix = new Matrix4();
   private readonly color = new Color();
   private exposure: number;
 
@@ -63,12 +63,12 @@ export class ProbeDebugView extends Group {
   refresh(): void {
     for (let index = 0; index < this.volume.probeCount; index++) {
       this.volume.getPosition(index, this.probePosition);
-      this.matrix.makeTranslation(
+      this.probeMatrix.makeTranslation(
         this.probePosition.x,
         this.probePosition.y,
         this.probePosition.z,
       );
-      this.mesh.setMatrixAt(index, this.matrix);
+      this.mesh.setMatrixAt(index, this.probeMatrix);
     }
     this.mesh.instanceMatrix.needsUpdate = true;
     this.refreshColors();
