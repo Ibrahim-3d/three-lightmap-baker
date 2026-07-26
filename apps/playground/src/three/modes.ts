@@ -77,7 +77,6 @@ export const LAYERS: Layer[] = [
   {
     // Material-swap layer: replaces mesh material with MeshBasicMaterial that
     // shows the albedo texture WITHOUT any lighting, env probe, or lightmap.
-    // Pure unlit diffuse - best for inspecting texture content & uv mapping.
     id: 'albedoUnlit',
     label: 'Albedo (Unlit)',
     group: 'debug',
@@ -99,10 +98,15 @@ export const LAYERS: Layer[] = [
     getLightMap: (c) => c.group.normalTexture,
   },
   {
-    // Material-swap layer: replaces mesh material with TexelDensityMaterial.
-    // apply() special-cases this id and restores originals on switch-away.
     id: 'texelDensity',
     label: 'Texel Density',
+    group: 'debug',
+    showAlbedo: false,
+    getLightMap: () => null,
+  },
+  {
+    id: 'probes',
+    label: 'Light Probes',
     group: 'debug',
     showAlbedo: false,
     getLightMap: () => null,
@@ -118,10 +122,6 @@ export const FilterOptions = {
   Nearest: 'nearest',
 };
 
-/** Dependencies the runner reads on every `apply()` / `refreshTexelDensityMaterials()` call.
- *  Passed as getters because the orchestrator may reassign `meshes` / `bakeGroups`
- *  between calls (e.g. on GLB import).
- */
 export type RenderModeRunnerDeps = {
   getMeshes(): ReadonlyArray<SceneObj>;
   getBakeGroups(): ReadonlyArray<BakeGroup>;
@@ -131,15 +131,9 @@ export type RenderModeRunnerDeps = {
   getLightMarker(): Mesh;
   getDummyLightmap(): Texture;
   getRestoredLightmap(mesh: Mesh): Texture | null;
+  setProbeOnly(active: boolean): void;
 };
 
-/**
- * Owns view-time render-mode swapping for the demo. Lazy-creates per-mesh
- * TexelDensityMaterial caches and the WeakMap of original materials so the
- * "Texel Density" layer can swap and restore non-destructively.
- *
- * Pure-ish: holds two maps but reads everything else from the deps getters.
- */
 export class RenderModeRunner {
   private texelDensityMats: Map<Mesh, TexelDensityMaterial> = new Map();
   private albedoUnlitMats: Map<Mesh, MeshBasicMaterial> = new Map();
@@ -157,6 +151,7 @@ export class RenderModeRunner {
 
   prepareForBake(): void {
     const opts = this.deps.getOptions();
+    this.deps.setProbeOnly(false);
     this.restoreSwappedMaterials();
     this.deps.getVisualLight().visible = opts.directLightEnabled;
     const dummy = this.deps.getDummyLightmap();
@@ -178,7 +173,13 @@ export class RenderModeRunner {
     const lightMarker = this.deps.getLightMarker();
     const layer = LAYERS.find((l) => l.id === opts.layer) ?? LAYERS[0]!;
 
-    // Material-swap layer (Texel Density).
+    this.deps.setProbeOnly(layer.id === 'probes');
+    if (layer.id === 'probes') {
+      this.restoreSwappedMaterials();
+      visualLight.visible = false;
+      return;
+    }
+
     if (layer.id === 'texelDensity') {
       this.refreshTexelDensityMaterials();
       for (const m of meshes) {
@@ -190,7 +191,6 @@ export class RenderModeRunner {
       return;
     }
 
-    // Material-swap layer (Albedo Unlit) - pure diffuse, no lighting at all.
     if (layer.id === 'albedoUnlit') {
       const live = new Set<Mesh>(meshes);
       for (const m of this.albedoUnlitMats.keys()) {
@@ -216,16 +216,12 @@ export class RenderModeRunner {
       return;
     }
 
-    // Restore originals if we just left a swap layer.
     this.restoreSwappedMaterials();
 
     let mounted = 0;
     let nullLM = 0;
     const dummy = this.deps.getDummyLightmap();
     for (const m of meshes) {
-      // Excluded mesh OR no group yet (pre-bake): keep dummy lightmap with
-      // intensity=0 instead of mat.lightMap=null. Setting null removes the
-      // USE_LIGHTMAP define → forces a shader recompile → NVIDIA D3D11 TDR.
       const group = meshToGroup.get(m);
       const restored =
         !group && (layer.id === 'combined' || layer.id === 'combinedPost')
@@ -244,13 +240,10 @@ export class RenderModeRunner {
           mat.lightMapIntensity = 0;
         }
       }
-      if (lm) {
-        mounted++;
-      } else {
-        nullLM++;
-      }
-      // Intentionally NOT setting mat.needsUpdate - variant pinned at scene init.
+      if (lm) mounted++;
+      else nullLM++;
     }
+
     if (DEBUG) {
       console.info('[baker:debug] applyRenderMode', {
         layer: layer.id,
@@ -262,26 +255,10 @@ export class RenderModeRunner {
     }
 
     (lightMarker.material as MeshBasicMaterial).color = new Color(0xffffff);
-
-    // Visual disc light is the viewport "scene lamp". On.
-    //   - Albedo layer (always - that layer is the unlit/textured preview).
-    //   - Any output layer when no bake exists yet. Without this, Combined
-    //     pre-bake mounts a dummy lightmap with intensity 0 AND no scene
-    //     lights → MeshStandardMaterial renders fully black. With it on,
-    //     pre-bake Combined shows the scene lit by the viewport lamp; once
-    //     the bake completes, lightMap kicks in (intensity 1) and the lamp
-    //     turns off so the user is judging the baked lighting alone.
     const hasBake = bakeGroups.length > 0;
     visualLight.visible = layer.id === 'albedo' || !hasBake;
   }
 
-  /**
-   * Sync per-mesh TexelDensityMaterial cache with current mesh list + options.
-   * Density is scene-relative: 1 fills one atlas, then per-mesh scale adjusts
-   * local allocation.
-   * Cheap - uniform writes only. Triggered on Texel Density layer activation,
-   * per-mesh density slider, global density multiplier, and lightMapSize changes.
-   */
   refreshTexelDensityMaterials(): void {
     const opts = this.deps.getOptions();
     const meshes = this.deps.getMeshes();
@@ -321,8 +298,11 @@ export class RenderModeRunner {
   }
 
   dispose(): void {
+    this.deps.setProbeOnly(false);
     for (const mat of this.texelDensityMats.values()) mat.dispose();
     this.texelDensityMats.clear();
+    for (const mat of this.albedoUnlitMats.values()) mat.dispose();
+    this.albedoUnlitMats.clear();
   }
 
   private standardMaterials(
