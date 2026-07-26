@@ -43,7 +43,7 @@ test.describe('probe volume core', () => {
     expect(restoredCenter.b).toBeCloseTo(center.b, 6);
   });
 
-  test('binds probe lighting to a dynamic standard material and restores it', () => {
+  test('injects probe irradiance into PBR indirect diffuse and restores hooks', () => {
     const volume = new ProbeVolume(
       new Box3(new Vector3(-1, -1, -1), new Vector3(1, 1, 1)),
       [2, 2, 2],
@@ -54,15 +54,29 @@ test.describe('probe volume core', () => {
 
     const material = new MeshStandardMaterial({ color: 0xffffff, emissive: 0x000000 });
     const mesh = new Mesh(new BoxGeometry(1, 1, 1), material);
+    const originalOnBeforeCompile = material.onBeforeCompile;
+    const originalProgramKey = material.customProgramCacheKey;
     const binding = bindProbeLighting(mesh, volume);
     binding.update();
 
-    expect(material.emissive.r).toBeCloseTo(0.4, 6);
-    expect(material.emissive.g).toBeCloseTo(0.2, 6);
-    expect(material.emissive.b).toBeCloseTo(0.1, 6);
+    expect(material.emissive.getHex()).toBe(0x000000);
+    expect(material.onBeforeCompile).not.toBe(originalOnBeforeCompile);
+
+    const shader = {
+      uniforms: {} as Record<string, unknown>,
+      vertexShader: '',
+      fragmentShader: '#include <lights_fragment_begin>',
+    };
+    material.onBeforeCompile(shader as never, {} as never);
+    expect(shader.fragmentShader).toContain('reflectedLight.indirectDiffuse');
+    const uniform = shader.uniforms.bakerProbeIrradiance as { value: Color };
+    expect(uniform.value.r).toBeCloseTo(0.4, 6);
+    expect(uniform.value.g).toBeCloseTo(0.2, 6);
+    expect(uniform.value.b).toBeCloseTo(0.1, 6);
 
     binding.dispose();
-    expect(material.emissive.getHex()).toBe(0x000000);
+    expect(material.onBeforeCompile).toBe(originalOnBeforeCompile);
+    expect(material.customProgramCacheKey).toBe(originalProgramKey);
     mesh.geometry.dispose();
     material.dispose();
   });
