@@ -7,7 +7,13 @@ export type GenerateAtlasOptions = {
     /** Per-mesh density multiplier keyed by mesh uuid. */
     perMeshScale?: Record<string, number>;
 };
-export declare const loadXAtlasThree: () => Promise<void>;
+export type LoadXAtlasThreeOptions = {
+    /** Override the packaged xatlas WASM URL, for example when hosting assets on a dedicated CDN. */
+    wasmUrl?: string;
+    /** Override the packaged xatlas loader URL, for example when applying a custom CSP. */
+    scriptUrl?: string;
+};
+export declare const loadXAtlasThree: (options?: LoadXAtlasThreeOptions) => Promise<void>;
 /**
  * Pack the given meshes into ONE shared [0,1]² UV atlas. Each mesh's `uv2`
  * attribute is rewritten in place to point at its assigned region within the

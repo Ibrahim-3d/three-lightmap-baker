@@ -9,6 +9,7 @@
  * public for advanced workflows.
  */
 export { generateAtlas, generateAtlases, loadXAtlasThree } from './atlas/generateAtlas';
+export type { GenerateAtlasOptions, LoadXAtlasThreeOptions } from './atlas/generateAtlas';
 export { renderAtlas } from './atlas/renderAtlas';
 export { generateLightmapper } from './lightmap/Lightmapper';
 export type { Lightmapper, RaycastOptions, LightmapperRender } from './lightmap/Lightmapper';
