@@ -9,7 +9,9 @@ const root = process.cwd();
 const distDir = path.resolve(root, process.argv[2] ?? 'dist');
 
 const budgets = {
-  demoJsGzip: 430 * KiB,
+  // The demo ships the xatlas loader locally so UV unwrapping never depends
+  // on a third-party CDN. Keep only a small margin above that offline build.
+  demoJsGzip: 450 * KiB,
   largestDemoJsRaw: 1.4 * MiB,
   demoCssGzip: 8 * KiB,
   copiedAssetsRaw: 40 * MiB,

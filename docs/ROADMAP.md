@@ -1,6 +1,6 @@
 # Roadmap
 
-Last updated: 2026-07-26
+Last updated: 2026-07-29
 
 ## Product Direction
 
@@ -9,9 +9,10 @@ Three Lightmap Baker is a browser-first lighting pipeline for Three.js:
 1. Bake static GI into reusable lightmaps. Implemented.
 2. Generate and debug light probes from the baked scene. Implemented in code.
 3. Use probes to light dynamic objects at runtime. Implemented in code.
-4. Validate and showcase the complete lightmap + probe workflow on target hardware. Current gate.
-5. Add optional real-time companion passes where they strengthen the baked workflow.
-6. Stage WebGPU acceleration without breaking the WebGL-first package.
+4. Validate the complete lightmap + probe workflow on target hardware. Implemented locally.
+5. Showcase the complete lightmap + probe workflow in a custom architectural scene. Current gate.
+6. Add optional real-time companion passes where they strengthen the baked workflow.
+7. Stage WebGPU acceleration without breaking the WebGL-first package.
 
 The core product remains stable baked lighting. Probes now bridge static lightmaps with dynamic objects. SSGI, GTAO, SSR, temporal work, and WebGPU remain optional future layers rather than replacements for the baker.
 
@@ -22,39 +23,33 @@ The core product remains stable baked lighting. Probes now bridge static lightma
 - **Light probes:** Regular RGB probe volumes, lightmap-derived irradiance, interpolation, debug spheres, public generation/evaluation APIs, PBR dynamic-object binding, playground controls, animated demo, and Project JSON / `.3dl` persistence are implemented.
 - **Probe lifecycle:** Probe resources are cleared on scene replacement and invalidated before a new classic bake. Selecting the probe-only layer without a generated volume falls back to Combined.
 - **Public API:** Both renderer constructor styles and the optional `LightmapRendererAdapter` boundary are supported. Probe generation remains a separate opt-in API after the lightmap bake.
-- **Package readiness:** ESM/CJS/type declaration output, API-import smoke, example typecheck, release gate, and manual npm publish workflow exist. The package is not published on npm yet.
+- **Package readiness:** The 1.0.0 artifact provides ESM/CJS/type declaration output, installed-tarball import smoke, packaged xatlas assets, a full browser release gate, third-party notices, and a manual npm trusted-publish workflow.
 - **Launch proof:** README uses committed Cornell screenshots and benchmark numbers recorded before the probe integration.
-- **Current validation truth:** The pre-probe baseline previously passed `release:check`. The new probe integration has not been compiled or executed in this environment. Local typecheck, focused Playwright tests, package build, and visual GPU validation are the current gate.
+- **Current validation truth:** On 2026-07-29, source/example typechecks and all 33 Playwright tests passed sequentially without retries. The run covered real lightmap and probe bakes, back-to-back bake stress, render modes, cancellation, persistence, offline startup, package imports, and the publish dry run.
 
-## Now: Probe Validation and Showcase
+## Now: Probe Showcase and Larger-Scene Measurement
 
-### 0. Validate the current master locally
+### 0. Keep the release gate green
 
 Run:
 
 ```bash
 corepack enable
 pnpm install
-pnpm run typecheck
-pnpm run typecheck:examples
-pnpm run test:probes
-pnpm run build:package
+pnpm run release:check
 pnpm run dev
 ```
 
-Validate:
+The automated gate now validates:
 
-- Probes generate after a completed Draft or Preview bake.
-- Red/green Cornell color bleed appears in nearby probe debug spheres.
-- The animated white sphere transitions smoothly through the irradiance field.
-- The material remains PBR and does not use emissive as the probe-light channel.
-- Light Probes mode hides normal renderables and Combined restores visibility.
-- Saving creates a `.3dl` file containing optional probe data.
-- Loading restores probe count, colors, visibility, controls, and demo state.
-- Starting a new static bake clears stale probes.
-- No console, shader compile, WebGL, or resource-lifecycle errors appear.
+- A real Draft bake can generate non-empty RGB probe irradiance.
+- The debug grid receives instance colors and the PBR demo sphere moves through the field.
+- Project restoration, probe-only visibility, bake cancellation, and repeated bakes remain healthy.
+- App startup and xatlas initialization do not request a third-party CDN.
+- ESM, CommonJS, declarations, installed tarball imports, and the npm publish dry run remain healthy.
 
-Any failures found here take priority over new rendering features.
+Manual visual review still determines whether probe spacing, color quality, and
+leakage are acceptable for each larger showcase scene.
 
 ### 1. Probe and debug-view showcase
 
@@ -85,14 +80,11 @@ The current RGB diffuse field is the shipping MVP. Upgrade only where validation
 - Evaluate SH9 directional irradiance only if RGB cannot provide acceptable dynamic-object lighting.
 - Evaluate per-probe cubemap or reduced-ray generation only if lightmap-derived projection is visibly insufficient.
 
-### 3. First npm release
+### 3. Release maintenance
 
-After current master passes validation:
-
-- Run the full local `pnpm run release:check`.
-- Configure the publishing environment.
-- Run the manual npm publish workflow for the exact package version.
-- Update README install wording from tarball guidance to registry installation.
+- Run the full local `pnpm run release:check` before every release.
+- Publish the exact `package.json` version through the manual npm workflow.
+- Keep npm trusted-publisher settings aligned with `npm-publish.yml` and the `npm` GitHub environment.
 - Keep claims explicit: browser/WebGL lightmaps and RGB diffuse probes now; Node baking, SH9, and WebGPU remain future work.
 
 ### 4. Custom architectural showcase

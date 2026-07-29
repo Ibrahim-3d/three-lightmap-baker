@@ -176,7 +176,8 @@ export function installProbeIntegration(app: CornellBoxExample): ProbeController
       if (host.options.layer === 'probes') controller.setProbeOnly(true);
       console.info('[baker:probes] generated', stats);
     } catch (error) {
-      const aborted = abort.signal.aborted || (error instanceof Error && error.name === 'AbortError');
+      const aborted =
+        abort.signal.aborted || (error instanceof Error && error.name === 'AbortError');
       if (aborted) {
         if (activeProbeAbort === abort) resetStatus(host.options);
       } else {

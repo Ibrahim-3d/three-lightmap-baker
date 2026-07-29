@@ -63,6 +63,9 @@ importers:
       vite:
         specifier: ^2.6.13
         version: 2.9.18
+      xatlasjs:
+        specifier: 0.2.0
+        version: 0.2.0
 
 packages:
 
@@ -447,6 +450,9 @@ packages:
   chokidar@3.6.0:
     resolution: {integrity: sha512-7VT13fmjotKpGipCW9JEQAusEPE+Ei8nl6/g4FBAmIm0GOOLMua9NDDo/DWp0ZAxCr3cPq5ZpBqmPAQgDda2Pw==}
     engines: {node: '>= 8.10.0'}
+
+  comlink@4.4.2:
+    resolution: {integrity: sha512-OxGdvBmJuNKSCMO4NTl1L47VRp6xn2wG4F/2hYzB6tiCb709otOxtEYCSvK80PtjODfXXZu8ds+Nw5kVCjqd2g==}
 
   commander@4.1.1:
     resolution: {integrity: sha512-NOKm8xhkzAjzFx8B2v5OAHT+u5pRQc2UCa2Vq9jYL/31o2wi9mxBA7LIFs3sV5VSC49z6pEhfbMULvShKj26WA==}
@@ -1193,6 +1199,9 @@ packages:
   xatlas-three@0.2.1:
     resolution: {integrity: sha512-lSdakwxt2AzGmEP2dnYqmS8KqM8ErxBzwAwuEtrbOLxVpWaSJZB5FAUZ4+cT/kKSLlyHZVm866rTCtT+9RjJgg==}
 
+  xatlasjs@0.2.0:
+    resolution: {integrity: sha512-3YxdpuDY4X2Kjn/Zm2c5648x/hYAP/X5YIx7nc1ify65kroSX+CFyzkhbBkIq9RDpjhA2prPRyhJZzYPUE1WgQ==}
+
   yallist@3.1.1:
     resolution: {integrity: sha512-a4UGQaWPH59mOXUYnAG2ewncQS4i4F43Tv3JoAM+s2VDAmS9NsK8GpDMLrCHPksFT7h3K6TOoUNn2pb7RoXx4g==}
 
@@ -1661,6 +1670,9 @@ snapshots:
       readdirp: 3.6.0
     optionalDependencies:
       fsevents: 2.3.3
+
+  comlink@4.4.2:
+    optional: true
 
   commander@4.1.1: {}
 
@@ -2301,6 +2313,10 @@ snapshots:
   word-wrap@1.2.5: {}
 
   xatlas-three@0.2.1: {}
+
+  xatlasjs@0.2.0:
+    optionalDependencies:
+      comlink: 4.4.2
 
   yallist@3.1.1: {}
 

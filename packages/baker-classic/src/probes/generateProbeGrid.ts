@@ -47,9 +47,7 @@ function resolveBounds(source: Object3D | Box3, options: ProbeGridOptions): Box3
 function normalizeCounts(counts: ProbeGridCounts): [number, number, number] {
   const normalized = counts.map((value) => Math.floor(value)) as [number, number, number];
   if (
-    normalized.some(
-      (value, axis) => !Number.isFinite(value) || value < 1 || value !== counts[axis],
-    )
+    normalized.some((value, axis) => !Number.isFinite(value) || value < 1 || value !== counts[axis])
   ) {
     throw new Error('[baker:probes] counts must contain positive integers');
   }

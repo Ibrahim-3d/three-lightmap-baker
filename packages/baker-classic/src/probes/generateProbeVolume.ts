@@ -24,12 +24,6 @@ export async function generateProbeVolume(
 ): Promise<GeneratedProbeVolume> {
   const { bake, ...gridOptions } = options;
   const volume = generateProbeGrid(sourceObject, gridOptions);
-  const stats = await bakeProbeIrradianceFromLightmaps(
-    renderer,
-    bakeSource,
-    volume,
-    bake,
-    hooks,
-  );
+  const stats = await bakeProbeIrradianceFromLightmaps(renderer, bakeSource, volume, bake, hooks);
   return { volume, stats };
 }

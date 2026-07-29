@@ -124,7 +124,10 @@ export class ProbeController {
     const liveGroups = this.getLiveBakeGroups();
     const source = {
       groups: bakeResult.groups.map((group, index) =>
-        withLiveFinalTexture(group, liveGroups.find((item) => item.atlasIdx === index) ?? liveGroups[index]),
+        withLiveFinalTexture(
+          group,
+          liveGroups.find((item) => item.atlasIdx === index) ?? liveGroups[index],
+        ),
       ),
     };
 
@@ -342,7 +345,10 @@ export class ProbeController {
 const _size = new Vector3();
 const _center = new Vector3();
 
-function withLiveFinalTexture(group: BakeGroupView, live: LiveBakeGroup | undefined): BakeGroupView {
+function withLiveFinalTexture(
+  group: BakeGroupView,
+  live: LiveBakeGroup | undefined,
+): BakeGroupView {
   if (!live) return group;
   return {
     ...group,
@@ -396,12 +402,18 @@ function boundsFromScene(scene: Scene): Box3 {
   const bounds = new Box3();
   scene.traverse((object) => {
     const mesh = object as Mesh;
-    if (!mesh.isMesh || !mesh.visible || object.userData?.lightmapIgnore || object.userData?.bakerProbeDebug) {
+    if (
+      !mesh.isMesh ||
+      !mesh.visible ||
+      object.userData?.lightmapIgnore ||
+      object.userData?.bakerProbeDebug
+    ) {
       return;
     }
     const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     const isSurface = materials.some(
-      (material) => material && (material as { isMeshStandardMaterial?: boolean }).isMeshStandardMaterial,
+      (material) =>
+        material && (material as { isMeshStandardMaterial?: boolean }).isMeshStandardMaterial,
     );
     if (isSurface) bounds.expandByObject(mesh, true);
   });

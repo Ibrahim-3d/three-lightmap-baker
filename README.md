@@ -88,7 +88,7 @@ If you've used Unity's **Progressive Lightmapper** or Unreal's **Lightmass**, yo
 ### Shipping Now
 
 - **Path-traced global illumination** - real bounce lighting, not screen-space hacks. Red walls bleed red light onto white surfaces. The Cornell Box test passes.
-- **Auto UV2 unwrapping** - drop in any geometry, xatlas generates non-overlapping lightmap UVs automatically. No Blender unwrap step.
+- **Auto UV2 unwrapping** - drop in any geometry, xatlas generates non-overlapping lightmap UVs automatically. Its loader and WASM ship inside the package, so baking does not depend on a third-party CDN.
 - **GPU-accelerated BVH ray tracing** - powered by [three-mesh-bvh](https://github.com/gkjohnson/three-mesh-bvh). Millions of rays per second in WebGL.
 - **Multi-bounce** - 1-4 configurable bounce depth. Each bounce adds indirect illumination. Energy-conserving (albedo < 1 guarantees convergence).
 - **Per-triangle material data** - albedo and emissive packed into DataTextures, indexed by BVH triangle. Materials are respected during bounces - a red wall reflects red light because the bounce ray reads the wall's albedo.
@@ -96,6 +96,7 @@ If you've used Unity's **Progressive Lightmapper** or Unreal's **Lightmass**, yo
 - **Bake presets** - measured on the Cornell advanced scene from Draft through Final, with RTX 3050 Ti numbers listed below.
 - **Gap flood / edge dilation** - prevents black seams at UV island borders.
 - **Bilateral denoiser** - smooths noise while preserving shadow edges, guided by world-position and normal textures.
+- **Dynamic-object light probes** - generate an RGB irradiance volume from a completed bake, inspect it in the editor, serialize it with projects, and bind interpolated indirect diffuse lighting to moving PBR meshes.
 - **3D Camera Objects** - add cameras from the Asset Library, select them in the viewport, and snap your view to match any scene camera's perspective.
 - **TypeScript** - strict mode, fully typed API.
 
@@ -127,31 +128,22 @@ Click **Bake** and watch the lightmap converge. Color bleeding should be visible
 
 ### Use as a Library
 
-The npm package name is reserved for release, but it is **not published yet**.
-
 ```bash
-# After the first npm release:
 pnpm add three-lightmap-baker
-
-# Until then, install from a generated tarball:
-pnpm run build:package
-pnpm pack
-pnpm add ./three-lightmap-baker-1.0.0.tgz
 ```
 
-Before publishing, run the full package gate:
+Before publishing a change, run the full package gate:
 
 ```bash
 pnpm run release:check
 ```
 
-That command runs typecheck, lint, format check, demo build, package build,
-example typecheck, demo bundle budget, tarball import smoke, and
-`npm publish --dry-run --access public`. The final publish still requires an
-authenticated npm session. For the first real registry publish, use the manual
-`npm Publish` GitHub Actions workflow after configuring npm trusted publishing
-or the `NPM_TOKEN` repository secret; the workflow verifies the requested
-version, reruns `pnpm run release:check`, and publishes with npm provenance.
+That command runs typecheck, lint, format check, the full browser/WebGL suite
+sequentially, demo build, package build, example typecheck, demo bundle budget,
+tarball ESM/CJS/TypeScript import smoke, and
+`npm publish --dry-run --access public`. The manual `npm Publish` GitHub Actions
+workflow verifies the requested version, reruns the same gate, and supports npm
+trusted publishing with provenance.
 
 If you're working in this repo, the classic baker lives in `packages/baker-classic/`.
 
@@ -552,7 +544,7 @@ Releases all GPU resources (textures, render targets).
 - Light/material coverage is focused on `MeshStandardMaterial`-style surfaces, emissive contribution, direct light collection, AO, and GI bounces. Advanced production lighting such as IES profiles, textured area lights, and full material parity remain roadmap items.
 - Auto UV2 unwrapping is designed to remove the Blender unwrap step, but pathological geometry can still need cleanup or manual UVs.
 - Playwright or other automated browser captures must record the actual WebGL renderer and should enforce the expected device with `BAKER_EXPECT_GPU`. Chromium GPU flags improve the odds of hardware acceleration, but they do not override OS/driver GPU assignment on every machine.
-- The current public package is prepared for npm release but is not published until the first release is cut.
+- Current probes store low-frequency RGB diffuse irradiance rather than directional spherical harmonics and sample dynamic objects at their origin plus an optional offset.
 
 ---
 
@@ -566,17 +558,18 @@ Releases all GPU resources (textures, render targets).
 - **Runtime capability probe:** implemented as
   `getLightmapRuntimeCapabilities()` with a Node-safe example in
   `examples/node-headless-status.ts`. Node currently reports `canBake: false`.
-- **Browser smoke suite:** implemented as `pnpm run test:browser-smoke` and
-  wired into CI. It covers adapter runtime, Cornell visual bake, bake
-  cancellation, Project JSON save/load, outliner selection, editor history,
-  asset-library, and topbar/menu controls. Targeted scripts such as
+- **Browser release suite:** implemented as `pnpm run test:release` and included
+  in `pnpm run release:check`. It runs all WebGL tests with one GPU worker,
+  including real lightmap/probe bakes, back-to-back bake stress, render modes,
+  cancellation, Project JSON save/load, offline startup, selection, history,
+  asset-library, and editor controls. Targeted scripts such as
   `pnpm run test:adapter-runtime`, `pnpm run test:visual-cornell`, and
   `pnpm run test:bake-cancel` remain available for focused runs.
 - **PR preview artifact:** pull requests build the demo and upload a static
   `dist/` artifact for review without changing the production Pages deploy.
 - **npm publish workflow:** implemented in `.github/workflows/npm-publish.yml`
-  as a manual workflow with version confirmation, dry-run mode, and npm
-  provenance support.
+  as a manual workflow with version confirmation, dry-run mode, a full browser
+  gate, and npm trusted-publishing/provenance support.
 - **Custom-room visual regression:** postponed until the custom room/showcase
   scene exists.
 - **Node.js true headless baking:** not implemented yet.
@@ -603,7 +596,7 @@ Built on top of:
 
 - [three-mesh-bvh](https://github.com/gkjohnson/three-mesh-bvh) by Garrett Johnson - GPU-accelerated BVH that makes browser ray tracing possible
 - [three-gpu-pathtracer](https://github.com/gkjohnson/three-gpu-pathtracer) by Garrett Johnson - reference implementation for path tracing in Three.js
-- [xatlas-three](https://github.com/repalash/xatlas-three/) - browser-native UV unwrapping via xatlas WASM
+- [xatlas-three](https://github.com/repalash/xatlas-three/) and [xatlasjs](https://github.com/repalash/xatlas.js) - browser-native UV unwrapping via packaged xatlas WASM
 - The original [iq/Jaume Sanchez hemicube GI demo](http://www.iquilezles.org/www/articles/simplegi/simplegi.htm) - proof that browser GI is possible, even on a phone
 
 ---
@@ -616,8 +609,8 @@ This is actively developed. Contributions welcome - especially:
   the current Cornell advanced launch proof
 - **Performance benchmarks** - bake times across additional GPU generations
 - **Bug reports** - screenshots + GPU info + sample count + resolution
-- **Lighting coverage** - IES profiles, textured area lights, light probes, and
-  material edge cases
+- **Lighting coverage** - IES profiles, textured area lights, directional probe
+  upgrades, and material edge cases
 
 Open an issue before starting a PR so we can coordinate. All contributions
 require signing the [CLA](./CLA.md) via CLA Assistant.

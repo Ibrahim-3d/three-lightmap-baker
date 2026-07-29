@@ -1,12 +1,7 @@
 import { Color, type WebGLRenderer } from 'three';
 import { ProbeVolume } from './ProbeVolume';
 import { readFloatTexture } from './readFloatTexture';
-import type {
-  ProbeBakeHooks,
-  ProbeBakeOptions,
-  ProbeBakeSource,
-  ProbeBakeStats,
-} from './types';
+import type { ProbeBakeHooks, ProbeBakeOptions, ProbeBakeSource, ProbeBakeStats } from './types';
 
 type AxisCell = { low: number; high: number; t: number };
 
@@ -32,10 +27,7 @@ export async function bakeProbeIrradianceFromLightmaps(
   const fillIterations = nonNegativeInteger(options.fillIterations ?? 4, 'fillIterations');
   const intensity = finiteNonNegative(options.intensity ?? 1, 'intensity');
   const defaultOffset = smallestPositiveSpacing(volume) * 0.2;
-  const surfaceOffset = finiteNonNegative(
-    options.surfaceOffset ?? defaultOffset,
-    'surfaceOffset',
-  );
+  const surfaceOffset = finiteNonNegative(options.surfaceOffset ?? defaultOffset, 'surfaceOffset');
   const accum = new Float64Array(volume.probeCount * 3);
   const weights = new Float64Array(volume.probeCount);
   let sampledTexels = 0;
@@ -105,9 +97,7 @@ export async function bakeProbeIrradianceFromLightmaps(
               const dzp = probeZ - pz;
               const distance = Math.hypot(dxp, dyp, dzp);
               const facing =
-                distance > 1.0e-6
-                  ? Math.max(0, (nx * dxp + ny * dyp + nz * dzp) / distance)
-                  : 1;
+                distance > 1.0e-6 ? Math.max(0, (nx * dxp + ny * dyp + nz * dzp) / distance) : 1;
               const weight = trilinearWeight * Math.max(0.05, facing);
               if (weight <= 0) continue;
 
@@ -274,7 +264,8 @@ function nonNegativeInteger(value: number, name: string): number {
 }
 
 function finiteNonNegative(value: number, name: string): number {
-  if (!Number.isFinite(value) || value < 0) throw new Error(`[baker:probes] ${name} must be finite and >= 0`);
+  if (!Number.isFinite(value) || value < 0)
+    throw new Error(`[baker:probes] ${name} must be finite and >= 0`);
   return value;
 }
 

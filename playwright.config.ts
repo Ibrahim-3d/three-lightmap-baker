@@ -19,7 +19,11 @@ export default defineConfig({
   testDir: './tests/e2e',
   timeout: testTimeoutMs,
   expect: { timeout: 30_000 },
-  fullyParallel: false, // single browser, single tab, GPU contention
+  // Every page owns a WebGL context on the same physical GPU. Running spec
+  // files concurrently makes real bake tests contend and time out even when
+  // the implementation is healthy, so keep the full suite deterministic.
+  fullyParallel: false,
+  workers: 1,
   retries: 1,
   reporter: process.env.CI ? 'github' : 'list',
   use: {

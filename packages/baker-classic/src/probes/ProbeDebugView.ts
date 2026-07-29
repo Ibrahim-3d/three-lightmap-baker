@@ -108,7 +108,9 @@ export function createProbeDebugView(
 }
 
 function defaultRadius(volume: ProbeVolume): number {
-  const spacing = [volume.spacing.x, volume.spacing.y, volume.spacing.z].filter((value) => value > 0);
+  const spacing = [volume.spacing.x, volume.spacing.y, volume.spacing.z].filter(
+    (value) => value > 0,
+  );
   return (spacing.length ? Math.min(...spacing) : 1) * 0.08;
 }
 

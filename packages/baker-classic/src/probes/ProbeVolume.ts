@@ -16,11 +16,7 @@ export class ProbeVolume {
   readonly spacing: Vector3;
   readonly irradiance: Float32Array;
 
-  constructor(
-    bounds: Box3,
-    counts: readonly [number, number, number],
-    irradiance?: Float32Array,
-  ) {
+  constructor(bounds: Box3, counts: readonly [number, number, number], irradiance?: Float32Array) {
     if (bounds.isEmpty()) throw new Error('[baker:probes] probe bounds cannot be empty');
 
     const normalizedCounts: [number, number, number] = [

@@ -1,5 +1,7 @@
 import { BufferAttribute, type BufferGeometry, Mesh, Vector3 } from 'three';
 import { UVUnwrapper } from 'xatlas-three';
+import xatlasScriptUrl from 'xatlasjs/dist/xatlas.js?url';
+import xatlasWasmUrl from 'xatlasjs/dist/xatlas.wasm?url';
 import { computeMeshSurfaceArea } from '../utils/Packing';
 
 const DEBUG = import.meta.env?.DEV === true;
@@ -8,6 +10,7 @@ const unwrapper = new UVUnwrapper({ BufferAttribute: BufferAttribute });
 const worldScale = new Vector3();
 const UV_EPSILON = 1.0e-4;
 const MAX_DENSITY_PACK_ATTEMPTS = 6;
+let xatlasLoadPromise: Promise<void> | null = null;
 
 export type GenerateAtlasOptions = {
   /** Actual lightmap side length. Used by xatlas when texel density is active. */
@@ -16,6 +19,13 @@ export type GenerateAtlasOptions = {
   texelsPerUnit?: number;
   /** Per-mesh density multiplier keyed by mesh uuid. */
   perMeshScale?: Record<string, number>;
+};
+
+export type LoadXAtlasThreeOptions = {
+  /** Override the packaged xatlas WASM URL, for example when hosting assets on a dedicated CDN. */
+  wasmUrl?: string;
+  /** Override the packaged xatlas loader URL, for example when applying a custom CSP. */
+  scriptUrl?: string;
 };
 
 enum ProgressCategory {
@@ -99,7 +109,13 @@ function setPackTexelsPerUnit(enabled: boolean, texelsPerUnit: number): void {
   }
 }
 
-export const loadXAtlasThree = async (): Promise<void> => {
+function resolveLibraryUrl(url: string): string {
+  if (typeof document === 'undefined') return url;
+  return new URL(url, document.baseURI).href;
+}
+
+export const loadXAtlasThree = async (options: LoadXAtlasThreeOptions = {}): Promise<void> => {
+  if (xatlasLoadPromise) return xatlasLoadPromise;
   // Only emit one line per category (at 100%). Pre-throttle was per-percent
   // → ~400 lines drowned diagnostic output.
   const lastSeen: Partial<Record<number, number>> = {};
@@ -113,13 +129,22 @@ export const loadXAtlasThree = async (): Promise<void> => {
     lastSeen[mode] = 100;
     console.info(`[baker] xatlas ${ProgressCategory[mode]} done`);
   };
-  await unwrapper.loadLibrary(
-    onProgress,
-    'https://cdn.jsdelivr.net/npm/xatlasjs@0.2.0/dist/xatlas.wasm',
-    'https://cdn.jsdelivr.net/npm/xatlasjs@0.2.0/dist/xatlas.js',
-  );
-
-  if (DEBUG) console.info('[baker] xatlas loaded');
+  xatlasLoadPromise = unwrapper
+    .loadLibrary(
+      onProgress,
+      resolveLibraryUrl(options.wasmUrl ?? xatlasWasmUrl),
+      resolveLibraryUrl(options.scriptUrl ?? xatlasScriptUrl),
+    )
+    .then(() => {
+      if (DEBUG) console.info('[baker] xatlas loaded');
+    })
+    .catch((error: unknown) => {
+      // A custom URL can fail because of a transient fetch or CSP issue. Let
+      // callers retry; the packaged defaults do not need network access.
+      xatlasLoadPromise = null;
+      throw error;
+    });
+  return xatlasLoadPromise;
 };
 
 /**
@@ -135,6 +160,8 @@ export const generateAtlas = async (
   meshs: Mesh[],
   options: GenerateAtlasOptions = {},
 ): Promise<void> => {
+  await loadXAtlasThree();
+
   const geometry = meshs.map((mesh) => mesh.geometry);
   const densityMode = options.texelsPerUnit !== undefined && options.texelsPerUnit > 0;
   const packResolution = densityMode ? (options.resolution ?? 1024) : 4096;

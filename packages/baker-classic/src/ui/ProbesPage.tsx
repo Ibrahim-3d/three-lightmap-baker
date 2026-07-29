@@ -1,12 +1,4 @@
-import {
-  BoolField,
-  bumpOptions,
-  NumberField,
-  optionsTick,
-  RangeField,
-  Row,
-  Section,
-} from 'shared';
+import { BoolField, bumpOptions, NumberField, optionsTick, RangeField, Row, Section } from 'shared';
 import { getBakerOrchestrator } from './orchestrator';
 
 export function ProbesPage() {
@@ -37,7 +29,10 @@ export function ProbesPage() {
   return (
     <div class="text-[12px]">
       <Section title="Probe volume">
-        <Row label="Spacing" hint="World-space distance between probes. The blue grid updates immediately.">
+        <Row
+          label="Spacing"
+          hint="World-space distance between probes. The blue grid updates immediately."
+        >
           <RangeField
             value={spacing}
             min={0.2}
@@ -49,7 +44,10 @@ export function ProbesPage() {
             }}
           />
         </Row>
-        <Row label="Padding" hint="Expands the probe volume around the scene. Preview updates without rebaking.">
+        <Row
+          label="Padding"
+          hint="Expands the probe volume around the scene. Preview updates without rebaking."
+        >
           <RangeField
             value={padding}
             min={0}
@@ -61,7 +59,10 @@ export function ProbesPage() {
             }}
           />
         </Row>
-        <Row label="Maximum" hint="Safety cap. Spacing is fitted upward automatically when the grid would exceed it.">
+        <Row
+          label="Maximum"
+          hint="Safety cap. Spacing is fitted upward automatically when the grid would exceed it."
+        >
           <NumberField
             value={maxProbes}
             min={64}
@@ -81,7 +82,10 @@ export function ProbesPage() {
       </Section>
 
       <Section title="Generation">
-        <Row label="Atlas stride" hint="Read every Nth lightmap texel while building the probe field.">
+        <Row
+          label="Atlas stride"
+          hint="Read every Nth lightmap texel while building the probe field."
+        >
           <NumberField
             value={sampleStride}
             min={1}
@@ -93,7 +97,10 @@ export function ProbesPage() {
             }}
           />
         </Row>
-        <Row label="Fill passes" hint="Six-neighbour diffusion passes for probes with no direct surface samples.">
+        <Row
+          label="Fill passes"
+          hint="Six-neighbour diffusion passes for probes with no direct surface samples."
+        >
           <NumberField
             value={fillIterations}
             min={0}
@@ -186,7 +193,9 @@ export function ProbesPage() {
       </Section>
 
       <div class="px-3 py-2 text-[11px] leading-4 text-text-3">
-        Blue spheres are a layout-only preview. Generate Probe Lighting replaces them with colors sampled from the current baked lightmap. The demo object remains physically based and is excluded from static baking.
+        Blue spheres are a layout-only preview. Generate Probe Lighting replaces them with colors
+        sampled from the current baked lightmap. The demo object remains physically based and is
+        excluded from static baking.
       </div>
     </div>
   );

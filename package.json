@@ -49,6 +49,7 @@
     "dist/package",
     "README.md",
     "LICENSE",
+    "THIRD_PARTY_LICENSES.md",
     "docs/API_STATUS.md",
     "docs/ROADMAP.md"
   ],
@@ -68,6 +69,7 @@
     "typecheck:examples": "tsc -p tsconfig.examples.json",
     "check": "tsc --noEmit && tsc -p tsconfig.examples.json && eslint packages/ apps/ && prettier --check packages/ apps/ examples/",
     "test": "playwright test",
+    "test:release": "playwright test --workers=1",
     "test:headed": "playwright test --headed",
     "test:smoke": "playwright test smoke",
     "test:adapter-runtime": "playwright test tests/e2e/adapter-runtime.spec.ts",
@@ -81,7 +83,7 @@
     "test:probes": "playwright test --workers=1 tests/e2e/probe-volume.spec.ts tests/e2e/probe-playground.spec.ts",
     "test:browser-smoke": "playwright test --workers=1 tests/e2e/adapter-runtime.spec.ts tests/e2e/bake-cornell-draft.spec.ts tests/e2e/bake-cancel.spec.ts tests/e2e/project-save-load.spec.ts tests/e2e/outliner-selection.spec.ts tests/e2e/editor-history.spec.ts tests/e2e/asset-library.spec.ts tests/e2e/topbar-menus.spec.ts",
     "test:api-import": "node scripts/clean-package.mjs && vite build --config vite.lib.config.js && tsc -p tsconfig.lib.json && node tests/api-import-smoke.mjs",
-    "release:check": "tsc --noEmit && tsc -p tsconfig.examples.json && eslint packages/ apps/ && prettier --check packages/ apps/ examples/ && vite build && node scripts/check-bundle-budget.mjs && node scripts/clean-package.mjs && vite build --config vite.lib.config.js && tsc -p tsconfig.lib.json && node tests/api-import-smoke.mjs && npm publish --dry-run --access public",
+    "release:check": "tsc --noEmit && tsc -p tsconfig.examples.json && eslint packages/ apps/ && prettier --check packages/ apps/ examples/ && pnpm run test:release && vite build && node scripts/check-bundle-budget.mjs && node scripts/clean-package.mjs && vite build --config vite.lib.config.js && tsc -p tsconfig.lib.json && node tests/api-import-smoke.mjs && npm publish --dry-run --access public",
     "capture:launch": "node scripts/capture-launch-assets.mjs",
     "check:launch-benchmarks": "node scripts/check-runtime-budget.mjs"
   },
@@ -105,6 +107,7 @@
     "prettier": "^3.8.3",
     "tailwindcss": "^3.4.0",
     "typescript": "^4.4.4",
-    "vite": "^2.6.13"
+    "vite": "^2.6.13",
+    "xatlasjs": "0.2.0"
   }
 }

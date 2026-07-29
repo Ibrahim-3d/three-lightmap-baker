@@ -1,6 +1,6 @@
 # Launch Readiness
 
-Last updated: 2026-06-15
+Last updated: 2026-07-29
 
 ## Positioning
 
@@ -11,17 +11,21 @@ urgent path toward hybrid baked/runtime lighting.
 Built for procedural scenes, configurators, AI-generated 3D spaces, and web
 architectural visualization. No Blender round-trip.
 
-## Ready before first npm publish
+## 1.0.0 release gate
 
 - Package exports provide ESM, CJS, and TypeScript declarations.
 - Package tarball output is validated by `pnpm run test:api-import`.
 - `pnpm run release:check` runs typecheck, example typecheck, lint, format
-  check, demo build, bundle budget, package build, tarball import smoke, and
-  npm publish dry run.
+  check, all 33 browser tests with one GPU worker, demo build, bundle budget,
+  package build, tarball import smoke, and npm publish dry run.
+- xatlas JavaScript and WASM are packaged locally, licensed in
+  `THIRD_PARTY_LICENSES.md`, and covered by an offline/no-third-party-request
+  browser test.
+- A real Draft bake generates non-empty RGB probe irradiance and drives the
+  dynamic PBR demo object in the browser suite.
 - `.github/workflows/npm-publish.yml` provides the manual authenticated npm
   publish path with version confirmation, dry-run mode, and npm provenance.
-- README install instructions distinguish pre-release tarball install from
-  post-release `pnpm add three-lightmap-baker`.
+- README uses the normal `pnpm add three-lightmap-baker` registry install flow.
 - Headless support is documented as planned, not shipped.
 - Public API examples match the dual constructor support and browser renderer
   requirement.
@@ -60,13 +64,11 @@ architectural visualization. No Blender round-trip.
 - README benchmark tables contain measured RTX 3050 Ti Laptop GPU numbers for
   Draft, Preview, Production, and Final on `cornell.advanced`.
 
-## Still open before first npm publish
+## Release operation
 
-- Run the manual `npm Publish` workflow for the `package.json` version after the
-  publishing environment is configured, then update install wording from "after
-  release" to the normal registry install flow.
-- Keep first-release messaging honest: browser/WebGL baker now; true Node
-  headless baking, WebGPU acceleration, and probe-based dynamic object GI are
+- Publish only after the exact commit passes `pnpm run release:check`.
+- Keep release messaging honest: browser/WebGL lightmaps and RGB diffuse probes
+  now; true Node headless baking, directional SH probes, and WebGPU remain
   staged next steps.
 
 ## Urgent before flagship public launch
@@ -81,8 +83,9 @@ should not stay Cornell-only. These are now urgent launch tasks:
 - Build the custom interior/architectural showcase room. Cornell proves
   correctness; the room proves product value.
 - Add larger-scene visual regression after the custom room exists.
-- Add a baked light-probe demo: bake static room, generate probe grid, move a
-  dynamic object through the room, and show probe-interpolated indirect light.
+- Capture the existing baked light-probe demo in the custom room: bake the
+  static scene, generate a probe grid, move a dynamic object through the room,
+  and show probe-interpolated indirect light.
 - Add a technical breakdown asset: before, texel density, UV2/atlas, direct,
   indirect, AO, probes, moving object, final.
 - Share broadly only after the visual proof is strong enough for Three.js, R3F,

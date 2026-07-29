@@ -1,10 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { Box3, BoxGeometry, Color, Mesh, MeshStandardMaterial, Vector3 } from 'three';
-import {
-  ProbeVolume,
-  bindProbeLighting,
-  generateProbeGrid,
-} from '../../packages/baker-classic/src/index';
+import { bindProbeLighting } from '../../packages/baker-classic/src/probes/ProbeLightingBinding.ts';
+import { generateProbeGrid } from '../../packages/baker-classic/src/probes/generateProbeGrid.ts';
+import { ProbeVolume } from '../../packages/baker-classic/src/probes/ProbeVolume.ts';
 
 test.describe('probe volume core', () => {
   test('generates a bounded regular grid from requested spacing', () => {
