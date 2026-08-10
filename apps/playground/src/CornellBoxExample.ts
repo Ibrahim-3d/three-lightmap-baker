@@ -490,7 +490,12 @@ export class CornellBoxExample implements BakerOrchestrator {
         entries.push({
           resolution: this.options.lightMapSize,
           meshIndexes,
-          dataBase64: CornellBoxExample.arrayBufferToBase64(pixels.buffer),
+          dataBase64: CornellBoxExample.arrayBufferToBase64(
+            pixels.buffer.slice(
+              pixels.byteOffset,
+              pixels.byteOffset + pixels.byteLength,
+            ) as ArrayBuffer,
+          ),
         });
       }
     } else if (this.bakeController.restoredLightmaps.size) {
@@ -508,7 +513,12 @@ export class CornellBoxExample implements BakerOrchestrator {
         entries.push({
           resolution,
           meshIndexes,
-          dataBase64: CornellBoxExample.arrayBufferToBase64(pixels.buffer),
+          dataBase64: CornellBoxExample.arrayBufferToBase64(
+            pixels.buffer.slice(
+              pixels.byteOffset,
+              pixels.byteOffset + pixels.byteLength,
+            ) as ArrayBuffer,
+          ),
         });
       }
     }

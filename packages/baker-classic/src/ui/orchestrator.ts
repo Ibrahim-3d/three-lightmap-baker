@@ -56,18 +56,22 @@ export interface BakerOptions {
   perMesh: Record<string, { scaleInLightmap: number; exclude: boolean }>;
 
   /** Installed by the playground probe extension. Optional for library hosts. */
+  probeRuntime?: 'native' | 'legacy';
   probeSpacing?: number;
   probePadding?: number;
   probeIntensity?: number;
   probeSampleStride?: number;
   probeFillIterations?: number;
   probeMaxProbes?: number;
+  probeCubemapSize?: number;
   probeShow?: boolean;
   probeDemoEnabled?: boolean;
   probeDemoAnimate?: boolean;
-  probeStatus?: 'idle' | 'preview' | 'generating' | 'ready' | 'error';
+  probeStatus?: 'idle' | 'generating' | 'ready' | 'stale' | 'error';
   probeProgress?: number;
   probeCount?: number;
+  probePreviewCount?: number;
+  probePreviewOverLimit?: boolean;
 }
 
 export interface BakerOrchestrator extends Orchestrator {

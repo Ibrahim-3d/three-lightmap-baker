@@ -9,7 +9,7 @@ import {
   PlaneGeometry,
   Texture,
   TextureFilter,
-  WebGLMultipleRenderTargets,
+  WebGLRenderTarget,
   WebGLRenderer,
 } from 'three';
 // Color is used for prevClearColor below.
@@ -61,7 +61,7 @@ export type LightmapperRender = {
 };
 
 export type Lightmapper = {
-  renderTarget: WebGLMultipleRenderTargets;
+  renderTarget: WebGLRenderTarget;
   /**
    * Direct/indirect output textures. AO has been split into a separate pass -
    * see `AOMapper.ts`. Composite consumes (direct, indirect, ao-from-AOMapper).
@@ -128,7 +128,8 @@ export const generateLightmapper = (
   // FloatType is fully supported (`OES_texture_float_linear: true` on the
   // reproducer); precision is overkill but it's the fast path on every tested
   // discrete GPU.
-  const renderTarget = new WebGLMultipleRenderTargets(options.resolution, options.resolution, 2, {
+  const renderTarget = new WebGLRenderTarget(options.resolution, options.resolution, {
+    count: 2,
     type: FloatType,
     minFilter: LinearFilter,
     magFilter: LinearFilter,
@@ -290,9 +291,9 @@ export const generateLightmapper = (
     raycastMesh.geometry.dispose();
   };
 
-  const [direct, indirect] = renderTarget.texture;
+  const [direct, indirect] = renderTarget.textures;
   if (!direct || !indirect)
-    throw new Error('[baker] WebGLMultipleRenderTargets did not allocate 2 textures');
+    throw new Error('[baker] WebGLRenderTarget did not allocate 2 color attachments');
   const textures = { direct, indirect };
 
   return {

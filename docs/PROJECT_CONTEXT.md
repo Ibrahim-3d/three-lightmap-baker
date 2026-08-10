@@ -131,7 +131,8 @@ Already implemented:
 - Launch screenshot and benchmark capture scripts.
 - Runtime and bundle budget scripts.
 
-The package is prepared for publishing but has not completed its first real npm publish.
+Local package artifacts and import checks exist, but public npm publication is
+not approved and must remain gated on Ibrahim's explicit approval.
 
 ## 4. What the debug system still needs
 
@@ -412,7 +413,8 @@ The project is meaningfully complete when:
 7. Probe resources are disposed correctly.
 8. Automated tests cover generation, interpolation, persistence, and the visual workflow.
 9. A custom interior scene demonstrates the complete value proposition.
-10. The package is published with honest browser/WebGL support claims.
+10. A future public-release decision is made only after Ibrahim's explicit
+    approval and with honest browser/WebGL support claims.
 
 ## 10. Immediate next move
 

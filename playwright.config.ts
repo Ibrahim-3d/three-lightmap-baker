@@ -3,6 +3,9 @@ import { defineConfig, devices } from '@playwright/test';
 const testTimeoutMs = Number(
   process.env.BAKER_E2E_TEST_TIMEOUT_MS ?? (process.env.CI ? 180_000 : 60_000),
 );
+const testPort = Number(process.env.BAKER_E2E_PORT ?? 5173);
+const testBaseUrl = `http://localhost:${testPort}/three-lightmap-baker/`;
+const angleBackend = process.env.BAKER_E2E_ANGLE ?? 'gl';
 
 /**
  * Playwright config for the demo e2e suite.
@@ -27,7 +30,7 @@ export default defineConfig({
   retries: 1,
   reporter: process.env.CI ? 'github' : 'list',
   use: {
-    baseURL: 'http://localhost:5173/three-lightmap-baker/',
+    baseURL: testBaseUrl,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -40,7 +43,7 @@ export default defineConfig({
         launchOptions: {
           args: [
             '--enable-gpu',
-            '--use-angle=gl',
+            `--use-angle=${angleBackend}`,
             '--enable-webgl',
             '--ignore-gpu-blocklist',
             '--enable-gpu-rasterization',
@@ -51,8 +54,10 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'corepack pnpm run start',
-    url: 'http://localhost:5173/three-lightmap-baker/',
+    command: `corepack pnpm exec vite --mode dev --host --port ${testPort}`,
+    // Vite 2 returns 404 for a bare base-path readiness request without an
+    // HTML Accept header. The explicit document is a stable health endpoint.
+    url: `${testBaseUrl}index.html`,
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
     stdout: 'ignore',

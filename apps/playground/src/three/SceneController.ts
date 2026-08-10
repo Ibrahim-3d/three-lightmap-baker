@@ -131,6 +131,7 @@ export class SceneController {
   visualLight: RectAreaLight;
   lightDummy: Object3D;
   lightTransformController: TransformControls;
+  lightTransformHelper: Object3D;
   lightMarker: Mesh;
 
   /** Editor-only ground grid (40m × 40m, 1m cells, faint major every 10). */
@@ -284,6 +285,7 @@ export class SceneController {
     this.lightDummy.userData.lightHelper = areaHelper;
 
     this.lightTransformController = new TransformControls(this.camera, this.renderer.domElement);
+    this.lightTransformHelper = this.lightTransformController.getHelper();
     this.lightTransformController.addEventListener('dragging-changed', (event) => {
       this.controls.enabled = !event.value;
       if (event.value) {
@@ -313,8 +315,8 @@ export class SceneController {
       }
     });
     // Gizmo starts detached. Selection drives attachment via attachGizmoTo.
-    this.scene.add(this.lightTransformController);
-    this.lightTransformController.visible = false;
+    this.scene.add(this.lightTransformHelper);
+    this.lightTransformHelper.visible = false;
     this.lightTransformController.enabled = false;
 
     // Viewport click → raycast pick → notify orchestrator. We track pointerdown
@@ -389,10 +391,10 @@ export class SceneController {
   attachGizmoTo(obj: Object3D | null): void {
     if (obj) {
       this.lightTransformController.attach(obj);
-      this.lightTransformController.visible = true;
+      this.lightTransformHelper.visible = true;
     } else {
       this.lightTransformController.detach();
-      this.lightTransformController.visible = false;
+      this.lightTransformHelper.visible = false;
     }
   }
 
@@ -958,7 +960,7 @@ export class SceneController {
 
   /** Update gizmo visibility/enabled state (called from RAF). */
   syncGizmo(show: boolean): void {
-    this.lightTransformController.visible = show;
+    this.lightTransformHelper.visible = show;
     this.lightTransformController.enabled = show;
   }
 
@@ -1090,7 +1092,7 @@ export class SceneController {
       // transform widget doesn't dangle on a freed object.
       if (this.lightTransformController.object === target) {
         this.lightTransformController.detach();
-        this.lightTransformController.visible = false;
+        this.lightTransformHelper.visible = false;
         this.lightTransformController.enabled = false;
       }
       this.hooks.onSceneChanged(this.meshes);

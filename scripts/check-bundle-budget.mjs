@@ -9,9 +9,10 @@ const root = process.cwd();
 const distDir = path.resolve(root, process.argv[2] ?? 'dist');
 
 const budgets = {
-  // The demo ships the xatlas loader locally so UV unwrapping never depends
-  // on a third-party CDN. Keep only a small margin above that offline build.
-  demoJsGzip: 450 * KiB,
+  // Three r185's DRACOLoader emits its decoder modules as JS assets in addition
+  // to the app and offline xatlas chunks. Keep a small margin above that modern
+  // dependency baseline while retaining the per-chunk raw-size guard below.
+  demoJsGzip: 650 * KiB,
   largestDemoJsRaw: 1.4 * MiB,
   demoCssGzip: 8 * KiB,
   copiedAssetsRaw: 40 * MiB,

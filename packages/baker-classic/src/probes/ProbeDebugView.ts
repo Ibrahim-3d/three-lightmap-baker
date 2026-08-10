@@ -1,9 +1,11 @@
 import {
   Color,
+  GLSL3,
   Group,
+  InstancedBufferAttribute,
   InstancedMesh,
   Matrix4,
-  MeshBasicMaterial,
+  ShaderMaterial,
   SphereGeometry,
   Vector3,
 } from 'three';
@@ -11,24 +13,20 @@ import { ProbeVolume } from './ProbeVolume';
 
 export type ProbeDebugViewOptions = {
   radius?: number;
-  exposure?: number;
   opacity?: number;
   widthSegments?: number;
   heightSegments?: number;
-  /** Normalize dim probe fields for inspection without changing runtime lighting values. */
-  autoExposure?: boolean;
 };
 
-/** Colored instanced spheres for inspecting probe placement and irradiance. */
+/** Colored instanced spheres using a fixed display-only c/(1+c) tone mapping. */
 export class ProbeDebugView extends Group {
   readonly mesh: InstancedMesh;
   private readonly geometry: SphereGeometry;
-  private readonly material: MeshBasicMaterial;
+  private readonly material: ShaderMaterial;
+  private readonly colorAttribute: InstancedBufferAttribute;
   private readonly probePosition = new Vector3();
   private readonly probeMatrix = new Matrix4();
   private readonly color = new Color();
-  private readonly displayScale: number;
-  private exposure: number;
 
   constructor(
     readonly volume: ProbeVolume,
@@ -36,8 +34,6 @@ export class ProbeDebugView extends Group {
   ) {
     super();
     this.name = 'ProbeDebugView';
-    this.exposure = Math.max(0, options.exposure ?? 1);
-    this.displayScale = options.autoExposure === false ? 1 : computeDisplayScale(volume);
     const radius = Math.max(1.0e-4, options.radius ?? defaultRadius(volume));
     const opacity = Math.min(1, Math.max(0, options.opacity ?? 0.9));
     this.geometry = new SphereGeometry(
@@ -45,23 +41,39 @@ export class ProbeDebugView extends Group {
       Math.max(4, Math.floor(options.widthSegments ?? 8)),
       Math.max(3, Math.floor(options.heightSegments ?? 6)),
     );
-    this.material = new MeshBasicMaterial({
-      vertexColors: true,
+    this.material = new ShaderMaterial({
+      glslVersion: GLSL3,
+      uniforms: { opacity: { value: opacity } },
       toneMapped: false,
       transparent: opacity < 1,
-      opacity,
       depthWrite: opacity >= 1,
+      vertexShader: /* glsl */ `
+        in vec3 probeColor;
+        out vec3 vProbeColor;
+        void main() {
+          vProbeColor = probeColor;
+          vec4 worldPosition = modelMatrix * instanceMatrix * vec4(position, 1.0);
+          gl_Position = projectionMatrix * viewMatrix * worldPosition;
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        precision highp float;
+        uniform float opacity;
+        in vec3 vProbeColor;
+        out vec4 fragColor;
+        void main() {
+          fragColor = vec4(vProbeColor, opacity);
+        }
+      `,
     });
     this.mesh = new InstancedMesh(this.geometry, this.material, volume.probeCount);
+    this.colorAttribute = new InstancedBufferAttribute(new Float32Array(volume.probeCount * 3), 3);
+    this.geometry.setAttribute('probeColor', this.colorAttribute);
+    this.mesh.instanceColor = this.colorAttribute;
     this.mesh.name = 'ProbeDebugSpheres';
     this.mesh.frustumCulled = false;
     this.add(this.mesh);
     this.refresh();
-  }
-
-  setExposure(exposure: number): void {
-    this.exposure = Math.max(0, exposure);
-    this.refreshColors();
   }
 
   refresh(): void {
@@ -79,18 +91,18 @@ export class ProbeDebugView extends Group {
   }
 
   refreshColors(): void {
-    const scale = this.exposure * this.displayScale;
     for (let index = 0; index < this.volume.probeCount; index++) {
       this.volume.getIrradiance(index, this.color);
-      this.color.multiplyScalar(scale);
+      // Fixed display-only Reinhard mapping. It does not mutate ProbeVolume,
+      // interpolation, serialization, or runtime shader values. Zero stays zero.
       this.color.setRGB(
         this.color.r / (1 + this.color.r),
         this.color.g / (1 + this.color.g),
         this.color.b / (1 + this.color.b),
       );
-      this.mesh.setColorAt(index, this.color);
+      this.color.toArray(this.colorAttribute.array, index * 3);
     }
-    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+    this.colorAttribute.needsUpdate = true;
   }
 
   dispose(): void {
@@ -112,13 +124,4 @@ function defaultRadius(volume: ProbeVolume): number {
     (value) => value > 0,
   );
   return (spacing.length ? Math.min(...spacing) : 1) * 0.08;
-}
-
-function computeDisplayScale(volume: ProbeVolume): number {
-  let maxChannel = 0;
-  for (const value of volume.irradiance) {
-    if (Number.isFinite(value)) maxChannel = Math.max(maxChannel, value);
-  }
-  if (maxChannel <= 1.0e-6) return 1;
-  return Math.min(64, Math.max(1, 0.8 / maxChannel));
 }

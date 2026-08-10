@@ -38,6 +38,10 @@
   <img src="https://img.shields.io/badge/Status-Active_Development-brightgreen" alt="Status" />
 </p>
 
+> **Development status:** this repository is not approved for a public npm
+> release. Use a source checkout or locally built artifacts for development and
+> testing. Public publication remains explicitly gated on Ibrahim's approval.
+
 ---
 
 ## The Problem
@@ -96,7 +100,7 @@ If you've used Unity's **Progressive Lightmapper** or Unreal's **Lightmass**, yo
 - **Bake presets** - measured on the Cornell advanced scene from Draft through Final, with RTX 3050 Ti numbers listed below.
 - **Gap flood / edge dilation** - prevents black seams at UV island borders.
 - **Bilateral denoiser** - smooths noise while preserving shadow edges, guided by world-position and normal textures.
-- **Dynamic-object light probes** - generate an RGB irradiance volume from a completed bake, inspect it in the editor, serialize it with projects, and bind interpolated indirect diffuse lighting to moving PBR meshes.
+- **Dynamic-object light probes** - capture the baked static scene into Three.js' native GPU `LightProbeGrid` (L2 SH) for moving standard-material objects. The earlier RGB volume remains available as an explicit legacy fallback.
 - **3D Camera Objects** - add cameras from the Asset Library, select them in the viewport, and snap your view to match any scene camera's perspective.
 - **TypeScript** - strict mode, fully typed API.
 
@@ -128,22 +132,27 @@ Click **Bake** and watch the lightmap converge. Color bleeding should be visible
 
 ### Use as a Library
 
-```bash
-pnpm add three-lightmap-baker
-```
-
-Before publishing a change, run the full package gate:
+Until public npm publication is explicitly approved, build and test the library
+from this source checkout:
 
 ```bash
-pnpm run release:check
+corepack pnpm run test:api-import
 ```
 
-That command runs typecheck, lint, format check, the full browser/WebGL suite
-sequentially, demo build, package build, example typecheck, demo bundle budget,
-tarball ESM/CJS/TypeScript import smoke, and
-`npm publish --dry-run --access public`. The manual `npm Publish` GitHub Actions
-workflow verifies the requested version, reruns the same gate, and supports npm
-trusted publishing with provenance.
+For ordinary local engineering validation, run the non-publishing checks:
+
+```bash
+pnpm run typecheck
+pnpm run typecheck:examples
+pnpm run lint
+pnpm run test:release
+pnpm run test:api-import
+```
+
+These commands validate source types, lint, the sequential browser/WebGL suite,
+package builds, and local tarball ESM/CJS/TypeScript imports. Existing publishing
+scripts and workflows are dormant infrastructure; do not trigger or modify them
+without Ibrahim's explicit approval.
 
 If you're working in this repo, the classic baker lives in `packages/baker-classic/`.
 
@@ -544,7 +553,7 @@ Releases all GPU resources (textures, render targets).
 - Light/material coverage is focused on `MeshStandardMaterial`-style surfaces, emissive contribution, direct light collection, AO, and GI bounces. Advanced production lighting such as IES profiles, textured area lights, and full material parity remain roadmap items.
 - Auto UV2 unwrapping is designed to remove the Blender unwrap step, but pathological geometry can still need cleanup or manual UVs.
 - Playwright or other automated browser captures must record the actual WebGL renderer and should enforce the expected device with `BAKER_EXPECT_GPU`. Chromium GPU flags improve the odds of hardware acceleration, but they do not override OS/driver GPU assignment on every machine.
-- Current probes store low-frequency RGB diffuse irradiance rather than directional spherical harmonics and sample dynamic objects at their origin plus an optional offset.
+- Native probes require `WebGLRenderer`; Three.js does not yet provide the equivalent `LightProbeGrid` runtime for `WebGPURenderer`. Native GPU textures are recaptured from persisted baked lightmaps when a project is loaded rather than serialized as large CPU arrays.
 
 ---
 
@@ -558,8 +567,8 @@ Releases all GPU resources (textures, render targets).
 - **Runtime capability probe:** implemented as
   `getLightmapRuntimeCapabilities()` with a Node-safe example in
   `examples/node-headless-status.ts`. Node currently reports `canBake: false`.
-- **Browser release suite:** implemented as `pnpm run test:release` and included
-  in `pnpm run release:check`. It runs all WebGL tests with one GPU worker,
+- **Browser regression suite:** implemented as `pnpm run test:release`. It runs
+  all WebGL tests with one GPU worker,
   including real lightmap/probe bakes, back-to-back bake stress, render modes,
   cancellation, Project JSON save/load, offline startup, selection, history,
   asset-library, and editor controls. Targeted scripts such as
@@ -567,9 +576,8 @@ Releases all GPU resources (textures, render targets).
   `pnpm run test:bake-cancel` remain available for focused runs.
 - **PR preview artifact:** pull requests build the demo and upload a static
   `dist/` artifact for review without changing the production Pages deploy.
-- **npm publish workflow:** implemented in `.github/workflows/npm-publish.yml`
-  as a manual workflow with version confirmation, dry-run mode, a full browser
-  gate, and npm trusted-publishing/provenance support.
+- **npm publication:** not approved. Existing workflow infrastructure must remain
+  untriggered unless Ibrahim explicitly authorizes a future release.
 - **Custom-room visual regression:** postponed until the custom room/showcase
   scene exists.
 - **Node.js true headless baking:** not implemented yet.
@@ -583,7 +591,7 @@ Releases all GPU resources (textures, render targets).
 
 - **Three.js** r161 (see `package.json`)
 - **WebGL 2** with `EXT_color_buffer_float` (required for HDR lightmap accumulation)
-- **Browser/renderer context required** - this release is WebGL-first (Node headless adapter is planned, not shipped)
+- **Browser/renderer context required** - the current development build is WebGL-first (Node headless adapter is planned, not shipped)
 - **GPU**: any discrete GPU from the last 5 years. Intel/AMD integrated GPUs work but bake slower - the library auto-detects and warns.
 
 ---
