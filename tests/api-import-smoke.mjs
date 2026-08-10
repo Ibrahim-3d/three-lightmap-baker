@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '..');
+const packageManifest = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
 const esmBundlePath = path.join(repoRoot, 'dist', 'package', 'index.js');
 const cjsBundlePath = path.join(repoRoot, 'dist', 'package', 'index.cjs');
 const tscBin =
@@ -60,8 +61,28 @@ const assertExports = (label, mod) => {
   }
 };
 
+if (packageManifest.dependencies?.three !== undefined) {
+  throw new Error('three must not be owned as a runtime dependency');
+}
+if (packageManifest.peerDependencies?.three !== '>=0.185.1 <0.186.0') {
+  throw new Error('three peer dependency must stay constrained to the tested r185 line');
+}
+if (packageManifest.devDependencies?.three !== '0.185.1') {
+  throw new Error('the repository must test against exactly three 0.185.1');
+}
+
 for (const bundlePath of [esmBundlePath, cjsBundlePath]) {
   const source = fs.readFileSync(bundlePath, 'utf8');
+  for (const externalId of [
+    'three',
+    'three/addons/lighting/LightProbeGrid.js',
+    'three/examples/jsm/utils/BufferGeometryUtils.js',
+    'three/examples/jsm/exporters/EXRExporter.js',
+  ]) {
+    if (!source.includes(externalId)) {
+      throw new Error(`${path.basename(bundlePath)} must retain external import ${externalId}`);
+    }
+  }
   if (source.includes('cdn.jsdelivr.net')) {
     throw new Error(`${path.basename(bundlePath)} must not require the jsDelivr xatlas CDN`);
   }
@@ -161,7 +182,7 @@ try {
         compilerOptions: {
           strict: true,
           module: 'ESNext',
-          moduleResolution: 'node',
+          moduleResolution: 'Bundler',
           target: 'ES2020',
           skipLibCheck: false,
           noEmit: true,

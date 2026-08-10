@@ -10,15 +10,20 @@ import {
 } from 'shared';
 import { getBakerOrchestrator } from './orchestrator';
 
+const RUNTIME_DEFAULTS = {
+  native: { spacing: 1.25, maxProbes: 1024 },
+  legacy: { spacing: 0.65, maxProbes: 8192 },
+} as const;
+
 export function ProbesPage() {
   void optionsTick.value;
   const app = getBakerOrchestrator();
   if (!app) return null;
   const o = app.options;
   const runtime = o.probeRuntime === 'legacy' ? 'legacy' : 'native';
-  const spacing = o.probeSpacing ?? 1.25;
+  const spacing = o.probeSpacing ?? RUNTIME_DEFAULTS[runtime].spacing;
   const padding = o.probePadding ?? 0.1;
-  const maxProbes = o.probeMaxProbes ?? 1024;
+  const maxProbes = o.probeMaxProbes ?? RUNTIME_DEFAULTS[runtime].maxProbes;
   const cubemapSize = o.probeCubemapSize ?? 8;
   const sampleStride = o.probeSampleStride ?? 3;
   const fillIterations = o.probeFillIterations ?? 5;
@@ -54,6 +59,17 @@ export function ProbesPage() {
               { value: 'legacy', label: 'Legacy RGB volume' },
             ]}
             onChange={(value) => {
+              const previousDefaults = RUNTIME_DEFAULTS[runtime];
+              const nextDefaults = RUNTIME_DEFAULTS[value];
+              if (o.probeSpacing === undefined || o.probeSpacing === previousDefaults.spacing) {
+                o.probeSpacing = nextDefaults.spacing;
+              }
+              if (
+                o.probeMaxProbes === undefined ||
+                o.probeMaxProbes === previousDefaults.maxProbes
+              ) {
+                o.probeMaxProbes = nextDefaults.maxProbes;
+              }
               o.probeRuntime = value;
               app.clearProbes?.();
               bumpOptions();

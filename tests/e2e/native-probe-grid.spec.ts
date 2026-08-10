@@ -111,4 +111,79 @@ test.describe('native Three.js LightProbeGrid runtime', () => {
     });
     expect(errors).toEqual([]);
   });
+
+  test('keeps the project loaded when an oversized native descriptor is rejected', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await page.goto(TEST_URL);
+    await waitReady(page);
+    await bakeDraft(page);
+    await waitBakeDone(page);
+
+    const restored = await page.evaluate(async () => {
+      type Project = {
+        options?: Record<string, unknown>;
+        nativeProbeGrid?: unknown;
+      };
+      type Host = {
+        options: Record<string, unknown> & {
+          lightIntensity: number;
+          probeStatus: string;
+          probeCount: number;
+        };
+        externalHooks: { onBakeError?: (message: string) => void };
+        serializeProject(): Project;
+        loadProject(project: Project): Promise<void>;
+        probeController: { nativeGrid: unknown };
+      };
+
+      const baker = (window as unknown as { __baker: Host }).__baker;
+      const project = baker.serializeProject();
+      project.options = {
+        ...(project.options ?? {}),
+        lightIntensity: 7.25,
+        probeRuntime: 'native',
+        probeSpacing: 5,
+        probeMaxProbes: 64,
+        probeCubemapSize: 4,
+      };
+      project.nativeProbeGrid = {
+        version: 1,
+        runtime: 'three-light-probe-grid',
+        bounds: { min: [-5, -0.1, -5], max: [5, 10.1, 5] },
+        counts: [33, 2, 2],
+        capture: { cubemapSize: 4, near: 0.1, far: 100, bounces: 0 },
+      };
+
+      baker.options.lightIntensity = 1;
+      let surfacedError = '';
+      baker.externalHooks.onBakeError = (message) => {
+        surfacedError = message;
+      };
+      let loadResolved = false;
+      try {
+        await baker.loadProject(project);
+        loadResolved = true;
+      } catch {
+        loadResolved = false;
+      }
+
+      return {
+        loadResolved,
+        lightIntensity: baker.options.lightIntensity,
+        probeStatus: baker.options.probeStatus,
+        probeCount: baker.options.probeCount,
+        hasNativeGrid: !!baker.probeController.nativeGrid,
+        surfacedError,
+      };
+    });
+
+    expect(restored.loadResolved).toBe(true);
+    expect(restored.lightIntensity).toBe(7.25);
+    expect(restored.probeStatus).toBe('error');
+    expect(restored.probeCount).toBe(0);
+    expect(restored.hasNativeGrid).toBe(false);
+    expect(restored.surfacedError).toContain('exceeding maxProbes=64');
+  });
 });

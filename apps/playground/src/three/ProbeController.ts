@@ -10,8 +10,8 @@ import {
   type Texture,
   type WebGLRenderer,
 } from 'three';
-import { LightProbeGrid } from 'three/examples/jsm/lighting/LightProbeGrid.js';
-import { LightProbeGridHelper } from 'three/examples/jsm/helpers/LightProbeGridHelper.js';
+import { LightProbeGrid } from 'three/addons/lighting/LightProbeGrid.js';
+import { LightProbeGridHelper } from 'three/addons/helpers/LightProbeGridHelper.js';
 import {
   captureNativeLightProbeGrid,
   captureNativeLightProbeGridFromJSON,
@@ -225,7 +225,9 @@ export class ProbeController {
     await nextFrame();
     const restoreCaptureState = this.prepareNativeCapture(staticLightmaps, options.intensity);
     try {
-      const result = captureNativeLightProbeGridFromJSON(this.renderer, this.scene, json);
+      const result = captureNativeLightProbeGridFromJSON(this.renderer, this.scene, json, {
+        maxProbes: options.maxProbes,
+      });
       this.installNative(result.grid, result.descriptor, { ...options, runtime: 'native' });
       this.lastGenerationStats = result.stats;
     } finally {

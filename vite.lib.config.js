@@ -15,7 +15,11 @@ export default defineConfig({
       formats: ['es', 'cjs'],
     },
     rollupOptions: {
-      external: ['three', 'three-mesh-bvh', 'xatlas-three'],
+      external: (id) =>
+        id === 'three' ||
+        id.startsWith('three/') ||
+        id === 'three-mesh-bvh' ||
+        id === 'xatlas-three',
     },
   },
 });

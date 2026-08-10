@@ -20,9 +20,6 @@ importers:
       preact:
         specifier: ^10.24.0
         version: 10.29.2
-      three:
-        specifier: ^0.185.1
-        version: 0.185.1
       three-mesh-bvh:
         specifier: ^0.9.14
         version: 0.9.14(three@0.185.1)
@@ -57,6 +54,9 @@ importers:
       tailwindcss:
         specifier: ^3.4.0
         version: 3.4.19
+      three:
+        specifier: 0.185.1
+        version: 0.185.1
       typescript:
         specifier: ^5.9.3
         version: 5.9.3

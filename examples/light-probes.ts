@@ -1,6 +1,6 @@
 import type { Mesh, Object3D, Scene, WebGLRenderer } from 'three';
-import type { LightProbeGrid } from 'three/examples/jsm/lighting/LightProbeGrid.js';
-import { LightProbeGridHelper } from 'three/examples/jsm/helpers/LightProbeGridHelper.js';
+import type { LightProbeGrid } from 'three/addons/lighting/LightProbeGrid.js';
+import { LightProbeGridHelper } from 'three/addons/helpers/LightProbeGridHelper.js';
 import {
   bindProbeLighting,
   bakeProbeIrradianceFromLightmaps,

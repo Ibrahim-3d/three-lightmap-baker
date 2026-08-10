@@ -66,24 +66,27 @@ type ProbeHost = {
   probeController?: ProbeController;
 };
 
-const DEFAULTS: Omit<ProbeOptionBag, 'layer'> = {
-  probeRuntime: 'native',
-  probeSpacing: 1.25,
-  probePadding: 0.1,
-  probeIntensity: 1,
-  probeSampleStride: 3,
-  probeFillIterations: 5,
-  probeMaxProbes: 1024,
-  probeCubemapSize: 8,
-  probeShow: true,
-  probeDemoEnabled: true,
-  probeDemoAnimate: true,
-  probeStatus: 'idle',
-  probeProgress: 0,
-  probeCount: 0,
-  probePreviewCount: 0,
-  probePreviewOverLimit: false,
-};
+const RUNTIME_DEFAULTS = {
+  native: { spacing: 1.25, maxProbes: 1024 },
+  legacy: { spacing: 0.65, maxProbes: 8192 },
+} as const;
+
+const DEFAULTS: Omit<ProbeOptionBag, 'layer' | 'probeRuntime' | 'probeSpacing' | 'probeMaxProbes'> =
+  {
+    probePadding: 0.1,
+    probeIntensity: 1,
+    probeSampleStride: 3,
+    probeFillIterations: 5,
+    probeCubemapSize: 8,
+    probeShow: true,
+    probeDemoEnabled: true,
+    probeDemoAnimate: true,
+    probeStatus: 'idle',
+    probeProgress: 0,
+    probeCount: 0,
+    probePreviewCount: 0,
+    probePreviewOverLimit: false,
+  };
 
 /** Install playground-only probe behavior onto the existing orchestrator. */
 export function installProbeIntegration(app: CornellBoxExample): ProbeController {
@@ -251,14 +254,30 @@ function installPersistence(
     applyPersistedOptions(host.options, project.options);
 
     if (project.nativeProbeGrid && host.options.probeRuntime === 'native') {
-      await controller.restoreNative(project.nativeProbeGrid, readControllerOptions(host.options));
-      host.options.probeStatus = 'ready';
-      host.options.probeProgress = 1;
-      host.options.probeCount = controller.probeCount;
-      host.options.probePreviewCount = controller.probeCount;
-      host.options.probePreviewOverLimit = false;
-      if (host.options.layer === 'probes') controller.setProbeOnly(true);
+      try {
+        await controller.restoreNative(
+          project.nativeProbeGrid,
+          readControllerOptions(host.options),
+        );
+        host.options.probeStatus = 'ready';
+        host.options.probeProgress = 1;
+        host.options.probeCount = controller.probeCount;
+        host.options.probePreviewCount = controller.probeCount;
+        host.options.probePreviewOverLimit = false;
+        if (host.options.layer === 'probes') controller.setProbeOnly(true);
+      } catch (error) {
+        controller.clear();
+        host.options.probeStatus = 'error';
+        host.options.probeProgress = 0;
+        host.options.probeCount = 0;
+        host.options.probePreviewCount = 0;
+        host.options.probePreviewOverLimit = false;
+        const message = error instanceof Error ? error.message : String(error);
+        console.error('[baker:probes] native project recapture failed:', error);
+        host.externalHooks.onBakeError?.(`Native probe restore failed: ${message}`);
+      }
     } else if (project.probeVolume) {
+      applyMissingRuntimeDefaults(host.options, project.options, 'legacy');
       controller.restore(project.probeVolume, readControllerOptions(host.options));
       host.options.probeRuntime = 'legacy';
       host.options.probeStatus = 'ready';
@@ -293,6 +312,14 @@ function installProjectFileSurface(host: ProbeHost): void {
 }
 
 function installDefaults(options: ProbeHost['options']): void {
+  const runtime = options.probeRuntime === 'legacy' ? 'legacy' : 'native';
+  if (options.probeRuntime === undefined) options.probeRuntime = runtime;
+  if (options.probeSpacing === undefined) {
+    options.probeSpacing = RUNTIME_DEFAULTS[runtime].spacing;
+  }
+  if (options.probeMaxProbes === undefined) {
+    options.probeMaxProbes = RUNTIME_DEFAULTS[runtime].maxProbes;
+  }
   for (const [key, value] of Object.entries(DEFAULTS)) {
     if (options[key] === undefined) options[key] = value;
   }
@@ -335,6 +362,8 @@ function applyPersistedOptions(
   persisted: Record<string, unknown> | undefined,
 ): void {
   if (!persisted) return;
+  const runtime = persisted.probeRuntime;
+  if (runtime === 'native' || runtime === 'legacy') options.probeRuntime = runtime;
   const numericKeys = [
     'probeSpacing',
     'probePadding',
@@ -353,8 +382,22 @@ function applyPersistedOptions(
     const value = persisted[key];
     if (typeof value === 'boolean') options[key] = value;
   }
-  const runtime = persisted.probeRuntime;
-  if (runtime === 'native' || runtime === 'legacy') options.probeRuntime = runtime;
+  if (runtime === 'native' || runtime === 'legacy') {
+    applyMissingRuntimeDefaults(options, persisted, runtime);
+  }
+}
+
+function applyMissingRuntimeDefaults(
+  options: ProbeHost['options'],
+  persisted: Record<string, unknown> | undefined,
+  runtime: 'native' | 'legacy',
+): void {
+  if (typeof persisted?.probeSpacing !== 'number' || !Number.isFinite(persisted.probeSpacing)) {
+    options.probeSpacing = RUNTIME_DEFAULTS[runtime].spacing;
+  }
+  if (typeof persisted?.probeMaxProbes !== 'number' || !Number.isFinite(persisted.probeMaxProbes)) {
+    options.probeMaxProbes = RUNTIME_DEFAULTS[runtime].maxProbes;
+  }
 }
 
 function resetStatus(options: ProbeOptionBag): void {

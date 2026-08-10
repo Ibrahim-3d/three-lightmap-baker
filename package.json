@@ -92,9 +92,11 @@
     "@types/three": "^0.185.4",
     "lucide-preact": "^0.460.0",
     "preact": "^10.24.0",
-    "three": "^0.185.1",
     "three-mesh-bvh": "^0.9.14",
     "xatlas-three": "^0.2.1"
+  },
+  "peerDependencies": {
+    "three": ">=0.185.1 <0.186.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
@@ -106,6 +108,7 @@
     "postcss": "^8.4.0",
     "prettier": "^3.8.3",
     "tailwindcss": "^3.4.0",
+    "three": "0.185.1",
     "typescript": "^5.9.3",
     "vite": "^8.2.1",
     "xatlasjs": "0.2.0"

@@ -10,8 +10,10 @@ export type { GeneratedProbeVolume } from './generateProbeVolume';
 export { ProbeDebugView, createProbeDebugView } from './ProbeDebugView';
 export { ProbeLightingBinding, bindProbeLighting } from './ProbeLightingBinding';
 export type {
+  NativeLightProbeGridCaptureOptions,
   NativeLightProbeGridJSON,
   NativeLightProbeGridOptions,
+  NativeLightProbeGridRestoreOptions,
   NativeLightProbeGridResult,
   NativeLightProbeGridStats,
 } from './NativeLightProbeGrid';
