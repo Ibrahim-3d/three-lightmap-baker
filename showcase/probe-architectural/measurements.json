@@ -1,0 +1,1633 @@
+{
+  "generatedAt": "2026-08-10T21:13:23.224Z",
+  "branch": "feat/probe-architectural-showcase",
+  "baseline": "b3082c6c7aeef80d00d71bcefc345b39bdaf5bea",
+  "scenePreset": "showcase.probe-architectural",
+  "bake": {
+    "elapsedMs": 178.20000000298023,
+    "wallClockMs": 181,
+    "groups": 1,
+    "samples": 32,
+    "targetSamples": 32,
+    "lightMapSize": 256
+  },
+  "preview": {
+    "probeCount": 3672,
+    "counts": [
+      24,
+      9,
+      17
+    ],
+    "actualSpacing": [
+      0.6382608693319818,
+      0.575000000372529,
+      0.6400000057928263
+    ],
+    "bounds": {
+      "min": [
+        -7.339999997317791,
+        -0.30000000149011613,
+        -6.139999997317791
+      ],
+      "max": [
+        7.339999997317791,
+        4.300000001490115,
+        4.100000095367431
+      ]
+    },
+    "overLimit": false
+  },
+  "experiments": [
+    {
+      "targetSpacing": 1.2,
+      "actualSpacing": [
+        1.1292307688181216,
+        1.150000000745058,
+        1.1377777880761357
+      ],
+      "counts": [
+        14,
+        5,
+        10
+      ],
+      "bounds": {
+        "min": [
+          -7.339999997317791,
+          -0.30000000149011613,
+          -6.139999997317791
+        ],
+        "max": [
+          7.339999997317791,
+          4.300000001490115,
+          4.100000095367431
+        ]
+      },
+      "status": "ready",
+      "stats": {
+        "probeCount": 700,
+        "grid": {
+          "counts": [
+            14,
+            5,
+            10
+          ],
+          "bounds": {
+            "min": [
+              -7.339999997317791,
+              -0.30000000149011613,
+              -6.139999997317791
+            ],
+            "max": [
+              7.339999997317791,
+              4.300000001490115,
+              4.100000095367431
+            ]
+          },
+          "actualSpacing": [
+            1.1292307688181216,
+            1.150000000745058,
+            1.1377777880761357
+          ]
+        },
+        "blackThreshold": 0.000001,
+        "sampledTexels": 3342,
+        "validSourceSamples": 3342,
+        "contributingTexels": 3342,
+        "probeContributions": 22736,
+        "invalidPositionTexels": 0,
+        "invalidSurfaceReferences": 0,
+        "invalidNormalTexels": 0,
+        "invalidRadianceTexels": 0,
+        "emptyBeforeFill": 79,
+        "filledByDiffusion": 79,
+        "emptyAfterFill": 0,
+        "fallbackFilled": 0,
+        "populatedEffectivelyBlack": 12,
+        "fallbackEffectivelyBlack": 0,
+        "sourceLightmap": {
+          "sampleCount": 3342,
+          "minRGB": [
+            0,
+            0,
+            0
+          ],
+          "maxRGB": [
+            11.234375,
+            10.8125,
+            10.59375
+          ],
+          "averageRGB": [
+            2.13078234964042,
+            2.0710138539437546,
+            1.949186123180789
+          ],
+          "minLuminance": 0,
+          "maxLuminance": 10.851815624999999,
+          "averageLuminance": 2.0749246739677787,
+          "luminancePercentiles": {
+            "p10": 0,
+            "p50": 0.19225090332031247,
+            "p90": 5.803861406250001,
+            "p99": 9.719383171875007
+          },
+          "nonZeroCount": 1756,
+          "nonZeroPercentage": 52.543387193297434,
+          "effectivelyBlackCount": 1586,
+          "effectivelyBlackPercentage": 47.45661280670257,
+          "invalidValueCount": 0
+        },
+        "projectedSurfaceLight": {
+          "sampleCount": 3342,
+          "minRGB": [
+            0,
+            0,
+            0
+          ],
+          "maxRGB": [
+            6.4887552603598095,
+            6.037055462828928,
+            5.390961492710215
+          ],
+          "averageRGB": [
+            1.2306982079475837,
+            1.156330682131381,
+            0.9919044089385485
+          ],
+          "minLuminance": 0,
+          "maxLuminance": 6.0670029204552005,
+          "averageLuminance": 1.1602696411953812,
+          "luminancePercentiles": {
+            "p10": 0,
+            "p50": 0.10747709010678555,
+            "p90": 3.2456110662085256,
+            "p99": 5.432486128238592
+          },
+          "nonZeroCount": 1756,
+          "nonZeroPercentage": 52.543387193297434,
+          "effectivelyBlackCount": 1586,
+          "effectivelyBlackPercentage": 47.45661280670257,
+          "invalidValueCount": 0
+        },
+        "irradiance": {
+          "sampleCount": 700,
+          "minRGB": [
+            0,
+            0,
+            0
+          ],
+          "maxRGB": [
+            6.265047073364258,
+            5.862356185913086,
+            5.208227634429932
+          ],
+          "averageRGB": [
+            1.5277048924888992,
+            1.428723063767923,
+            1.2277365722070162
+          ],
+          "minLuminance": 0,
+          "maxLuminance": 5.8593877762794495,
+          "averageLuminance": 1.435255375863304,
+          "luminancePercentiles": {
+            "p10": 0.011330815302021801,
+            "p50": 1.0829734635293484,
+            "p90": 3.366924077243805,
+            "p99": 5.167925293720242
+          },
+          "nonZeroCount": 688,
+          "nonZeroPercentage": 98.28571428571429,
+          "effectivelyBlackCount": 12,
+          "effectivelyBlackPercentage": 1.7142857142857144,
+          "invalidValueCount": 0
+        },
+        "blackProbeLocations": {
+          "boundaryCount": 9,
+          "interiorCount": 3,
+          "insideGeometryBoundsCount": 0,
+          "openSpaceCount": 12,
+          "interiorOpenSpaceCount": 3,
+          "bounds": {
+            "min": [
+              -7.339999997317791,
+              -0.30000000149011613,
+              -6.139999997317791
+            ],
+            "max": [
+              -1.6938461532271827,
+              1.9999999999999998,
+              -5.002222209241655
+            ]
+          }
+        },
+        "durationMs": 64.40000000596046
+      },
+      "samples": {
+        "redZone": {
+          "position": [
+            -4.8,
+            1,
+            0.4
+          ],
+          "rgb": [
+            5.492407137195979,
+            4.702590085144347,
+            4.2099260073010285
+          ],
+          "luminance": 4.834934843990236
+        },
+        "greenZone": {
+          "position": [
+            4.2,
+            1,
+            0.4
+          ],
+          "rgb": [
+            5.196509484703626,
+            5.220869018511633,
+            4.506627643551909
+          ],
+          "luminance": 5.164121954351958
+        },
+        "neutralCenter": {
+          "position": [
+            -2.2,
+            1,
+            1.6
+          ],
+          "rgb": [
+            4.976694879481942,
+            4.60728918611417,
+            4.130223050449541
+          ],
+          "luminance": 4.651380661529172
+        },
+        "doorway": {
+          "position": [
+            0,
+            1,
+            0
+          ],
+          "rgb": [
+            4.143211826763976,
+            3.9019509404285144,
+            3.4122126954371232
+          ],
+          "luminance": 3.917883903575055
+        },
+        "wallRedSide": {
+          "position": [
+            -0.65,
+            1,
+            -2.45
+          ],
+          "rgb": [
+            2.9315735651002375,
+            2.6660502707196994,
+            2.3328902575386916
+          ],
+          "luminance": 2.698446370153333
+        },
+        "wallGreenSide": {
+          "position": [
+            0.65,
+            1,
+            -2.45
+          ],
+          "rgb": [
+            3.0773428545662833,
+            3.0400342523291544,
+            2.585426278225859
+          ],
+          "luminance": 3.01514336543451
+        },
+        "alcove": {
+          "position": [
+            5.65,
+            1,
+            -4.85
+          ],
+          "rgb": [
+            1.5657466049836324,
+            1.7011713033852047,
+            1.3690275891914028
+          ],
+          "luminance": 1.648399236340238
+        }
+      },
+      "leakage": {
+        "redSignalIntoGreenRatio": 0.14050971431402795,
+        "greenSignalIntoRedRatio": 0,
+        "redFractionTransferRatio": 0.9565711030345142,
+        "greenFractionTransferRatio": 0.9623824354256558,
+        "luminanceSideRatio": 0.8949645317327928
+      },
+      "path": [
+        {
+          "id": "redZone-doorway-0",
+          "position": [
+            -4.8,
+            1,
+            0.4
+          ],
+          "rgb": [
+            5.492407137195979,
+            4.702590085144347,
+            4.2099260073010285
+          ],
+          "luminance": 4.834934843990236
+        },
+        {
+          "id": "redZone-doorway-1",
+          "position": [
+            -3.5999999999999996,
+            1,
+            0.30000000000000004
+          ],
+          "rgb": [
+            5.71610881597581,
+            5.180072314881581,
+            4.620516488358468
+          ],
+          "luminance": 5.253633744339245
+        },
+        {
+          "id": "redZone-doorway-2",
+          "position": [
+            -2.4,
+            1,
+            0.2
+          ],
+          "rgb": [
+            5.459369954736679,
+            5.063436225114895,
+            4.504083696559957
+          ],
+          "luminance": 5.10722648347082
+        },
+        {
+          "id": "redZone-doorway-3",
+          "position": [
+            -1.2000000000000002,
+            1,
+            0.09999999999999998
+          ],
+          "rgb": [
+            4.7758237673716035,
+            4.462988132871549,
+            3.9453816755906073
+          ],
+          "luminance": 4.492125802550577
+        },
+        {
+          "id": "redZone-doorway-4",
+          "position": [
+            0,
+            1,
+            0
+          ],
+          "rgb": [
+            4.143211826763976,
+            3.9019509404285144,
+            3.4122126954371232
+          ],
+          "luminance": 3.917883903575055
+        },
+        {
+          "id": "doorway-greenZone-1",
+          "position": [
+            1.05,
+            1,
+            0.1
+          ],
+          "rgb": [
+            4.2270114958498635,
+            4.059723321956166,
+            3.549962113822273
+          ],
+          "luminance": 4.0584840284986985
+        },
+        {
+          "id": "doorway-greenZone-2",
+          "position": [
+            2.1,
+            1,
+            0.2
+          ],
+          "rgb": [
+            4.681014606808586,
+            4.546905440290098,
+            3.9767954572136874
+          ],
+          "luminance": 4.534255108313811
+        },
+        {
+          "id": "doorway-greenZone-3",
+          "position": [
+            3.1500000000000004,
+            1,
+            0.30000000000000004
+          ],
+          "rgb": [
+            4.963926406227939,
+            4.897583937228637,
+            4.262080706521813
+          ],
+          "luminance": 4.865805012880855
+        },
+        {
+          "id": "doorway-greenZone-4",
+          "position": [
+            4.2,
+            1,
+            0.4
+          ],
+          "rgb": [
+            5.196509484703626,
+            5.220869018511633,
+            4.506627643551909
+          ],
+          "luminance": 5.164121954351958
+        },
+        {
+          "id": "greenZone-alcove-1",
+          "position": [
+            4.5625,
+            1,
+            -0.9125
+          ],
+          "rgb": [
+            4.861572597891835,
+            4.914202895514665,
+            4.209659342920154
+          ],
+          "luminance": 4.852145649742727
+        },
+        {
+          "id": "greenZone-alcove-2",
+          "position": [
+            4.925000000000001,
+            1,
+            -2.225
+          ],
+          "rgb": [
+            3.948828027683074,
+            4.030981728149839,
+            3.4040649220315093
+          ],
+          "luminance": 3.968252458028861
+        },
+        {
+          "id": "greenZone-alcove-3",
+          "position": [
+            5.2875000000000005,
+            1,
+            -3.5375
+          ],
+          "rgb": [
+            2.1493773049373006,
+            2.325904284387065,
+            1.8605231682197747
+          ],
+          "luminance": 2.254774131968767
+        },
+        {
+          "id": "greenZone-alcove-4",
+          "position": [
+            5.65,
+            1,
+            -4.85
+          ],
+          "rgb": [
+            1.5657466049836324,
+            1.7011713033852047,
+            1.3690275891914028
+          ],
+          "luminance": 1.648399236340238
+        }
+      ],
+      "pathMetrics": {
+        "blackFlashes": 0,
+        "maxAdjacentRGBDelta": 2.9202453901306114,
+        "averageAdjacentRGBDelta": 0.9175759977351108,
+        "jitterByAnchor": {
+          "redZone": 0.0064552419921833784,
+          "doorway": 0.007631379896402703,
+          "greenZone": 0.0052123557940119,
+          "alcove": 0.014332088351759921
+        },
+        "runtimeBlackFlashes": 0,
+        "maxRuntimeSampleDifference": 0
+      },
+      "serializedBytes": 39892,
+      "markerPositions": {
+        "redZone": [
+          -4.8,
+          1,
+          0.4
+        ],
+        "greenZone": [
+          4.2,
+          1,
+          0.4
+        ],
+        "neutralCenter": [
+          -2.2,
+          1,
+          1.6
+        ],
+        "doorway": [
+          0,
+          1,
+          0
+        ],
+        "wallRedSide": [
+          -0.65,
+          1,
+          -2.45
+        ],
+        "wallGreenSide": [
+          0.65,
+          1,
+          -2.45
+        ],
+        "alcove": [
+          5.65,
+          1,
+          -4.85
+        ]
+      }
+    },
+    {
+      "targetSpacing": 0.65,
+      "actualSpacing": [
+        0.6382608693319818,
+        0.575000000372529,
+        0.6400000057928263
+      ],
+      "counts": [
+        24,
+        9,
+        17
+      ],
+      "bounds": {
+        "min": [
+          -7.339999997317791,
+          -0.30000000149011613,
+          -6.139999997317791
+        ],
+        "max": [
+          7.339999997317791,
+          4.300000001490115,
+          4.100000095367431
+        ]
+      },
+      "status": "ready",
+      "stats": {
+        "probeCount": 3672,
+        "grid": {
+          "counts": [
+            24,
+            9,
+            17
+          ],
+          "bounds": {
+            "min": [
+              -7.339999997317791,
+              -0.30000000149011613,
+              -6.139999997317791
+            ],
+            "max": [
+              7.339999997317791,
+              4.300000001490115,
+              4.100000095367431
+            ]
+          },
+          "actualSpacing": [
+            0.6382608693319818,
+            0.575000000372529,
+            0.6400000057928263
+          ]
+        },
+        "blackThreshold": 0.000001,
+        "sampledTexels": 3342,
+        "validSourceSamples": 3342,
+        "contributingTexels": 3342,
+        "probeContributions": 22736,
+        "invalidPositionTexels": 0,
+        "invalidSurfaceReferences": 0,
+        "invalidNormalTexels": 0,
+        "invalidRadianceTexels": 0,
+        "emptyBeforeFill": 1209,
+        "filledByDiffusion": 1209,
+        "emptyAfterFill": 0,
+        "fallbackFilled": 0,
+        "populatedEffectivelyBlack": 236,
+        "fallbackEffectivelyBlack": 0,
+        "sourceLightmap": {
+          "sampleCount": 3342,
+          "minRGB": [
+            0,
+            0,
+            0
+          ],
+          "maxRGB": [
+            11.234375,
+            10.8125,
+            10.59375
+          ],
+          "averageRGB": [
+            2.13078234964042,
+            2.0710138539437546,
+            1.949186123180789
+          ],
+          "minLuminance": 0,
+          "maxLuminance": 10.851815624999999,
+          "averageLuminance": 2.0749246739677787,
+          "luminancePercentiles": {
+            "p10": 0,
+            "p50": 0.19225090332031247,
+            "p90": 5.803861406250001,
+            "p99": 9.719383171875007
+          },
+          "nonZeroCount": 1756,
+          "nonZeroPercentage": 52.543387193297434,
+          "effectivelyBlackCount": 1586,
+          "effectivelyBlackPercentage": 47.45661280670257,
+          "invalidValueCount": 0
+        },
+        "projectedSurfaceLight": {
+          "sampleCount": 3342,
+          "minRGB": [
+            0,
+            0,
+            0
+          ],
+          "maxRGB": [
+            6.4887552603598095,
+            6.037055462828928,
+            5.390961492710215
+          ],
+          "averageRGB": [
+            1.2306982079475837,
+            1.156330682131381,
+            0.9919044089385485
+          ],
+          "minLuminance": 0,
+          "maxLuminance": 6.0670029204552005,
+          "averageLuminance": 1.1602696411953812,
+          "luminancePercentiles": {
+            "p10": 0,
+            "p50": 0.10747709010678555,
+            "p90": 3.2456110662085256,
+            "p99": 5.432486128238592
+          },
+          "nonZeroCount": 1756,
+          "nonZeroPercentage": 52.543387193297434,
+          "effectivelyBlackCount": 1586,
+          "effectivelyBlackPercentage": 47.45661280670257,
+          "invalidValueCount": 0
+        },
+        "irradiance": {
+          "sampleCount": 3672,
+          "minRGB": [
+            0,
+            0,
+            0
+          ],
+          "maxRGB": [
+            6.441034317016602,
+            5.974276542663574,
+            5.356024265289307
+          ],
+          "averageRGB": [
+            1.8383162370235147,
+            1.7152931081568996,
+            1.4676780746082365
+          ],
+          "minLuminance": 0,
+          "maxLuminance": 6.028871431064605,
+          "averageLuminance": 1.7235700199317285,
+          "luminancePercentiles": {
+            "p10": 0.0024815251264255493,
+            "p50": 1.6734031742334365,
+            "p90": 3.8594981862640383,
+            "p99": 5.5437088174448
+          },
+          "nonZeroCount": 3436,
+          "nonZeroPercentage": 93.57298474945533,
+          "effectivelyBlackCount": 236,
+          "effectivelyBlackPercentage": 6.427015250544662,
+          "invalidValueCount": 0
+        },
+        "blackProbeLocations": {
+          "boundaryCount": 135,
+          "interiorCount": 101,
+          "insideGeometryBoundsCount": 1,
+          "openSpaceCount": 235,
+          "interiorOpenSpaceCount": 100,
+          "bounds": {
+            "min": [
+              -7.339999997317791,
+              -0.30000000149011613,
+              -6.139999997317791
+            ],
+            "max": [
+              3.510434781325899,
+              4.300000001490115,
+              4.100000095367431
+            ]
+          }
+        },
+        "durationMs": 58.599999994039536
+      },
+      "samples": {
+        "redZone": {
+          "position": [
+            -4.8,
+            1,
+            0.4
+          ],
+          "rgb": [
+            5.784002747911073,
+            4.990854434811642,
+            4.470371951703184
+          ],
+          "luminance": 5.12189893089615
+        },
+        "greenZone": {
+          "position": [
+            4.2,
+            1,
+            0.4
+          ],
+          "rgb": [
+            5.430487566922198,
+            5.463809847292342,
+            4.727269908527847
+          ],
+          "luminance": 5.403547346906853
+        },
+        "neutralCenter": {
+          "position": [
+            -2.2,
+            1,
+            1.6
+          ],
+          "rgb": [
+            5.187629472200489,
+            4.81111875926399,
+            4.3169715324519355
+          ],
+          "luminance": 4.855487507058459
+        },
+        "doorway": {
+          "position": [
+            0,
+            1,
+            0
+          ],
+          "rgb": [
+            3.7985876265073584,
+            3.55818975785538,
+            3.035634726454163
+          ],
+          "luminance": 3.571569871463623
+        },
+        "wallRedSide": {
+          "position": [
+            -0.65,
+            1,
+            -2.45
+          ],
+          "rgb": [
+            3.631911245643967,
+            3.2637003030982883,
+            2.828722072907592
+          ],
+          "luminance": 3.310576521263731
+        },
+        "wallGreenSide": {
+          "position": [
+            0.65,
+            1,
+            -2.45
+          ],
+          "rgb": [
+            3.647118074177964,
+            3.6273460092304863,
+            3.0105347764378534
+          ],
+          "luminance": 3.587015779230692
+        },
+        "alcove": {
+          "position": [
+            5.65,
+            1,
+            -4.85
+          ],
+          "rgb": [
+            1.9126108864736573,
+            2.0752627118510354,
+            1.665141679076458
+          ],
+          "luminance": 2.01107219520948
+        }
+      },
+      "leakage": {
+        "redSignalIntoGreenRatio": 0.053697657138543346,
+        "greenSignalIntoRedRatio": 0,
+        "redFractionTransferRatio": 0.949445846599414,
+        "greenFractionTransferRatio": 0.9516246542618542,
+        "luminanceSideRatio": 0.9229333588194449
+      },
+      "path": [
+        {
+          "id": "redZone-doorway-0",
+          "position": [
+            -4.8,
+            1,
+            0.4
+          ],
+          "rgb": [
+            5.784002747911073,
+            4.990854434811642,
+            4.470371951703184
+          ],
+          "luminance": 5.12189893089615
+        },
+        {
+          "id": "redZone-doorway-1",
+          "position": [
+            -3.5999999999999996,
+            1,
+            0.30000000000000004
+          ],
+          "rgb": [
+            5.34918358842819,
+            4.853642919364705,
+            4.285886707264382
+          ],
+          "luminance": 4.918002867093959
+        },
+        {
+          "id": "redZone-doorway-2",
+          "position": [
+            -2.4,
+            1,
+            0.2
+          ],
+          "rgb": [
+            5.212268010486092,
+            4.822363060956237,
+            4.239785012567461
+          ],
+          "luminance": 4.863194718132615
+        },
+        {
+          "id": "redZone-doorway-3",
+          "position": [
+            -1.2000000000000002,
+            1,
+            0.09999999999999998
+          ],
+          "rgb": [
+            4.720150169700503,
+            4.316938088062655,
+            3.771585566859375
+          ],
+          "luminance": 4.363286524587985
+        },
+        {
+          "id": "redZone-doorway-4",
+          "position": [
+            0,
+            1,
+            0
+          ],
+          "rgb": [
+            3.7985876265073584,
+            3.55818975785538,
+            3.035634726454163
+          ],
+          "luminance": 3.571569871463623
+        },
+        {
+          "id": "doorway-greenZone-1",
+          "position": [
+            1.05,
+            1,
+            0.1
+          ],
+          "rgb": [
+            4.038498226247488,
+            3.909053725055787,
+            3.348444587743648
+          ],
+          "luminance": 3.8960976462952064
+        },
+        {
+          "id": "doorway-greenZone-2",
+          "position": [
+            2.1,
+            1,
+            0.2
+          ],
+          "rgb": [
+            4.5203367614562024,
+            4.36845688404171,
+            3.7978257262728286
+          ],
+          "luminance": 4.359546976389118
+        },
+        {
+          "id": "doorway-greenZone-3",
+          "position": [
+            3.1500000000000004,
+            1,
+            0.30000000000000004
+          ],
+          "rgb": [
+            4.597966499621795,
+            4.615727670670433,
+            3.9384204471435513
+          ],
+          "luminance": 4.563050064166852
+        },
+        {
+          "id": "doorway-greenZone-4",
+          "position": [
+            4.2,
+            1,
+            0.4
+          ],
+          "rgb": [
+            5.430487566922198,
+            5.463809847292342,
+            4.727269908527847
+          ],
+          "luminance": 5.403547346906853
+        },
+        {
+          "id": "greenZone-alcove-1",
+          "position": [
+            4.5625,
+            1,
+            -0.9125
+          ],
+          "rgb": [
+            5.171740757291817,
+            5.213624068391757,
+            4.490969100957931
+          ],
+          "luminance": 5.152543987803187
+        },
+        {
+          "id": "greenZone-alcove-2",
+          "position": [
+            4.925000000000001,
+            1,
+            -2.225
+          ],
+          "rgb": [
+            4.03474031919824,
+            4.130422377346455,
+            3.4847859241624555
+          ],
+          "luminance": 4.06346541986426
+        },
+        {
+          "id": "greenZone-alcove-3",
+          "position": [
+            5.2875000000000005,
+            1,
+            -3.5375
+          ],
+          "rgb": [
+            2.38163645180482,
+            2.5812281445219196,
+            2.050615938065526
+          ],
+          "luminance": 2.5004847493441127
+        },
+        {
+          "id": "greenZone-alcove-4",
+          "position": [
+            5.65,
+            1,
+            -4.85
+          ],
+          "rgb": [
+            1.9126108864736573,
+            2.0752627118510354,
+            1.665141679076458
+          ],
+          "luminance": 2.01107219520948
+        }
+      ],
+      "pathMetrics": {
+        "blackFlashes": 0,
+        "maxAdjacentRGBDelta": 2.6813427077546708,
+        "averageAdjacentRGBDelta": 0.9756826549289962,
+        "jitterByAnchor": {
+          "redZone": 0.006784524958535801,
+          "doorway": 0.008044729293357675,
+          "greenZone": 0.005446520588462886,
+          "alcove": 0.02127365162610885
+        },
+        "runtimeBlackFlashes": 0,
+        "maxRuntimeSampleDifference": 0
+      },
+      "serializedBytes": 198494,
+      "markerPositions": {
+        "redZone": [
+          -4.8,
+          1,
+          0.4
+        ],
+        "greenZone": [
+          4.2,
+          1,
+          0.4
+        ],
+        "neutralCenter": [
+          -2.2,
+          1,
+          1.6
+        ],
+        "doorway": [
+          0,
+          1,
+          0
+        ],
+        "wallRedSide": [
+          -0.65,
+          1,
+          -2.45
+        ],
+        "wallGreenSide": [
+          0.65,
+          1,
+          -2.45
+        ],
+        "alcove": [
+          5.65,
+          1,
+          -4.85
+        ]
+      }
+    },
+    {
+      "targetSpacing": 0.5,
+      "actualSpacing": [
+        0.4893333331545194,
+        0.4600000002980232,
+        0.4876190520326296
+      ],
+      "counts": [
+        31,
+        11,
+        22
+      ],
+      "bounds": {
+        "min": [
+          -7.339999997317791,
+          -0.30000000149011613,
+          -6.139999997317791
+        ],
+        "max": [
+          7.339999997317791,
+          4.300000001490115,
+          4.100000095367431
+        ]
+      },
+      "status": "ready",
+      "stats": {
+        "probeCount": 7502,
+        "grid": {
+          "counts": [
+            31,
+            11,
+            22
+          ],
+          "bounds": {
+            "min": [
+              -7.339999997317791,
+              -0.30000000149011613,
+              -6.139999997317791
+            ],
+            "max": [
+              7.339999997317791,
+              4.300000001490115,
+              4.100000095367431
+            ]
+          },
+          "actualSpacing": [
+            0.4893333331545194,
+            0.4600000002980232,
+            0.4876190520326296
+          ]
+        },
+        "blackThreshold": 0.000001,
+        "sampledTexels": 3342,
+        "validSourceSamples": 3342,
+        "contributingTexels": 3342,
+        "probeContributions": 26592,
+        "invalidPositionTexels": 0,
+        "invalidSurfaceReferences": 0,
+        "invalidNormalTexels": 0,
+        "invalidRadianceTexels": 0,
+        "emptyBeforeFill": 3340,
+        "filledByDiffusion": 3340,
+        "emptyAfterFill": 0,
+        "fallbackFilled": 0,
+        "populatedEffectivelyBlack": 711,
+        "fallbackEffectivelyBlack": 0,
+        "sourceLightmap": {
+          "sampleCount": 3342,
+          "minRGB": [
+            0,
+            0,
+            0
+          ],
+          "maxRGB": [
+            11.234375,
+            10.8125,
+            10.59375
+          ],
+          "averageRGB": [
+            2.13078234964042,
+            2.0710138539437546,
+            1.949186123180789
+          ],
+          "minLuminance": 0,
+          "maxLuminance": 10.851815624999999,
+          "averageLuminance": 2.0749246739677787,
+          "luminancePercentiles": {
+            "p10": 0,
+            "p50": 0.19225090332031247,
+            "p90": 5.803861406250001,
+            "p99": 9.719383171875007
+          },
+          "nonZeroCount": 1756,
+          "nonZeroPercentage": 52.543387193297434,
+          "effectivelyBlackCount": 1586,
+          "effectivelyBlackPercentage": 47.45661280670257,
+          "invalidValueCount": 0
+        },
+        "projectedSurfaceLight": {
+          "sampleCount": 3342,
+          "minRGB": [
+            0,
+            0,
+            0
+          ],
+          "maxRGB": [
+            6.4887552603598095,
+            6.037055462828928,
+            5.390961492710215
+          ],
+          "averageRGB": [
+            1.2306982079475837,
+            1.156330682131381,
+            0.9919044089385485
+          ],
+          "minLuminance": 0,
+          "maxLuminance": 6.0670029204552005,
+          "averageLuminance": 1.1602696411953812,
+          "luminancePercentiles": {
+            "p10": 0,
+            "p50": 0.10747709010678555,
+            "p90": 3.2456110662085256,
+            "p99": 5.432486128238592
+          },
+          "nonZeroCount": 1756,
+          "nonZeroPercentage": 52.543387193297434,
+          "effectivelyBlackCount": 1586,
+          "effectivelyBlackPercentage": 47.45661280670257,
+          "invalidValueCount": 0
+        },
+        "irradiance": {
+          "sampleCount": 7502,
+          "minRGB": [
+            0,
+            0,
+            0
+          ],
+          "maxRGB": [
+            6.468496322631836,
+            6.004800319671631,
+            5.381811141967773
+          ],
+          "averageRGB": [
+            1.9226635729620167,
+            1.7941027462786103,
+            1.5342345807392803
+          ],
+          "minLuminance": 0,
+          "maxLuminance": 6.056851630401611,
+          "averageLuminance": 1.8026722964795532,
+          "luminancePercentiles": {
+            "p10": 0.0005675325921387412,
+            "p50": 1.7853255945444104,
+            "p90": 3.956501433482171,
+            "p99": 5.707086435999859
+          },
+          "nonZeroCount": 6791,
+          "nonZeroPercentage": 90.52252732604639,
+          "effectivelyBlackCount": 711,
+          "effectivelyBlackPercentage": 9.477472673953613,
+          "invalidValueCount": 0
+        },
+        "blackProbeLocations": {
+          "boundaryCount": 397,
+          "interiorCount": 314,
+          "insideGeometryBoundsCount": 3,
+          "openSpaceCount": 708,
+          "interiorOpenSpaceCount": 311,
+          "bounds": {
+            "min": [
+              -7.339999997317791,
+              -0.30000000149011613,
+              -6.139999997317791
+            ],
+            "max": [
+              7.339999997317791,
+              4.300000001490115,
+              4.100000095367431
+            ]
+          }
+        },
+        "durationMs": 67.79999999701977
+      },
+      "samples": {
+        "redZone": {
+          "position": [
+            -4.8,
+            1,
+            0.4
+          ],
+          "rgb": [
+            5.886400845111867,
+            4.998687265465252,
+            4.489924883400938
+          ],
+          "luminance": 5.150682528513078
+        },
+        "greenZone": {
+          "position": [
+            4.2,
+            1,
+            0.4
+          ],
+          "rgb": [
+            5.491130794214777,
+            5.529333557682739,
+            4.78884194859285
+          ],
+          "luminance": 5.46774815599316
+        },
+        "neutralCenter": {
+          "position": [
+            -2.2,
+            1,
+            1.6
+          ],
+          "rgb": [
+            5.140005970911118,
+            4.8060771109553375,
+            4.325627980579147
+          ],
+          "luminance": 4.842381959368775
+        },
+        "doorway": {
+          "position": [
+            0,
+            1,
+            0
+          ],
+          "rgb": [
+            3.903585927126209,
+            3.678210533981545,
+            3.1518278517950735
+          ],
+          "luminance": 3.6881205129102375
+        },
+        "wallRedSide": {
+          "position": [
+            -0.65,
+            1,
+            -2.45
+          ],
+          "rgb": [
+            3.547950200744781,
+            3.216817952423486,
+            2.7880990935569456
+          ],
+          "luminance": 3.256263166806429
+        },
+        "wallGreenSide": {
+          "position": [
+            0.65,
+            1,
+            -2.45
+          ],
+          "rgb": [
+            3.408455866443445,
+            3.4266117324904473,
+            2.8241719245801566
+          ],
+          "luminance": 3.3792556412377315
+        },
+        "alcove": {
+          "position": [
+            5.65,
+            1,
+            -4.85
+          ],
+          "rgb": [
+            1.6900432539185175,
+            1.90871837333104,
+            1.4783631052735013
+          ],
+          "luminance": 1.8311563925901833
+        }
+      },
+      "leakage": {
+        "redSignalIntoGreenRatio": 0,
+        "greenSignalIntoRedRatio": 0,
+        "redFractionTransferRatio": 0.9501036063729308,
+        "greenFractionTransferRatio": 0.9492285221269814,
+        "luminanceSideRatio": 0.9636036785940664
+      },
+      "path": [
+        {
+          "id": "redZone-doorway-0",
+          "position": [
+            -4.8,
+            1,
+            0.4
+          ],
+          "rgb": [
+            5.886400845111867,
+            4.998687265465252,
+            4.489924883400938
+          ],
+          "luminance": 5.150682528513078
+        },
+        {
+          "id": "redZone-doorway-1",
+          "position": [
+            -3.5999999999999996,
+            1,
+            0.30000000000000004
+          ],
+          "rgb": [
+            5.785880582543916,
+            5.246405576154253,
+            4.672782708732255
+          ],
+          "luminance": 5.319682391484826
+        },
+        {
+          "id": "redZone-doorway-2",
+          "position": [
+            -2.4,
+            1,
+            0.2
+          ],
+          "rgb": [
+            5.63363356799508,
+            5.256690518144663,
+            4.653750627357106
+          ],
+          "luminance": 5.293296350427999
+        },
+        {
+          "id": "redZone-doorway-3",
+          "position": [
+            -1.2000000000000002,
+            1,
+            0.09999999999999998
+          ],
+          "rgb": [
+            4.631405399418418,
+            4.371791795001865,
+            3.840133899579116
+          ],
+          "luminance": 4.388599947251302
+        },
+        {
+          "id": "redZone-doorway-4",
+          "position": [
+            0,
+            1,
+            0
+          ],
+          "rgb": [
+            3.903585927126209,
+            3.678210533981545,
+            3.1518278517950735
+          ],
+          "luminance": 3.6881205129102375
+        },
+        {
+          "id": "doorway-greenZone-1",
+          "position": [
+            1.05,
+            1,
+            0.1
+          ],
+          "rgb": [
+            4.238827079420226,
+            4.062191892768995,
+            3.550439561122676
+          ],
+          "luminance": 4.062796015106183
+        },
+        {
+          "id": "doorway-greenZone-2",
+          "position": [
+            2.1,
+            1,
+            0.2
+          ],
+          "rgb": [
+            3.711558030826655,
+            3.577949374779085,
+            3.048103680454344
+          ],
+          "luminance": 3.5680997159245518
+        },
+        {
+          "id": "doorway-greenZone-3",
+          "position": [
+            3.1500000000000004,
+            1,
+            0.30000000000000004
+          ],
+          "rgb": [
+            4.953465772903238,
+            4.865193625056456,
+            4.227004841302588
+          ],
+          "luminance": 4.837883053501653
+        },
+        {
+          "id": "doorway-greenZone-4",
+          "position": [
+            4.2,
+            1,
+            0.4
+          ],
+          "rgb": [
+            5.491130794214777,
+            5.529333557682739,
+            4.78884194859285
+          ],
+          "luminance": 5.46774815599316
+        },
+        {
+          "id": "greenZone-alcove-1",
+          "position": [
+            4.5625,
+            1,
+            -0.9125
+          ],
+          "rgb": [
+            5.103291939483391,
+            5.172184608725533,
+            4.441926555376007
+          ],
+          "luminance": 5.104813395792817
+        },
+        {
+          "id": "greenZone-alcove-2",
+          "position": [
+            4.925000000000001,
+            1,
+            -2.225
+          ],
+          "rgb": [
+            4.266858119848494,
+            4.3970743384236535,
+            3.701977872572631
+          ],
+          "luminance": 4.31920440552013
+        },
+        {
+          "id": "greenZone-alcove-3",
+          "position": [
+            5.2875000000000005,
+            1,
+            -3.5375
+          ],
+          "rgb": [
+            1.3108540541946514,
+            1.637573460696226,
+            1.1493185508732828
+          ],
+          "luminance": 1.5328609103847746
+        },
+        {
+          "id": "greenZone-alcove-4",
+          "position": [
+            5.65,
+            1,
+            -4.85
+          ],
+          "rgb": [
+            1.6900432539185175,
+            1.90871837333104,
+            1.4783631052735013
+          ],
+          "luminance": 1.8311563925901833
+        }
+      ],
+      "pathMetrics": {
+        "blackFlashes": 0,
+        "maxAdjacentRGBDelta": 4.782141229930277,
+        "averageAdjacentRGBDelta": 1.274245234142999,
+        "jitterByAnchor": {
+          "redZone": 0.008453870543506922,
+          "doorway": 0.010551190918371627,
+          "greenZone": 0.007596984389925722,
+          "alcove": 0.04591865169554108
+        },
+        "runtimeBlackFlashes": 0,
+        "maxRuntimeSampleDifference": 0
+      },
+      "serializedBytes": 392503,
+      "markerPositions": {
+        "redZone": [
+          -4.8,
+          1,
+          0.4
+        ],
+        "greenZone": [
+          4.2,
+          1,
+          0.4
+        ],
+        "neutralCenter": [
+          -2.2,
+          1,
+          1.6
+        ],
+        "doorway": [
+          0,
+          1,
+          0
+        ],
+        "wallRedSide": [
+          -0.65,
+          1,
+          -2.45
+        ],
+        "wallGreenSide": [
+          0.65,
+          1,
+          -2.45
+        ],
+        "alcove": [
+          5.65,
+          1,
+          -4.85
+        ]
+      }
+    }
+  ],
+  "defaultPerformance": {
+    "withoutDebugProbes": {
+      "averageFrameMs": 0.12166666666666667,
+      "fps": 8219.17808219178,
+      "frames": 300,
+      "rounds": 5
+    },
+    "dynamicProbeLighting": {
+      "averageFrameMs": 6.818999999960264,
+      "fps": 146.64906877926782,
+      "frames": 300,
+      "rounds": 5
+    },
+    "debugProbeVisualization": {
+      "averageFrameMs": 5.537333333343267,
+      "fps": 180.5923428843377,
+      "frames": 300,
+      "rounds": 5
+    },
+    "dynamicIncrementalMs": 6.697333333293597,
+    "debugIncrementalMs": 5.4156666666766
+  },
+  "screenshotFiles": [
+    "01-architectural-static-bake.png",
+    "02-layout-preview.png",
+    "03-generated-probe-colors.png",
+    "04-probe-only.png",
+    "05-combined-result.png",
+    "06-dynamic-red-zone.png",
+    "07-dynamic-doorway.png",
+    "08-dynamic-second-zone.png",
+    "09-dynamic-alcove.png",
+    "10-wall-leakage-comparison.png"
+  ]
+}
