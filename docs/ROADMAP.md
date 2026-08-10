@@ -1,6 +1,10 @@
 # Roadmap
 
-Last updated: 2026-07-29
+Last updated: 2026-08-10
+
+Public npm publication is not approved. Local package validation and the
+existence of release infrastructure are engineering aids only; publication is
+gated on Ibrahim's explicit approval.
 
 ## Product Direction
 
@@ -20,23 +24,26 @@ The core product remains stable baked lighting. Probes now bridge static lightma
 
 - **Core baker:** Browser/WebGL lightmap baking is implemented with path-traced GI, BVH traversal, auto UV2, AO, dilation, denoise, supersampling/downscale, progressive hooks, and `LightmapBakeResult` lifecycle helpers.
 - **Debug tooling:** Combined, refined/raw combined, direct, indirect, AO, raw lightmap, albedo, unlit albedo, position, normal, texel density, atlas, and probe-only views exist.
-- **Light probes:** Regular RGB probe volumes, lightmap-derived irradiance, interpolation, debug spheres, public generation/evaluation APIs, PBR dynamic-object binding, playground controls, animated demo, and Project JSON / `.3dl` persistence are implemented.
+- **Light probes:** Regular RGB probe volumes, lightmap-derived irradiance, interpolation, truthful fixed-mapping debug spheres, target/maximum-spacing layout preview, public generation/evaluation APIs, PBR dynamic-object binding, playground controls, animated demo, detailed generation diagnostics, and Project JSON / `.3dl` persistence are implemented.
 - **Probe lifecycle:** Probe resources are cleared on scene replacement and invalidated before a new classic bake. Selecting the probe-only layer without a generated volume falls back to Combined.
 - **Public API:** Both renderer constructor styles and the optional `LightmapRendererAdapter` boundary are supported. Probe generation remains a separate opt-in API after the lightmap bake.
-- **Package readiness:** The 1.0.0 artifact provides ESM/CJS/type declaration output, installed-tarball import smoke, packaged xatlas assets, a full browser release gate, third-party notices, and a manual npm trusted-publish workflow.
+- **Package engineering:** Local artifacts provide ESM/CJS/type declaration output, installed-tarball import smoke, packaged xatlas assets, browser regression coverage, and third-party notices. This does not indicate public-release readiness or authorization.
 - **Launch proof:** README uses committed Cornell screenshots and benchmark numbers recorded before the probe integration.
-- **Current validation truth:** On 2026-07-29, source/example typechecks and all 33 Playwright tests passed sequentially without retries. The run covered real lightmap and probe bakes, back-to-back bake stress, render modes, cancellation, persistence, offline startup, package imports, and the publish dry run.
+- **Current validation truth:** On 2026-08-10, source/example typechecks and all 37 Playwright tests passed sequentially without retries. The run covered real lightmap and dense probe bakes, controlled albedo ratios, dynamic-object lighting, target-spacing layout preview, back-to-back bake stress, render modes, cancellation, persistence, offline startup, and package imports. No publication was performed.
 
 ## Now: Probe Showcase and Larger-Scene Measurement
 
-### 0. Keep the release gate green
+### 0. Keep the engineering gate green
 
 Run:
 
 ```bash
 corepack enable
 pnpm install
-pnpm run release:check
+pnpm run typecheck
+pnpm run typecheck:examples
+pnpm run lint
+pnpm run test:release
 pnpm run dev
 ```
 
@@ -46,14 +53,14 @@ The automated gate now validates:
 - The debug grid receives instance colors and the PBR demo sphere moves through the field.
 - Project restoration, probe-only visibility, bake cancellation, and repeated bakes remain healthy.
 - App startup and xatlas initialization do not request a third-party CDN.
-- ESM, CommonJS, declarations, installed tarball imports, and the npm publish dry run remain healthy.
+- ESM, CommonJS, declarations, and installed tarball imports remain healthy.
 
 Manual visual review still determines whether probe spacing, color quality, and
 leakage are acceptable for each larger showcase scene.
 
 ### 1. Probe and debug-view showcase
 
-Once validation is green, capture and publish:
+Once validation is green, capture and review:
 
 - Probe grid inside Cornell and the future custom room.
 - Moving dynamic sphere or product object receiving colored bounce.
@@ -69,7 +76,7 @@ Once validation is green, capture and publish:
 
 ### 2. Improve probe quality only from measured failures
 
-The current RGB diffuse field is the shipping MVP. Upgrade only where validation demonstrates a real deficiency:
+The current RGB diffuse field is the implemented baseline. Upgrade only where validation demonstrates a real deficiency:
 
 - Tune default spacing, fill iterations, surface offset, and atlas stride.
 - Add per-probe validity and confidence values.
@@ -80,11 +87,13 @@ The current RGB diffuse field is the shipping MVP. Upgrade only where validation
 - Evaluate SH9 directional irradiance only if RGB cannot provide acceptable dynamic-object lighting.
 - Evaluate per-probe cubemap or reduced-ray generation only if lightmap-derived projection is visibly insufficient.
 
-### 3. Release maintenance
+### 3. Pre-release maintenance
 
-- Run the full local `pnpm run release:check` before every release.
-- Publish the exact `package.json` version through the manual npm workflow.
-- Keep npm trusted-publisher settings aligned with `npm-publish.yml` and the `npm` GitHub environment.
+- Keep local build, package-import, and browser regression checks green.
+- Do not spend time on publishing infrastructure unless it directly blocks
+  development or testing.
+- Publishing, tags, version bumps, GitHub Releases, and workflow changes require
+  Ibrahim's explicit approval.
 - Keep claims explicit: browser/WebGL lightmaps and RGB diffuse probes now; Node baking, SH9, and WebGPU remain future work.
 
 ### 4. Custom architectural showcase
@@ -97,6 +106,9 @@ Cornell proves correctness; the custom room should prove product value:
 - Move a recognizable product object through the room.
 - Capture lightmap-only, probes-only, and final views.
 - Add larger-scene visual regression after the showcase is stable.
+- Keep the first probe showcase's static contributors to one solid-color
+  material per mesh. Base-color maps and geometry material groups are not yet
+  represented by the baker's shared per-triangle material lookup.
 
 ### 5. Hybrid runtime lighting companion
 

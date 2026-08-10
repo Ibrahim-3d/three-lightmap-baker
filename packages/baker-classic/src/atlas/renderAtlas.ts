@@ -41,11 +41,13 @@ const worldPositionVertexShader = /* glsl */ `
 `;
 
 const worldPositionFragmentShader = /* glsl */ `
+    uniform float meshId;
     in vec4 vPosition;
     out vec4 fragColor;
     void main() {
-        // Position w=1.0 marks "inside a chart". 0.0 background from clearColor.
-        fragColor = vec4(vPosition.xyz, 1.0);
+        // Alpha 0 is atlas background. Positive integer alpha stores the
+        // one-based group-local mesh ID for probe surface-albedo lookup.
+        fragColor = vec4(vPosition.xyz, meshId);
     }
 `;
 
@@ -57,6 +59,7 @@ const worldPositionMaterial = new ShaderMaterial({
   fog: false,
   uniforms: {
     offset: new Uniform(new Vector2(0, 0)),
+    meshId: new Uniform(1),
   },
 });
 
@@ -135,7 +138,7 @@ const dilationOffsets = [
   { x: 0, y: 0 },
 ];
 
-function makeAtlasMesh(mesh: Mesh): Mesh {
+function makeAtlasMesh(mesh: Mesh, meshIndex: number): Mesh {
   const clone = new Mesh(mesh.geometry, mesh.material);
   clone.matrixAutoUpdate = false;
   clone.matrixWorldAutoUpdate = false;
@@ -143,6 +146,10 @@ function makeAtlasMesh(mesh: Mesh): Mesh {
   clone.matrixWorld.copy(mesh.matrixWorld);
   clone.normalMatrix.getNormalMatrix(mesh.matrixWorld);
   clone.frustumCulled = false;
+  clone.onBeforeRender = (): void => {
+    const meshId = worldPositionMaterial.uniforms.meshId;
+    if (meshId) meshId.value = meshIndex + 1;
+  };
   return clone;
 }
 
@@ -194,7 +201,10 @@ export function renderAtlas(
     }
 
     scene.clear();
-    for (const m of meshes) scene.add(makeAtlasMesh(m));
+    for (let index = 0; index < meshes.length; index++) {
+      const mesh = meshes[index];
+      if (mesh) scene.add(makeAtlasMesh(mesh, index));
+    }
 
     const draw = (material: ShaderMaterial, target: WebGLRenderTarget): void => {
       scene.overrideMaterial = material;
@@ -244,7 +254,7 @@ export function renderMeshToAtlas(
     renderer.autoClear = false;
 
     scene.clear();
-    scene.add(makeAtlasMesh(mesh));
+    scene.add(makeAtlasMesh(mesh, 0));
 
     const draw = (material: ShaderMaterial, target: WebGLRenderTarget): void => {
       scene.overrideMaterial = material;

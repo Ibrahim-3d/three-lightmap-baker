@@ -4,9 +4,9 @@ import { ProbeVolume } from './ProbeVolume';
 export type ProbeLightingBindingOptions = {
   /** Overall probe-light multiplier. Default 1. */
   intensity?: number;
-  /** Multiply irradiance by the material diffuse BRDF. Default true. */
+  /** Apply the target material's Lambertian diffuse BRDF (base color / PI). Default true. */
   multiplyByAlbedo?: boolean;
-  /** Clamp each irradiance channel before applying intensity. Default 4. */
+  /** Optional explicit upper clamp per irradiance channel. Unclamped by default. */
   maxIrradiance?: number;
   /** World-space offset from the mesh origin used to sample the volume. */
   sampleOffset?: Vector3;
@@ -41,7 +41,7 @@ export class ProbeLightingBinding {
   private readonly contribution = new Color();
   private readonly intensity: number;
   private readonly multiplyByAlbedo: boolean;
-  private readonly maxIrradiance: number;
+  private readonly maxIrradiance: number | null;
   private readonly sampleOffset: Vector3;
   private disposed = false;
 
@@ -52,7 +52,10 @@ export class ProbeLightingBinding {
   ) {
     this.intensity = finiteNonNegative(options.intensity ?? 1, 'intensity');
     this.multiplyByAlbedo = options.multiplyByAlbedo ?? true;
-    this.maxIrradiance = finiteNonNegative(options.maxIrradiance ?? 4, 'maxIrradiance');
+    this.maxIrradiance =
+      options.maxIrradiance === undefined
+        ? null
+        : finiteNonNegative(options.maxIrradiance, 'maxIrradiance');
     this.sampleOffset = options.sampleOffset?.clone() ?? new Vector3();
 
     const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
@@ -77,9 +80,9 @@ export class ProbeLightingBinding {
 
     this.contribution.copy(this.sampled);
     this.contribution.setRGB(
-      Math.min(this.maxIrradiance, Math.max(0, this.contribution.r)),
-      Math.min(this.maxIrradiance, Math.max(0, this.contribution.g)),
-      Math.min(this.maxIrradiance, Math.max(0, this.contribution.b)),
+      clampIrradiance(this.contribution.r, this.maxIrradiance),
+      clampIrradiance(this.contribution.g, this.maxIrradiance),
+      clampIrradiance(this.contribution.b, this.maxIrradiance),
     );
     this.contribution.multiplyScalar(this.intensity);
 
@@ -150,4 +153,9 @@ function finiteNonNegative(value: number, name: string): number {
     throw new Error(`[baker:probes] ${name} must be finite and >= 0`);
   }
   return value;
+}
+
+function clampIrradiance(value: number, maximum: number | null): number {
+  const nonNegative = Math.max(0, value);
+  return maximum === null ? nonNegative : Math.min(maximum, nonNegative);
 }

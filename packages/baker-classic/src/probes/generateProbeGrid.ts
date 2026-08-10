@@ -3,6 +3,9 @@ import { ProbeVolume } from './ProbeVolume';
 import type { ProbeGridCounts, ProbeGridOptions, ProbeGridSpacing } from './types';
 
 const MIN_SPACING = 1.0e-4;
+const DEFAULT_SPACING = 0.65;
+const DEFAULT_PADDING = 0.1;
+const DEFAULT_MAX_PROBES = 8192;
 
 /** Build an empty regular probe volume from an object or explicit Box3. */
 export function generateProbeGrid(
@@ -12,10 +15,10 @@ export function generateProbeGrid(
   const bounds = resolveBounds(source, options);
   const counts = options.counts
     ? normalizeCounts(options.counts)
-    : countsFromSpacing(bounds, normalizeSpacing(options.spacing ?? 1));
+    : countsFromSpacing(bounds, normalizeSpacing(options.spacing ?? DEFAULT_SPACING));
 
   const probeCount = counts[0] * counts[1] * counts[2];
-  const maxProbes = Math.max(1, Math.floor(options.maxProbes ?? 4096));
+  const maxProbes = Math.max(1, Math.floor(options.maxProbes ?? DEFAULT_MAX_PROBES));
   if (probeCount > maxProbes) {
     throw new Error(
       `[baker:probes] grid requires ${probeCount} probes, exceeding maxProbes=${maxProbes}`,
@@ -36,7 +39,7 @@ function resolveBounds(source: Object3D | Box3, options: ProbeGridOptions): Box3
     throw new Error('[baker:probes] cannot derive probe bounds from an empty object');
   }
 
-  const padding = options.padding ?? 0;
+  const padding = options.padding ?? DEFAULT_PADDING;
   if (!Number.isFinite(padding) || padding < 0) {
     throw new Error('[baker:probes] padding must be a finite non-negative number');
   }

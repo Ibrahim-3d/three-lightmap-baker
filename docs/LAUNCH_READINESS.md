@@ -1,6 +1,11 @@
 # Launch Readiness
 
-Last updated: 2026-07-29
+Last updated: 2026-08-10
+
+> **Release status:** engineering and package-local checks do not authorize a
+> public npm release. The package is not approved for publication; npm publish,
+> tags, GitHub Releases, version bumps, and publishing-workflow changes remain
+> blocked until Ibrahim explicitly approves them.
 
 ## Positioning
 
@@ -11,21 +16,22 @@ urgent path toward hybrid baked/runtime lighting.
 Built for procedural scenes, configurators, AI-generated 3D spaces, and web
 architectural visualization. No Blender round-trip.
 
-## 1.0.0 release gate
+## Pre-release engineering gate
 
 - Package exports provide ESM, CJS, and TypeScript declarations.
 - Package tarball output is validated by `pnpm run test:api-import`.
-- `pnpm run release:check` runs typecheck, example typecheck, lint, format
-  check, all 33 browser tests with one GPU worker, demo build, bundle budget,
-  package build, tarball import smoke, and npm publish dry run.
+- The local validation commands cover typecheck, example typecheck, lint,
+  formatting, all browser tests with one GPU worker, demo build, bundle budget,
+  package build, and tarball import smoke. A dry run may check package integrity,
+  but is not publication approval.
 - xatlas JavaScript and WASM are packaged locally, licensed in
   `THIRD_PARTY_LICENSES.md`, and covered by an offline/no-third-party-request
   browser test.
 - A real Draft bake generates non-empty RGB probe irradiance and drives the
   dynamic PBR demo object in the browser suite.
-- `.github/workflows/npm-publish.yml` provides the manual authenticated npm
-  publish path with version confirmation, dry-run mode, and npm provenance.
-- README uses the normal `pnpm add three-lightmap-baker` registry install flow.
+- Existing publishing infrastructure is dormant and does not imply approval to
+  configure, trigger, or use it.
+- Development currently uses source checkouts or locally built package artifacts.
 - Headless support is documented as planned, not shipped.
 - Public API examples match the dual constructor support and browser renderer
   requirement.
@@ -64,17 +70,18 @@ architectural visualization. No Blender round-trip.
 - README benchmark tables contain measured RTX 3050 Ti Laptop GPU numbers for
   Draft, Preview, Production, and Final on `cornell.advanced`.
 
-## Release operation
+## Release operation (blocked pending approval)
 
-- Publish only after the exact commit passes `pnpm run release:check`.
+- Do not publish, tag, bump a release version, or create a GitHub Release without
+  Ibrahim's explicit approval, even when all engineering checks pass.
 - Keep release messaging honest: browser/WebGL lightmaps and RGB diffuse probes
   now; true Node headless baking, directional SH probes, and WebGPU remain
   staged next steps.
 
 ## Urgent before flagship public launch
 
-The first npm release can ship as the browser baker. The flagship public launch
-should not stay Cornell-only. These are now urgent launch tasks:
+Public npm release remains blocked. Before any later launch decision, the visual
+proof should not stay Cornell-only. These are product-validation tasks:
 
 - Capture a short top-of-README GIF/video showing the interactive flow: texel
   density view, click Bake, GI appears, atlas shown, baked result applied.

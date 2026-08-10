@@ -43,7 +43,6 @@ export async function attachLightProbeDemo(
   console.info('[baker:probes] generated', stats);
 
   const debugView = createProbeDebugView(volume, {
-    exposure: 1,
     opacity: 0.85,
   });
   scene.add(debugView);

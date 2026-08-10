@@ -9,7 +9,7 @@ type AxisSample = {
   t: number;
 };
 
-/** CPU-side regular probe grid with RGB irradiance and trilinear sampling. */
+/** CPU-side regular probe grid with baker-normalized RGB irradiance and trilinear sampling. */
 export class ProbeVolume {
   readonly bounds: Box3;
   readonly counts: [number, number, number];

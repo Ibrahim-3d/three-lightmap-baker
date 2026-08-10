@@ -6,9 +6,9 @@ export function ProbesPage() {
   const app = getBakerOrchestrator();
   if (!app) return null;
   const o = app.options;
-  const spacing = o.probeSpacing ?? 1.25;
-  const padding = o.probePadding ?? 0;
-  const maxProbes = o.probeMaxProbes ?? 4096;
+  const spacing = o.probeSpacing ?? 0.65;
+  const padding = o.probePadding ?? 0.1;
+  const maxProbes = o.probeMaxProbes ?? 8192;
   const sampleStride = o.probeSampleStride ?? 3;
   const fillIterations = o.probeFillIterations ?? 5;
   const intensity = o.probeIntensity ?? 1;
@@ -18,6 +18,8 @@ export function ProbesPage() {
   const status = o.probeStatus ?? 'idle';
   const progress = o.probeProgress ?? 0;
   const probeCount = o.probeCount ?? 0;
+  const previewCount = o.probePreviewCount ?? 0;
+  const previewOverLimit = o.probePreviewOverLimit ?? false;
   const generating = status === 'generating';
   const available = !!app.generateProbes;
 
@@ -30,13 +32,13 @@ export function ProbesPage() {
     <div class="text-[12px]">
       <Section title="Probe volume">
         <Row
-          label="Spacing"
-          hint="World-space distance between probes. The blue grid updates immediately."
+          label="Target spacing"
+          hint="Maximum world-space step. Endpoint fitting may make the actual per-axis spacing smaller, never larger."
         >
           <RangeField
             value={spacing}
             min={0.2}
-            max={3}
+            max={2}
             step={0.05}
             onChange={(value) => {
               o.probeSpacing = value;
@@ -44,14 +46,11 @@ export function ProbesPage() {
             }}
           />
         </Row>
-        <Row
-          label="Padding"
-          hint="Expands the probe volume around the scene. Preview updates without rebaking."
-        >
+        <Row label="Padding" hint="World-space expansion around the scene bounds.">
           <RangeField
             value={padding}
             min={0}
-            max={2}
+            max={1}
             step={0.05}
             onChange={(value) => {
               o.probePadding = value;
@@ -59,14 +58,11 @@ export function ProbesPage() {
             }}
           />
         </Row>
-        <Row
-          label="Maximum"
-          hint="Safety cap. Spacing is fitted upward automatically when the grid would exceed it."
-        >
+        <Row label="Maximum" hint="Safety cap only. It never enlarges target spacing.">
           <NumberField
             value={maxProbes}
             min={64}
-            max={16384}
+            max={32768}
             step={64}
             onChange={(value) => {
               o.probeMaxProbes = Math.floor(value);
@@ -74,9 +70,15 @@ export function ProbesPage() {
             }}
           />
         </Row>
-        <Row label="Layout">
-          <div class="flex-1 text-right font-mono text-[11px] text-text-2">
-            {probeCount > 0 ? `${probeCount} probes` : 'No preview'}
+        <Row label="Target layout">
+          <div
+            class={`flex-1 text-right font-mono text-[11px] ${previewOverLimit ? 'text-red-400' : 'text-text-2'}`}
+          >
+            {previewCount > 0
+              ? previewOverLimit
+                ? `${previewCount} / ${maxProbes} — over limit`
+                : `${previewCount} positions`
+              : 'No preview'}
           </div>
         </Row>
       </Section>
@@ -117,24 +119,22 @@ export function ProbesPage() {
             {status === 'generating'
               ? `${Math.round(progress * 100)}%`
               : status === 'ready'
-                ? `${probeCount} lit probes`
-                : status === 'preview'
-                  ? `${probeCount} layout preview`
-                  : status}
+                ? `${probeCount} generated probes`
+                : status}
           </div>
         </Row>
         <div class="px-3 pb-3 flex gap-2">
           <button
             type="button"
-            disabled={!available || generating}
+            disabled={!available || generating || previewOverLimit}
             class="flex-1 px-3 py-1.5 rounded bg-accent text-white disabled:opacity-40 hover:brightness-110 transition"
             onClick={() => void app.generateProbes?.()}
           >
-            {generating ? 'Generating…' : 'Generate Probe Lighting'}
+            {generating ? 'Generating…' : 'Generate Irradiance'}
           </button>
           <button
             type="button"
-            disabled={generating || probeCount === 0}
+            disabled={generating || (probeCount === 0 && previewCount === 0)}
             class="px-3 py-1.5 rounded bg-bg-3 border border-border disabled:opacity-40 hover:bg-bg-4 transition"
             onClick={() => {
               app.clearProbes?.();
@@ -193,9 +193,8 @@ export function ProbesPage() {
       </Section>
 
       <div class="px-3 py-2 text-[11px] leading-4 text-text-3">
-        Blue spheres are a layout-only preview. Generate Probe Lighting replaces them with colors
-        sampled from the current baked lightmap. The demo object remains physically based and is
-        excluded from static baking.
+        Cyan markers show target-layout positions only. Generate Irradiance creates stored probe
+        data; Show probes displays those actual values, and the demo sphere samples them at runtime.
       </div>
     </div>
   );

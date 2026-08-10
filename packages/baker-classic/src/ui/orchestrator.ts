@@ -65,9 +65,11 @@ export interface BakerOptions {
   probeShow?: boolean;
   probeDemoEnabled?: boolean;
   probeDemoAnimate?: boolean;
-  probeStatus?: 'idle' | 'preview' | 'generating' | 'ready' | 'error';
+  probeStatus?: 'idle' | 'generating' | 'ready' | 'error';
   probeProgress?: number;
   probeCount?: number;
+  probePreviewCount?: number;
+  probePreviewOverLimit?: boolean;
 }
 
 export interface BakerOrchestrator extends Orchestrator {

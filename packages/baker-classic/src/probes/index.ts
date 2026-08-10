@@ -11,9 +11,12 @@ export type {
   ProbeBakeOptions,
   ProbeBakeSource,
   ProbeBakeStats,
+  ProbeBlackSpatialStatistics,
+  ProbeGridStatistics,
   ProbeGridCounts,
   ProbeGridOptions,
   ProbeGridSpacing,
+  ProbeRGBStatistics,
   ProbeVolumeJSON,
 } from './types';
 export type { ProbeDebugViewOptions } from './ProbeDebugView';

@@ -2,13 +2,9 @@ import type { LightmapBakeResult, ProbeVolumeJSON } from 'baker-classic';
 import { bumpOptions } from 'shared';
 import type { Scene, Texture, WebGLRenderer } from 'three';
 import type { CornellBoxExample } from '../CornellBoxExample';
-import {
-  ProbeController,
-  type PlaygroundProbeOptions,
-  type ProbeLayoutResult,
-} from './ProbeController';
+import { ProbeController, type PlaygroundProbeOptions } from './ProbeController';
 
-type ProbeStatus = 'idle' | 'preview' | 'generating' | 'ready' | 'error';
+type ProbeStatus = 'idle' | 'generating' | 'ready' | 'error';
 
 type ProbeOptionBag = {
   layer: string;
@@ -24,6 +20,8 @@ type ProbeOptionBag = {
   probeStatus: ProbeStatus;
   probeProgress: number;
   probeCount: number;
+  probePreviewCount: number;
+  probePreviewOverLimit: boolean;
 };
 
 type ProbeProject = {
@@ -66,18 +64,20 @@ type ProbeHost = {
 };
 
 const DEFAULTS: Omit<ProbeOptionBag, 'layer'> = {
-  probeSpacing: 1.25,
-  probePadding: 0,
+  probeSpacing: 0.65,
+  probePadding: 0.1,
   probeIntensity: 1,
   probeSampleStride: 3,
   probeFillIterations: 5,
-  probeMaxProbes: 4096,
+  probeMaxProbes: 8192,
   probeShow: true,
   probeDemoEnabled: true,
   probeDemoAnimate: true,
   probeStatus: 'idle',
   probeProgress: 0,
   probeCount: 0,
+  probePreviewCount: 0,
+  probePreviewOverLimit: false,
 };
 
 /** Install playground-only probe behavior onto the existing orchestrator. */
@@ -93,45 +93,36 @@ export function installProbeIntegration(app: CornellBoxExample): ProbeController
   );
   let activeProbeAbort: AbortController | null = null;
 
+  const resetPreview = (): void => {
+    host.options.probePreviewCount = 0;
+    host.options.probePreviewOverLimit = false;
+  };
+
   const invalidate = (): void => {
     activeProbeAbort?.abort();
     activeProbeAbort = null;
     controller.clear();
     resetStatus(host.options);
+    resetPreview();
     bumpOptions();
-  };
-
-  const applyLayout = (layout: ProbeLayoutResult): void => {
-    host.options.probeCount = layout.probeCount;
-    if (layout.spacingAdjusted) {
-      host.options.probeSpacing = Number(layout.effectiveSpacing.toFixed(3));
-      console.info(
-        `[baker:probes] spacing fitted to ${host.options.probeSpacing} for maxProbes=${host.options.probeMaxProbes}`,
-      );
-    }
   };
 
   host.probeController = controller;
   host.renderModeRunner.setProbeOnlyHandler((active) => {
     controller.setProbeOnly(active);
-    return active ? controller.hasVisualization : true;
+    return active ? controller.hasVolume : true;
   });
   host.renderModeRunner.setBeforeBakeHandler(invalidate);
 
   host.previewProbes = (): void => {
-    activeProbeAbort?.abort();
-    activeProbeAbort = null;
     try {
-      const layout = controller.preview(readControllerOptions(host.options));
-      applyLayout(layout);
-      host.options.probeStatus = 'preview';
-      host.options.probeProgress = 0;
+      const result = controller.preview(readControllerOptions(host.options));
+      host.options.probePreviewCount = result.probeCount;
+      host.options.probePreviewOverLimit = result.overLimit;
     } catch (error) {
-      controller.clear();
-      host.options.probeStatus = 'error';
-      host.options.probeProgress = 0;
-      host.options.probeCount = 0;
-      console.warn('[baker:probes] preview unavailable:', error);
+      controller.clearPreview();
+      resetPreview();
+      console.warn('[baker:probes] layout preview failed:', error);
     }
     bumpOptions();
   };
@@ -145,10 +136,17 @@ export function installProbeIntegration(app: CornellBoxExample): ProbeController
 
   host.generateProbes = async (): Promise<void> => {
     if (host.options.probeStatus === 'generating') return;
+    if (host.options.probePreviewOverLimit) {
+      const message = `Target layout needs ${host.options.probePreviewCount} probes; maximum is ${host.options.probeMaxProbes}. Reduce density or raise the safety cap explicitly.`;
+      host.externalHooks.onBakeError?.(message);
+      return;
+    }
+
     const abort = new AbortController();
     activeProbeAbort = abort;
     host.options.probeStatus = 'generating';
     host.options.probeProgress = 0;
+    controller.clearPreview();
     bumpOptions();
 
     let reported = -1;
@@ -165,16 +163,24 @@ export function installProbeIntegration(app: CornellBoxExample): ProbeController
         },
       });
       if (abort.signal.aborted) return;
-      applyLayout(stats);
       host.options.probeStatus = 'ready';
       host.options.probeProgress = 1;
       host.options.probeCount = controller.probeCount;
+      host.options.probePreviewCount = controller.probeCount;
+      host.options.probePreviewOverLimit = false;
       controller.setShowProbes(host.options.probeShow);
       controller.setDemoEnabled(host.options.probeDemoEnabled);
       controller.setDemoAnimation(host.options.probeDemoAnimate);
       controller.setIntensity(host.options.probeIntensity);
       if (host.options.layer === 'probes') controller.setProbeOnly(true);
-      console.info('[baker:probes] generated', stats);
+      console.info('[baker:probes] generated', {
+        requested: {
+          targetSpacing: host.options.probeSpacing,
+          padding: host.options.probePadding,
+          maxProbes: host.options.probeMaxProbes,
+        },
+        ...stats,
+      });
     } catch (error) {
       const aborted =
         abort.signal.aborted || (error instanceof Error && error.name === 'AbortError');
@@ -183,7 +189,7 @@ export function installProbeIntegration(app: CornellBoxExample): ProbeController
       } else {
         host.options.probeStatus = 'error';
         host.options.probeProgress = 0;
-        host.options.probeCount = 0;
+        host.options.probeCount = controller.probeCount;
         const message = error instanceof Error ? error.message : String(error);
         console.error('[baker:probes] generation failed:', error);
         host.externalHooks.onBakeError?.(`Probe generation failed: ${message}`);
@@ -194,7 +200,10 @@ export function installProbeIntegration(app: CornellBoxExample): ProbeController
     }
   };
 
-  host.clearProbes = invalidate;
+  host.clearProbes = (): void => {
+    invalidate();
+    host.previewProbes?.();
+  };
   host.setProbeVisibility = (visible): void => controller.setShowProbes(visible);
   host.setProbeDemoEnabled = (enabled): void => controller.setDemoEnabled(enabled);
   host.setProbeDemoAnimation = (enabled): void => controller.setDemoAnimation(enabled);
@@ -237,6 +246,8 @@ function installPersistence(
       host.options.probeStatus = 'ready';
       host.options.probeProgress = 1;
       host.options.probeCount = controller.probeCount;
+      host.options.probePreviewCount = controller.probeCount;
+      host.options.probePreviewOverLimit = false;
       if (host.options.layer === 'probes') controller.setProbeOnly(true);
     } else {
       resetStatus(host.options);
@@ -271,9 +282,9 @@ function installDefaults(options: ProbeHost['options']): void {
 
 function readControllerOptions(options: ProbeOptionBag): PlaygroundProbeOptions {
   return {
-    spacing: Math.max(0.05, options.probeSpacing),
-    padding: Math.max(0, options.probePadding),
-    intensity: Math.max(0, options.probeIntensity),
+    spacing: options.probeSpacing,
+    padding: options.probePadding,
+    intensity: options.probeIntensity,
     sampleStride: Math.max(1, Math.floor(options.probeSampleStride)),
     fillIterations: Math.max(0, Math.floor(options.probeFillIterations)),
     maxProbes: Math.max(1, Math.floor(options.probeMaxProbes)),
