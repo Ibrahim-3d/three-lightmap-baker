@@ -1,4 +1,4 @@
-import { Color, Texture, TextureFilter, WebGLMultipleRenderTargets, WebGLRenderer } from 'three';
+import { Color, Texture, TextureFilter, WebGLRenderTarget, WebGLRenderer } from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
 import { PackedLight } from './Lights';
 export type RaycastOptions = {
@@ -40,7 +40,7 @@ export type LightmapperRender = {
     lastDrawMs: number;
 };
 export type Lightmapper = {
-    renderTarget: WebGLMultipleRenderTargets;
+    renderTarget: WebGLRenderTarget;
     /**
      * Direct/indirect output textures. AO has been split into a separate pass -
      * see `AOMapper.ts`. Composite consumes (direct, indirect, ao-from-AOMapper).

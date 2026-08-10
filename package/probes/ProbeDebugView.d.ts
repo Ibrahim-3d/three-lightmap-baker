@@ -2,26 +2,21 @@ import { Group, InstancedMesh } from 'three';
 import { ProbeVolume } from './ProbeVolume';
 export type ProbeDebugViewOptions = {
     radius?: number;
-    exposure?: number;
     opacity?: number;
     widthSegments?: number;
     heightSegments?: number;
-    /** Normalize dim probe fields for inspection without changing runtime lighting values. */
-    autoExposure?: boolean;
 };
-/** Colored instanced spheres for inspecting probe placement and irradiance. */
+/** Colored instanced spheres using a fixed display-only c/(1+c) tone mapping. */
 export declare class ProbeDebugView extends Group {
     readonly volume: ProbeVolume;
     readonly mesh: InstancedMesh;
     private readonly geometry;
     private readonly material;
+    private readonly colorAttribute;
     private readonly probePosition;
     private readonly probeMatrix;
     private readonly color;
-    private readonly displayScale;
-    private exposure;
     constructor(volume: ProbeVolume, options?: ProbeDebugViewOptions);
-    setExposure(exposure: number): void;
     refresh(): void;
     refreshColors(): void;
     dispose(): void;

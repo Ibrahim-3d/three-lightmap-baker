@@ -32,8 +32,8 @@ export { collectLightsFromScene, buildLightTexture, disposeLightTexture } from '
 export type { PackedLight, LightType } from './lightmap/Lights';
 export { TexelDensityMaterial } from './lightmap/TexelDensityMaterial';
 export type { TexelDensityMaterialOptions } from './lightmap/TexelDensityMaterial';
-export { ProbeVolume, generateProbeGrid, bakeProbeIrradianceFromLightmaps, generateProbeVolume, ProbeDebugView, createProbeDebugView, ProbeLightingBinding, bindProbeLighting, } from './probes';
-export type { GeneratedProbeVolume, GenerateProbeVolumeOptions, ProbeBakeHooks, ProbeBakeOptions, ProbeBakeSource, ProbeBakeStats, ProbeDebugViewOptions, ProbeGridCounts, ProbeGridOptions, ProbeGridSpacing, ProbeLightingBindingOptions, ProbeVolumeJSON, } from './probes';
+export { ProbeVolume, generateProbeGrid, captureNativeLightProbeGrid, captureNativeLightProbeGridFromJSON, bakeProbeIrradianceFromLightmaps, generateProbeVolume, ProbeDebugView, createProbeDebugView, ProbeLightingBinding, bindProbeLighting, } from './probes';
+export type { GeneratedProbeVolume, NativeLightProbeGridCaptureOptions, NativeLightProbeGridJSON, NativeLightProbeGridOptions, NativeLightProbeGridRestoreOptions, NativeLightProbeGridResult, NativeLightProbeGridStats, GenerateProbeVolumeOptions, ProbeBakeHooks, ProbeBakeOptions, ProbeBakeSource, ProbeBakeStats, ProbeDebugViewOptions, ProbeGridCounts, ProbeGridOptions, ProbeGridSpacing, ProbeLightingBindingOptions, ProbeVolumeJSON, } from './probes';
 export { BakeError } from './errors';
 export type { BakeErrorPhase } from './errors';
 export { LightmapBaker, LightmapBakeResult } from './LightmapBaker';

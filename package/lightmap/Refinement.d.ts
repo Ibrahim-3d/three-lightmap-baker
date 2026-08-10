@@ -19,5 +19,5 @@ export type PostProcessResult = {
  *
  * Two RTs are allocated and ping-ponged. Caller owns disposal via the returned handle.
  */
-export declare const runPostProcess: (renderer: WebGLRenderer, src: Texture, positions: Texture, resolution: number, opts: PostProcessOptions, onProgress?: ((percent: number) => void) | undefined) => Promise<PostProcessResult>;
+export declare const runPostProcess: (renderer: WebGLRenderer, src: Texture, positions: Texture, resolution: number, opts: PostProcessOptions, onProgress?: (percent: number) => void) => Promise<PostProcessResult>;
 //# sourceMappingURL=Refinement.d.ts.map

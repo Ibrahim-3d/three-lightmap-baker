@@ -1,6 +1,6 @@
 import { Box3, Color, Vector3 } from 'three';
 import type { ProbeVolumeJSON } from './types';
-/** CPU-side regular probe grid with RGB irradiance and trilinear sampling. */
+/** CPU-side regular probe grid with baker-normalized RGB irradiance and trilinear sampling. */
 export declare class ProbeVolume {
     readonly bounds: Box3;
     readonly counts: [number, number, number];

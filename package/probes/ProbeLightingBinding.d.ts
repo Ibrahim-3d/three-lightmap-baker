@@ -3,9 +3,9 @@ import { ProbeVolume } from './ProbeVolume';
 export type ProbeLightingBindingOptions = {
     /** Overall probe-light multiplier. Default 1. */
     intensity?: number;
-    /** Multiply irradiance by the material diffuse BRDF. Default true. */
+    /** Apply the target material's Lambertian diffuse BRDF (base color / PI). Default true. */
     multiplyByAlbedo?: boolean;
-    /** Clamp each irradiance channel before applying intensity. Default 4. */
+    /** Optional explicit upper clamp per irradiance channel. Unclamped by default. */
     maxIrradiance?: number;
     /** World-space offset from the mesh origin used to sample the volume. */
     sampleOffset?: Vector3;
