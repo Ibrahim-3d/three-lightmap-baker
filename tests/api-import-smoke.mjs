@@ -31,6 +31,9 @@ const assertExports = (label, mod) => {
   if (typeof mod?.loadXAtlasThree !== 'function') {
     throw new Error(`${label}: loadXAtlasThree export is missing`);
   }
+  if (typeof mod?.captureNativeLightProbeGrid !== 'function') {
+    throw new Error(`${label}: captureNativeLightProbeGrid export is missing`);
+  }
   if (typeof mod?.createRendererAdapter !== 'function') {
     throw new Error(`${label}: createRendererAdapter export is missing`);
   }

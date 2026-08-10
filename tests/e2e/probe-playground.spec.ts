@@ -143,6 +143,7 @@ test.describe('playground probe integration', () => {
 
       const baker = (window as unknown as { __baker: ProbeHost }).__baker;
       Object.assign(baker.options, {
+        probeRuntime: 'legacy',
         probeSpacing: 0.65,
         probePadding: 0.1,
         probeSampleStride: 3,
@@ -253,9 +254,7 @@ test.describe('playground probe integration', () => {
       generated.stats?.irradiance.effectivelyBlackCount,
     );
     expect(generated.stats?.fallbackFilled).toBe(generated.stats?.emptyAfterFill);
-    expect(generated.stats?.populatedEffectivelyBlack).toBeGreaterThan(
-      generated.stats?.emptyAfterFill ?? 0,
-    );
+    expect(generated.stats?.populatedEffectivelyBlack).toBe(0);
     expect(generated.stats?.blackProbeLocations.interiorOpenSpaceCount).toBe(0);
     expect(generated.leftSlab[0]).toBeGreaterThan(generated.leftSlab[1]);
     expect(generated.strongestRed.excess).toBeGreaterThan(0.1);
@@ -389,6 +388,7 @@ test.describe('playground probe integration', () => {
       project.options = {
         ...project.options,
         layer: 'combined',
+        probeRuntime: 'legacy',
         probeSpacing: 1,
         probePadding: 0.1,
         probeIntensity: 1.25,

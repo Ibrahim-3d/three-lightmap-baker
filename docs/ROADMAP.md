@@ -1,6 +1,6 @@
 # Roadmap
 
-Last updated: 2026-08-10
+Last updated: 2026-08-11
 
 Public npm publication is not approved. Local package validation and the
 existence of release infrastructure are engineering aids only; publication is
@@ -11,10 +11,10 @@ gated on Ibrahim's explicit approval.
 Three Lightmap Baker is a browser-first lighting pipeline for Three.js:
 
 1. Bake static GI into reusable lightmaps. Implemented.
-2. Generate and debug light probes from the baked scene. Implemented in code.
-3. Use probes to light dynamic objects at runtime. Implemented in code.
-4. Validate the complete lightmap + probe workflow on target hardware. Implemented locally.
-5. Showcase the complete lightmap + probe workflow in a custom architectural scene. Current gate.
+2. Capture the baked static scene into native Three.js `LightProbeGrid`. Implemented in code.
+3. Use the native GPU L2 SH grid for dynamic-object lighting. Implemented in code.
+4. Retain the custom RGB probe stack as an explicit fallback until the native path is proven broadly.
+5. Validate and showcase the complete native lightmap + probe workflow on target hardware. Current gate.
 6. Add optional real-time companion passes where they strengthen the baked workflow.
 7. Stage WebGPU acceleration without breaking the WebGL-first package.
 
@@ -24,12 +24,12 @@ The core product remains stable baked lighting. Probes now bridge static lightma
 
 - **Core baker:** Browser/WebGL lightmap baking is implemented with path-traced GI, BVH traversal, auto UV2, AO, dilation, denoise, supersampling/downscale, progressive hooks, and `LightmapBakeResult` lifecycle helpers.
 - **Debug tooling:** Combined, refined/raw combined, direct, indirect, AO, raw lightmap, albedo, unlit albedo, position, normal, texel density, atlas, and probe-only views exist.
-- **Light probes:** Regular RGB probe volumes, lightmap-derived irradiance, interpolation, truthful fixed-mapping debug spheres, target/maximum-spacing layout preview, public generation/evaluation APIs, PBR dynamic-object binding, playground controls, animated demo, detailed generation diagnostics, and Project JSON / `.3dl` persistence are implemented.
+- **Light probes:** Three.js `LightProbeGrid` is the preferred runtime. It captures the completed baked static scene into a GPU-resident L2 SH atlas and lights moving `MeshStandardMaterial` objects through the native renderer. The prior RGB volume, CPU interpolation, shader binding, diagnostics, and persistence remain available under **Legacy RGB volume**.
 - **Probe lifecycle:** Probe resources are cleared on scene replacement and invalidated before a new classic bake. Selecting the probe-only layer without a generated volume falls back to Combined.
 - **Public API:** Both renderer constructor styles and the optional `LightmapRendererAdapter` boundary are supported. Probe generation remains a separate opt-in API after the lightmap bake.
 - **Package engineering:** Local artifacts provide ESM/CJS/type declaration output, installed-tarball import smoke, packaged xatlas assets, browser regression coverage, and third-party notices. This does not indicate public-release readiness or authorization.
 - **Launch proof:** README uses committed Cornell screenshots and benchmark numbers recorded before the probe integration.
-- **Current validation truth:** On 2026-08-10, source/example typechecks and all 37 Playwright tests passed sequentially without retries. The run covered real lightmap and dense probe bakes, controlled albedo ratios, dynamic-object lighting, target-spacing layout preview, back-to-back bake stress, render modes, cancellation, persistence, offline startup, and package imports. No publication was performed.
+- **Current validation truth:** The r185.1 migration, source/example typechecks, and production build pass on 2026-08-11. Native browser capture has dedicated regression coverage; a full GPU-suite rerun remains required on a machine where the Playwright browser launcher is responsive. No publication was performed.
 
 ## Now: Probe Showcase and Larger-Scene Measurement
 
@@ -76,7 +76,7 @@ Once validation is green, capture and review:
 
 ### 2. Improve probe quality only from measured failures
 
-The current RGB diffuse field is the implemented baseline. Upgrade only where validation demonstrates a real deficiency:
+Native L2 SH is now the baseline. Upgrade only where validation demonstrates a real deficiency:
 
 - Tune default spacing, fill iterations, surface offset, and atlas stride.
 - Add per-probe validity and confidence values.
@@ -84,8 +84,8 @@ The current RGB diffuse field is the implemented baseline. Upgrade only where va
 - Add probe relocation if samples sit inside geometry.
 - Add multi-point sampling for large dynamic objects.
 - Compact `.3dl` probe payloads if JSON size becomes material.
-- Evaluate SH9 directional irradiance only if RGB cannot provide acceptable dynamic-object lighting.
-- Evaluate per-probe cubemap or reduced-ray generation only if lightmap-derived projection is visibly insufficient.
+- Tune native grid spacing and cubemap size against capture time and leakage.
+- Retire individual legacy RGB components only after equivalent native-path tests pass on target hardware.
 
 ### 3. Pre-release maintenance
 
@@ -94,7 +94,7 @@ The current RGB diffuse field is the implemented baseline. Upgrade only where va
   development or testing.
 - Publishing, tags, version bumps, GitHub Releases, and workflow changes require
   Ibrahim's explicit approval.
-- Keep claims explicit: browser/WebGL lightmaps and RGB diffuse probes now; Node baking, SH9, and WebGPU remain future work.
+- Keep claims explicit: browser/WebGL lightmaps and native L2 SH probes now; Node baking and a WebGPU probe-grid runtime remain future work.
 
 ### 4. Custom architectural showcase
 

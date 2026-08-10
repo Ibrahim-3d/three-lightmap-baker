@@ -123,6 +123,12 @@ export async function bakeProbeIrradianceFromLightmaps(
         addRGBSample(projectedSurfaceLight, rr, rg, rb);
         validSourceSamples++;
 
+        // A zero-radiance surface sample carries no lighting information. Letting
+        // it add weight would mark nearby probes as populated with black and stop
+        // the empty-probe diffusion pass from filling those cells from lit
+        // neighbours. This is especially visible with low-sample draft bakes.
+        if (Math.max(rr, rg, rb) <= BLACK_THRESHOLD) continue;
+
         const sx = px + nx * surfaceOffset;
         const sy = py + ny * surfaceOffset;
         const sz = pz + nz * surfaceOffset;
@@ -157,10 +163,10 @@ export async function bakeProbeIrradianceFromLightmaps(
 
               const index = xi + volume.counts[0] * (yi + volume.counts[1] * zi);
               const offset = index * 3;
-              accum[offset] += rr * weight;
-              accum[offset + 1] += rg * weight;
-              accum[offset + 2] += rb * weight;
-              weights[index] += weight;
+              accum[offset] = (accum[offset] ?? 0) + rr * weight;
+              accum[offset + 1] = (accum[offset + 1] ?? 0) + rg * weight;
+              accum[offset + 2] = (accum[offset + 2] ?? 0) + rb * weight;
+              weights[index] = (weights[index] ?? 0) + weight;
               probeContributions++;
               contributed = true;
             }

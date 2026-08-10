@@ -1,11 +1,35 @@
 # Baked Light Probes
 
-Status: package and playground integration reconciled and locally validated on
-2026-08-10. Public npm publication is not approved.
+Status: native-first architecture implemented on 2026-08-11. Public npm
+publication is not approved.
 
-## What is implemented
+## Preferred architecture
 
-The classic browser baker now includes an end-to-end diffuse light-probe workflow:
+The stable v1 direction is:
+
+```text
+path-traced lightmap bake
+  -> baked static scene
+  -> Three.js LightProbeGrid capture
+  -> GPU L2 SH atlas
+  -> native dynamic-object lighting
+```
+
+The editor defaults to **Three.js L2 SH (GPU)**. During capture it temporarily
+shows only completed lightmapped static meshes, disables live lights and the
+environment, and uses linear/no-tone-mapping output. Three.js then projects
+per-probe cubemaps into its packed GPU SH volume. Standard Three.js materials
+consume that grid without `onBeforeCompile`, per-object CPU sampling, or a
+per-frame custom probe update.
+
+The previous RGB `ProbeVolume`, atlas projection, CPU trilinear interpolation,
+debug view, shader binding, diagnostics, and JSON payload remain intact behind
+the **Legacy RGB volume** selector until the native path has broader production
+validation.
+
+## Legacy RGB implementation
+
+The retained fallback includes:
 
 - Regular three-dimensional probe-grid generation from baked scene bounds or an explicit `Box3`.
 - Configurable target/maximum spacing, exact counts, padding, atlas sampling stride, fill passes, and a hard maximum-probe cap.
@@ -42,7 +66,7 @@ The classic browser baker now includes an end-to-end diffuse light-probe workflo
 
 No GitHub Actions workflow was added, changed, or manually dispatched for this work.
 
-## Current algorithm
+## Legacy RGB algorithm
 
 This implementation reuses the stable lightmap result instead of introducing another ray tracer.
 
@@ -112,17 +136,42 @@ black, and final black count need not equal the pre-fallback empty count.
 1. Open a scene in the playground.
 2. Run a normal Draft, Preview, Production, or Final lightmap bake.
 3. Open the **Probes** inspector tab.
-4. Set target probe spacing and the maximum probe count.
-5. Select **Generate Probes**.
+4. Keep **Three.js L2 SH (GPU)** selected, then set target spacing, maximum count, and cubemap size.
+5. Select **Capture Native L2 SH**.
 6. Toggle **Show Probes** to inspect the colored probe grid in the normal combined view.
 7. Enable **Demo sphere** and **Animate demo** to see the dynamic object move through the field.
 8. Select the **Light Probes** render layer to isolate the probe field.
-9. Save the project. Probe data and settings are written into the same Project JSON / `.3dl` payload.
-10. Load the project. The probe grid, controls, debug view, and demo state are restored without regenerating probes.
+9. Save the project. Baked lightmaps, probe settings, bounds, counts, and native recapture settings are written into the same Project JSON / `.3dl` payload.
+10. Load the project. The baked lightmaps are restored first, then the native GPU grid is recaptured because its render target is not a portable JSON asset.
 
 Starting a new classic bake clears the old probe volume because it was derived from the previous static-lighting result.
 
-## Public API
+## Native public API
+
+```ts
+import { captureNativeLightProbeGrid } from 'three-lightmap-baker';
+
+// Mount the completed lightmaps and choose the static scene visibility first.
+const { grid, stats, descriptor } = captureNativeLightProbeGrid(renderer, scene, scene, {
+  spacing: 1.25,
+  padding: 0.1,
+  maxProbes: 1024,
+  cubemapSize: 8,
+  bounces: 0, // the lightmaps already contain the path-traced indirect light
+});
+
+// `grid` is already in the scene. Standard materials are lit natively.
+renderer.render(scene, camera);
+
+// Later:
+scene.remove(grid);
+grid.dispose();
+```
+
+`captureNativeLightProbeGridFromJSON()` recreates the GPU grid from a saved
+descriptor after the baked static scene has been restored.
+
+## Legacy public API
 
 ```ts
 import { generateProbeVolume, createProbeDebugView, bindProbeLighting } from 'three-lightmap-baker';
@@ -245,12 +294,12 @@ Then perform the visual validation:
 
 ## Remaining limitations
 
-- The stored field is RGB diffuse irradiance, not directional SH9 irradiance.
-- The field is generated from baked surface atlases, not direct per-probe cubemap or ray capture.
-- Probe generation requires GPU texture readback and remains browser/WebGL-based.
-- Runtime sampling is currently one sample at the mesh origin plus an optional offset; large objects do not yet sample multiple points.
-- A shared material should not be independently bound to multiple meshes without cloning it first.
-- Probe-volume JSON can become large at high probe counts because irradiance is currently stored as number arrays rather than a compact binary payload.
+- Native `LightProbeGrid` currently supports `WebGLRenderer`, not `WebGPURenderer`.
+- Native capture is synchronous in upstream Three.js and can be expensive for dense grids; keep `maxProbes` conservative and validate capture time on target hardware.
+- Three.js selects grids from object origins. Large objects do not blend multiple spatial samples.
+- A single native grid is available to every light-reactive material in the same render pass. Strict dynamic-only sampling would require a separate static/dynamic render pass; v1 deliberately avoids adding that custom renderer split.
+- The legacy path still requires GPU texture readback, samples once at the object origin plus an optional offset, and can create large JSON arrays at high probe counts.
+- A shared material should not be independently legacy-bound to multiple meshes without cloning it first.
 - Static source albedo currently uses one solid `material.color` per mesh.
   `material.map` and geometry material groups are unsupported in both the
   baker's shared per-triangle material lookup and probe projection. The first
@@ -261,4 +310,4 @@ Then perform the visual validation:
   add map/material-group energy-ratio tests before lifting the showcase gate.
 - Larger architectural-scene quality, leakage, and performance remain to be
   measured; Cornell validation alone does not establish those properties.
-- SH9, visibility/occlusion data, relocation, per-probe validity, and reflection probes remain future upgrades rather than requirements for this completed RGB diffuse implementation.
+- Visibility/occlusion data, relocation, per-probe validity, and reflection probes remain future work.

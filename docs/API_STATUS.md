@@ -69,6 +69,10 @@ volume.toJSON()
 - Outliner selection, framing, transform controls, camera objects, undo/redo, and asset-library workflows.
 - Direct, indirect, AO, raw lightmap, albedo, unlit albedo, position, normal, texel-density, and atlas inspection views.
 - Regular RGB light-probe volume generation from the completed lightmap bake.
+- Preferred native Three.js `LightProbeGrid` capture from the completed baked static scene.
+- GPU-resident L2 SH atlas interpolation through the stock `WebGLRenderer` standard-material path.
+- Native `LightProbeGridHelper`, editor runtime selector, capture-size controls, animated dynamic-object demo, and recapture descriptors in Project JSON / `.3dl` version 1.
+- Legacy RGB generation, CPU interpolation, custom material binding, diagnostics, and project loading remain supported as an explicit fallback.
 - Trilinear probe sampling and JSON serialization.
 - Lightmap-atlas-derived probe irradiance with progress, abort handling, and empty-probe diffusion.
 - Material-albedo-aware source diffuse projection, using the position atlas to
@@ -125,7 +129,7 @@ volume.toJSON()
 - True Node.js headless baking adapter/runtime.
 - True non-browser runtime once a Node-compatible renderer strategy is selected.
 - Live per-PR preview deployment URLs.
-- Directional SH9 probe storage and evaluation.
+- Equivalent native `LightProbeGrid` support in `WebGPURenderer` (upstream Three.js does not provide it yet).
 - Probe visibility/occlusion, relocation, validity classification, and reflection probes.
 
 ## Known limitations
@@ -136,7 +140,7 @@ volume.toJSON()
 - Package management is pnpm through Corepack.
 - Project JSON v1 is an editor convenience format, not the npm package API.
 - Probe generation uses GPU texture readback.
-- Current probes store low-frequency RGB diffuse irradiance rather than directional SH.
+- Native probe textures are GPU-owned and are recaptured from the persisted baked scene on project load; they are not serialized byte-for-byte.
 - Probe source albedo currently supports one solid `material.color` per mesh.
   Base-color maps and geometry material groups are also unsupported by the
   baker's shared BVH material path, so the first showcase is constrained to

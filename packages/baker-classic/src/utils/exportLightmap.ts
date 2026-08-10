@@ -159,15 +159,19 @@ export async function exportPNG(
 }
 
 /** Linear HDR EXR via three.js EXRExporter. */
-export function exportEXR(
+export async function exportEXR(
   renderer: WebGLRenderer,
   source: Texture,
   resolution: number,
   filename: string,
-): void {
+): Promise<void> {
   const rt = renderToRT(renderer, source, resolution);
-  const buffer = new EXRExporter().parse(renderer, rt);
-  rt.dispose();
+  let buffer: Uint8Array<ArrayBuffer>;
+  try {
+    buffer = await new EXRExporter().parse(renderer, rt);
+  } finally {
+    rt.dispose();
+  }
   triggerDownload(new Blob([buffer], { type: 'image/x-exr' }), ensureExt(filename, 'exr'));
 }
 
@@ -203,7 +207,7 @@ export async function exportLightmap(
       await exportPNG(renderer, source, resolution, filename);
       return;
     case 'exr':
-      exportEXR(renderer, source, resolution, filename);
+      await exportEXR(renderer, source, resolution, filename);
       return;
     case 'bin':
       exportRaw(renderer, source, resolution, filename);

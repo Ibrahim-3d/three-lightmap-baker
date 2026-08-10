@@ -1,19 +1,21 @@
-import type { LightmapBakeResult, ProbeVolumeJSON } from 'baker-classic';
+import type { LightmapBakeResult, NativeLightProbeGridJSON, ProbeVolumeJSON } from 'baker-classic';
 import { bumpOptions } from 'shared';
 import type { Scene, Texture, WebGLRenderer } from 'three';
 import type { CornellBoxExample } from '../CornellBoxExample';
 import { ProbeController, type PlaygroundProbeOptions } from './ProbeController';
 
-type ProbeStatus = 'idle' | 'generating' | 'ready' | 'error';
+type ProbeStatus = 'idle' | 'generating' | 'ready' | 'stale' | 'error';
 
 type ProbeOptionBag = {
   layer: string;
+  probeRuntime: 'native' | 'legacy';
   probeSpacing: number;
   probePadding: number;
   probeIntensity: number;
   probeSampleStride: number;
   probeFillIterations: number;
   probeMaxProbes: number;
+  probeCubemapSize: number;
   probeShow: boolean;
   probeDemoEnabled: boolean;
   probeDemoAnimate: boolean;
@@ -27,6 +29,7 @@ type ProbeOptionBag = {
 type ProbeProject = {
   options?: Record<string, unknown>;
   probeVolume?: ProbeVolumeJSON;
+  nativeProbeGrid?: NativeLightProbeGridJSON;
   [key: string]: unknown;
 };
 
@@ -64,12 +67,14 @@ type ProbeHost = {
 };
 
 const DEFAULTS: Omit<ProbeOptionBag, 'layer'> = {
-  probeSpacing: 0.65,
+  probeRuntime: 'native',
+  probeSpacing: 1.25,
   probePadding: 0.1,
   probeIntensity: 1,
   probeSampleStride: 3,
   probeFillIterations: 5,
-  probeMaxProbes: 8192,
+  probeMaxProbes: 1024,
+  probeCubemapSize: 8,
   probeShow: true,
   probeDemoEnabled: true,
   probeDemoAnimate: true,
@@ -207,7 +212,10 @@ export function installProbeIntegration(app: CornellBoxExample): ProbeController
   host.setProbeVisibility = (visible): void => controller.setShowProbes(visible);
   host.setProbeDemoEnabled = (enabled): void => controller.setDemoEnabled(enabled);
   host.setProbeDemoAnimation = (enabled): void => controller.setDemoAnimation(enabled);
-  host.setProbeIntensity = (intensity): void => controller.setIntensity(intensity);
+  host.setProbeIntensity = (intensity): void => {
+    controller.setIntensity(intensity);
+    if (controller.activeRuntime === 'native') host.options.probeStatus = 'stale';
+  };
 
   installPersistence(host, controller, invalidate);
   installProjectFileSurface(host);
@@ -231,6 +239,7 @@ function installPersistence(
         ...persistedOptions(host.options),
       },
       probeVolume: controller.serialize(),
+      nativeProbeGrid: controller.serializeNative(),
     };
   };
 
@@ -241,8 +250,17 @@ function installPersistence(
     installDefaults(host.options);
     applyPersistedOptions(host.options, project.options);
 
-    if (project.probeVolume) {
+    if (project.nativeProbeGrid && host.options.probeRuntime === 'native') {
+      await controller.restoreNative(project.nativeProbeGrid, readControllerOptions(host.options));
+      host.options.probeStatus = 'ready';
+      host.options.probeProgress = 1;
+      host.options.probeCount = controller.probeCount;
+      host.options.probePreviewCount = controller.probeCount;
+      host.options.probePreviewOverLimit = false;
+      if (host.options.layer === 'probes') controller.setProbeOnly(true);
+    } else if (project.probeVolume) {
       controller.restore(project.probeVolume, readControllerOptions(host.options));
+      host.options.probeRuntime = 'legacy';
       host.options.probeStatus = 'ready';
       host.options.probeProgress = 1;
       host.options.probeCount = controller.probeCount;
@@ -282,12 +300,14 @@ function installDefaults(options: ProbeHost['options']): void {
 
 function readControllerOptions(options: ProbeOptionBag): PlaygroundProbeOptions {
   return {
+    runtime: options.probeRuntime,
     spacing: options.probeSpacing,
     padding: options.probePadding,
     intensity: options.probeIntensity,
     sampleStride: Math.max(1, Math.floor(options.probeSampleStride)),
     fillIterations: Math.max(0, Math.floor(options.probeFillIterations)),
     maxProbes: Math.max(1, Math.floor(options.probeMaxProbes)),
+    cubemapSize: Math.max(1, Math.floor(options.probeCubemapSize)),
     showProbes: options.probeShow,
     showDemo: options.probeDemoEnabled,
     animateDemo: options.probeDemoAnimate,
@@ -296,12 +316,14 @@ function readControllerOptions(options: ProbeOptionBag): PlaygroundProbeOptions 
 
 function persistedOptions(options: ProbeOptionBag): Record<string, unknown> {
   return {
+    probeRuntime: options.probeRuntime,
     probeSpacing: options.probeSpacing,
     probePadding: options.probePadding,
     probeIntensity: options.probeIntensity,
     probeSampleStride: options.probeSampleStride,
     probeFillIterations: options.probeFillIterations,
     probeMaxProbes: options.probeMaxProbes,
+    probeCubemapSize: options.probeCubemapSize,
     probeShow: options.probeShow,
     probeDemoEnabled: options.probeDemoEnabled,
     probeDemoAnimate: options.probeDemoAnimate,
@@ -320,6 +342,7 @@ function applyPersistedOptions(
     'probeSampleStride',
     'probeFillIterations',
     'probeMaxProbes',
+    'probeCubemapSize',
   ] as const;
   for (const key of numericKeys) {
     const value = persisted[key];
@@ -330,6 +353,8 @@ function applyPersistedOptions(
     const value = persisted[key];
     if (typeof value === 'boolean') options[key] = value;
   }
+  const runtime = persisted.probeRuntime;
+  if (runtime === 'native' || runtime === 'legacy') options.probeRuntime = runtime;
 }
 
 function resetStatus(options: ProbeOptionBag): void {

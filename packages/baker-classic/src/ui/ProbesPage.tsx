@@ -1,4 +1,13 @@
-import { BoolField, bumpOptions, NumberField, optionsTick, RangeField, Row, Section } from 'shared';
+import {
+  BoolField,
+  bumpOptions,
+  NumberField,
+  optionsTick,
+  RangeField,
+  Row,
+  Section,
+  SelectField,
+} from 'shared';
 import { getBakerOrchestrator } from './orchestrator';
 
 export function ProbesPage() {
@@ -6,9 +15,11 @@ export function ProbesPage() {
   const app = getBakerOrchestrator();
   if (!app) return null;
   const o = app.options;
-  const spacing = o.probeSpacing ?? 0.65;
+  const runtime = o.probeRuntime === 'legacy' ? 'legacy' : 'native';
+  const spacing = o.probeSpacing ?? 1.25;
   const padding = o.probePadding ?? 0.1;
-  const maxProbes = o.probeMaxProbes ?? 8192;
+  const maxProbes = o.probeMaxProbes ?? 1024;
+  const cubemapSize = o.probeCubemapSize ?? 8;
   const sampleStride = o.probeSampleStride ?? 3;
   const fillIterations = o.probeFillIterations ?? 5;
   const intensity = o.probeIntensity ?? 1;
@@ -24,6 +35,7 @@ export function ProbesPage() {
   const available = !!app.generateProbes;
 
   const refreshPreview = (): void => {
+    if (runtime === 'native' && probeCount > 0) o.probeStatus = 'stale';
     bumpOptions();
     app.previewProbes?.();
   };
@@ -32,8 +44,25 @@ export function ProbesPage() {
     <div class="text-[12px]">
       <Section title="Probe volume">
         <Row
+          label="Runtime"
+          hint="Native Three.js L2 SH is preferred; the existing RGB volume remains available as a fallback."
+        >
+          <SelectField
+            value={runtime}
+            options={[
+              { value: 'native', label: 'Three.js L2 SH (GPU)' },
+              { value: 'legacy', label: 'Legacy RGB volume' },
+            ]}
+            onChange={(value) => {
+              o.probeRuntime = value;
+              app.clearProbes?.();
+              bumpOptions();
+            }}
+          />
+        </Row>
+        <Row
           label="Target spacing"
-          hint="Maximum world-space step. Endpoint fitting may make the actual per-axis spacing smaller, never larger."
+          hint="Maximum world-space step. Endpoint fitting may make the actual spacing smaller."
         >
           <RangeField
             value={spacing}
@@ -46,7 +75,7 @@ export function ProbesPage() {
             }}
           />
         </Row>
-        <Row label="Padding" hint="World-space expansion around the scene bounds.">
+        <Row label="Padding" hint="World-space expansion around the baked scene bounds.">
           <RangeField
             value={padding}
             min={0}
@@ -58,7 +87,7 @@ export function ProbesPage() {
             }}
           />
         </Row>
-        <Row label="Maximum" hint="Safety cap only. It never enlarges target spacing.">
+        <Row label="Maximum" hint="Hard safety cap; target spacing is never enlarged silently.">
           <NumberField
             value={maxProbes}
             min={64}
@@ -84,43 +113,68 @@ export function ProbesPage() {
       </Section>
 
       <Section title="Generation">
-        <Row
-          label="Atlas stride"
-          hint="Read every Nth lightmap texel while building the probe field."
-        >
-          <NumberField
-            value={sampleStride}
-            min={1}
-            max={16}
-            step={1}
-            onChange={(value) => {
-              o.probeSampleStride = Math.floor(value);
-              bumpOptions();
-            }}
-          />
-        </Row>
-        <Row
-          label="Fill passes"
-          hint="Six-neighbour diffusion passes for probes with no direct surface samples."
-        >
-          <NumberField
-            value={fillIterations}
-            min={0}
-            max={16}
-            step={1}
-            onChange={(value) => {
-              o.probeFillIterations = Math.floor(value);
-              bumpOptions();
-            }}
-          />
-        </Row>
+        {runtime === 'native' ? (
+          <Row
+            label="Cubemap size"
+            hint="Per-face resolution Three.js projects into each probe's L2 SH coefficients."
+          >
+            <SelectField
+              value={String(cubemapSize)}
+              options={[
+                { value: '4', label: '4 px (fast)' },
+                { value: '8', label: '8 px (recommended)' },
+                { value: '16', label: '16 px (high)' },
+              ]}
+              onChange={(value) => {
+                o.probeCubemapSize = Number(value);
+                if (probeCount > 0) o.probeStatus = 'stale';
+                bumpOptions();
+              }}
+            />
+          </Row>
+        ) : (
+          <>
+            <Row
+              label="Atlas stride"
+              hint="Read every Nth lightmap texel while building the legacy field."
+            >
+              <NumberField
+                value={sampleStride}
+                min={1}
+                max={16}
+                step={1}
+                onChange={(value) => {
+                  o.probeSampleStride = Math.floor(value);
+                  bumpOptions();
+                }}
+              />
+            </Row>
+            <Row
+              label="Fill passes"
+              hint="Six-neighbour diffusion passes for unsampled legacy probes."
+            >
+              <NumberField
+                value={fillIterations}
+                min={0}
+                max={16}
+                step={1}
+                onChange={(value) => {
+                  o.probeFillIterations = Math.floor(value);
+                  bumpOptions();
+                }}
+              />
+            </Row>
+          </>
+        )}
         <Row label="Status">
           <div class="flex-1 text-right font-mono text-[11px] text-text-2">
             {status === 'generating'
               ? `${Math.round(progress * 100)}%`
               : status === 'ready'
-                ? `${probeCount} generated probes`
-                : status}
+                ? `${probeCount} ${runtime === 'native' ? 'L2 SH' : 'RGB'} probes`
+                : status === 'stale'
+                  ? 'Settings changed — recapture'
+                  : status}
           </div>
         </Row>
         <div class="px-3 pb-3 flex gap-2">
@@ -130,7 +184,13 @@ export function ProbesPage() {
             class="flex-1 px-3 py-1.5 rounded bg-accent text-white disabled:opacity-40 hover:brightness-110 transition"
             onClick={() => void app.generateProbes?.()}
           >
-            {generating ? 'Generating…' : 'Generate Irradiance'}
+            {generating
+              ? runtime === 'native'
+                ? 'Capturing…'
+                : 'Generating…'
+              : runtime === 'native'
+                ? 'Capture Native L2 SH'
+                : 'Generate Legacy RGB'}
           </button>
           <button
             type="button"
@@ -157,7 +217,7 @@ export function ProbesPage() {
             }}
           />
         </Row>
-        <Row label="Intensity">
+        <Row label={runtime === 'native' ? 'Capture intensity' : 'Intensity'}>
           <RangeField
             value={intensity}
             min={0}
@@ -193,8 +253,9 @@ export function ProbesPage() {
       </Section>
 
       <div class="px-3 py-2 text-[11px] leading-4 text-text-3">
-        Cyan markers show target-layout positions only. Generate Irradiance creates stored probe
-        data; Show probes displays those actual values, and the demo sphere samples them at runtime.
+        {runtime === 'native'
+          ? 'After the path-traced lightmap bake, Three.js captures the baked static scene into a GPU L2 SH grid. The demo sphere uses the native renderer; capture changes require recapture.'
+          : 'Legacy RGB volumes remain available for comparison and fallback. They use atlas projection, CPU interpolation, and the existing material binding.'}
       </div>
     </div>
   );

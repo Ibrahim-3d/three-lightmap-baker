@@ -1,14 +1,68 @@
-import type { Mesh, Scene, WebGLRenderer } from 'three';
+import type { Mesh, Object3D, Scene, WebGLRenderer } from 'three';
+import type { LightProbeGrid } from 'three/examples/jsm/lighting/LightProbeGrid.js';
+import { LightProbeGridHelper } from 'three/examples/jsm/helpers/LightProbeGridHelper.js';
 import {
   bindProbeLighting,
   bakeProbeIrradianceFromLightmaps,
   createProbeDebugView,
   generateProbeGrid,
+  captureNativeLightProbeGrid,
   type LightmapBakeResult,
   type ProbeDebugView,
   type ProbeLightingBinding,
   type ProbeVolume,
 } from 'three-lightmap-baker';
+
+export type NativeLightProbeDemo = {
+  grid: LightProbeGrid;
+  helper: LightProbeGridHelper;
+  dispose(): void;
+};
+
+/**
+ * Preferred runtime: capture completed static lightmaps into Three.js' native
+ * GPU L2 SH grid. Live lights and the moving object are excluded so the grid
+ * represents the baked static scene rather than adding a second direct-light bake.
+ */
+export function attachNativeLightProbeDemo(
+  renderer: WebGLRenderer,
+  scene: Scene,
+  dynamicMesh: Mesh,
+): NativeLightProbeDemo {
+  const hidden = new Map<Object3D, boolean>();
+  scene.traverse((object) => {
+    if ((object as Object3D & { isLight?: boolean }).isLight || object === dynamicMesh) {
+      hidden.set(object, object.visible);
+      object.visible = false;
+    }
+  });
+
+  let result: ReturnType<typeof captureNativeLightProbeGrid>;
+  try {
+    result = captureNativeLightProbeGrid(renderer, scene, scene, {
+      spacing: 1.25,
+      padding: 0.1,
+      maxProbes: 1024,
+      cubemapSize: 8,
+      bounces: 0,
+    });
+  } finally {
+    for (const [object, visible] of hidden) object.visible = visible;
+  }
+
+  const helper = new LightProbeGridHelper(result.grid, 0.08);
+  scene.add(helper);
+  return {
+    grid: result.grid,
+    helper,
+    dispose: () => {
+      scene.remove(helper);
+      helper.dispose();
+      scene.remove(result.grid);
+      result.grid.dispose();
+    },
+  };
+}
 
 export type LightProbeDemo = {
   volume: ProbeVolume;
@@ -19,8 +73,8 @@ export type LightProbeDemo = {
 };
 
 /**
- * Generate a diffuse probe volume from an existing successful lightmap bake and
- * bind it to one dynamic MeshStandardMaterial object.
+ * Legacy fallback: generate the original RGB probe volume and bind it to one
+ * dynamic MeshStandardMaterial object.
  */
 export async function attachLightProbeDemo(
   renderer: WebGLRenderer,

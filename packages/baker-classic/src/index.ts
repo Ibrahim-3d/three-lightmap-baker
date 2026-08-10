@@ -66,6 +66,8 @@ export type { TexelDensityMaterialOptions } from './lightmap/TexelDensityMateria
 export {
   ProbeVolume,
   generateProbeGrid,
+  captureNativeLightProbeGrid,
+  captureNativeLightProbeGridFromJSON,
   bakeProbeIrradianceFromLightmaps,
   generateProbeVolume,
   ProbeDebugView,
@@ -75,6 +77,10 @@ export {
 } from './probes';
 export type {
   GeneratedProbeVolume,
+  NativeLightProbeGridJSON,
+  NativeLightProbeGridOptions,
+  NativeLightProbeGridResult,
+  NativeLightProbeGridStats,
   GenerateProbeVolumeOptions,
   ProbeBakeHooks,
   ProbeBakeOptions,

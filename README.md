@@ -100,7 +100,7 @@ If you've used Unity's **Progressive Lightmapper** or Unreal's **Lightmass**, yo
 - **Bake presets** - measured on the Cornell advanced scene from Draft through Final, with RTX 3050 Ti numbers listed below.
 - **Gap flood / edge dilation** - prevents black seams at UV island borders.
 - **Bilateral denoiser** - smooths noise while preserving shadow edges, guided by world-position and normal textures.
-- **Dynamic-object light probes** - generate an RGB irradiance volume from a completed bake, inspect it in the editor, serialize it with projects, and bind interpolated indirect diffuse lighting to moving PBR meshes.
+- **Dynamic-object light probes** - capture the baked static scene into Three.js' native GPU `LightProbeGrid` (L2 SH) for moving standard-material objects. The earlier RGB volume remains available as an explicit legacy fallback.
 - **3D Camera Objects** - add cameras from the Asset Library, select them in the viewport, and snap your view to match any scene camera's perspective.
 - **TypeScript** - strict mode, fully typed API.
 
@@ -553,7 +553,7 @@ Releases all GPU resources (textures, render targets).
 - Light/material coverage is focused on `MeshStandardMaterial`-style surfaces, emissive contribution, direct light collection, AO, and GI bounces. Advanced production lighting such as IES profiles, textured area lights, and full material parity remain roadmap items.
 - Auto UV2 unwrapping is designed to remove the Blender unwrap step, but pathological geometry can still need cleanup or manual UVs.
 - Playwright or other automated browser captures must record the actual WebGL renderer and should enforce the expected device with `BAKER_EXPECT_GPU`. Chromium GPU flags improve the odds of hardware acceleration, but they do not override OS/driver GPU assignment on every machine.
-- Current probes store low-frequency RGB diffuse irradiance rather than directional spherical harmonics and sample dynamic objects at their origin plus an optional offset.
+- Native probes require `WebGLRenderer`; Three.js does not yet provide the equivalent `LightProbeGrid` runtime for `WebGPURenderer`. Native GPU textures are recaptured from persisted baked lightmaps when a project is loaded rather than serialized as large CPU arrays.
 
 ---
 
