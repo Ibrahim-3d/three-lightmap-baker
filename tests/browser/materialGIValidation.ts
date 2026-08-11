@@ -36,6 +36,9 @@ type MaterialGIDiagnostics = {
   extFloatLinear: boolean;
   framebufferComplete: boolean;
   glErrorAfterRender: number;
+  indirectAlpha: number;
+  positionSample: [number, number, number, number];
+  normalSample: [number, number, number, number];
   packedMapSample: [number, number, number, number];
   materialAlbedoSample: [number, number, number, number];
 };
@@ -111,9 +114,6 @@ function validateTexturedCase(
   compactSurfaceAlbedo: boolean;
   diagnostics: MaterialGIDiagnostics;
 } {
-  // Use a thin 3D slab rather than a mathematically zero-thickness plane. The
-  // latter produces degenerate BVH bounds and is not a portable GPU traversal
-  // fixture on software/headless WebGL implementations.
   const geometry = makeSlabGeometry(options.uv0, options.uv1);
 
   const map = options.map;
@@ -133,9 +133,6 @@ function validateTexturedCase(
   const positions = dataTexture([0, 0, 0, 1]);
   const normals = dataTexture([0, 1, 0, 1]);
 
-  // One point light sits on each side of the slab. Whichever face orientation
-  // the BVH reports, exactly one light has a positive cosine and an unobstructed
-  // segment from the offset hit origin.
   const lights: PackedLight[] = [
     {
       type: 'point',
@@ -176,9 +173,7 @@ function validateTexturedCase(
 
   const gl = renderer.getContext();
   const previousTarget = renderer.getRenderTarget();
-  while (gl.getError() !== gl.NO_ERROR) {
-    // Drain setup errors so the post-render value identifies the lightmapper draw.
-  }
+  while (gl.getError() !== gl.NO_ERROR) {}
   renderer.setRenderTarget(lightmapper.renderTarget);
   const framebufferComplete = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
   renderer.setRenderTarget(previousTarget);
@@ -196,12 +191,17 @@ function validateTexturedCase(
       materialTextures.albedoTexture,
       materialTextures.side,
     );
+    const positionPixels = readTexture(renderer, positions, 1);
+    const normalPixels = readTexture(renderer, normals, 1);
     const diagnostics: MaterialGIDiagnostics = {
       extFloatBlend: !!gl.getExtension('EXT_float_blend'),
       extColorBufferFloat: !!gl.getExtension('EXT_color_buffer_float'),
       extFloatLinear: !!gl.getExtension('OES_texture_float_linear'),
       framebufferComplete,
       glErrorAfterRender,
+      indirectAlpha: pixels[3] ?? 0,
+      positionSample: firstPixel(positionPixels),
+      normalSample: firstPixel(normalPixels),
       packedMapSample: firstPixel(packedMapPixels),
       materialAlbedoSample: firstPixel(materialAlbedoPixels),
     };
