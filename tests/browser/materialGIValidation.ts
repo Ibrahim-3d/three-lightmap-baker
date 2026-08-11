@@ -13,6 +13,7 @@ import {
   ShaderMaterial,
   OrthographicCamera,
   PlaneGeometry,
+  SRGBColorSpace,
   WebGLRenderTarget,
   Vector3,
   type Texture,
@@ -34,6 +35,69 @@ export function validateTexturedBounce(renderer: WebGLRenderer): {
   expectedAlbedo: [number, number, number];
   sourceAlbedo: [number, number, number];
 } {
+  return validateTexturedCase(renderer, {
+    map: dataTexture([0.4, 0.2, 0.1, 1]),
+    uv0: [0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 1],
+    expectedAlbedo: [0.2, 0.2, 0.1],
+  });
+}
+
+export function validateBaseColorUvAndSrgb(renderer: WebGLRenderer): {
+  uv0: ReturnType<typeof validateTexturedCase>;
+  uv1: ReturnType<typeof validateTexturedCase>;
+  srgb: ReturnType<typeof validateTexturedCase>;
+} {
+  const uv0Map = dataTexture([0.8, 0.1, 0.05, 1, 0.05, 0.7, 0.2, 1], 2, 1);
+  const uv1Map = uv0Map.clone();
+  uv1Map.needsUpdate = true;
+  const srgbMap = new DataTexture(new Uint8Array([128, 64, 32, 255]), 1, 1, RGBAFormat);
+  srgbMap.colorSpace = SRGBColorSpace;
+  srgbMap.minFilter = NearestFilter;
+  srgbMap.magFilter = NearestFilter;
+  srgbMap.needsUpdate = true;
+  const srgbColor = new Color().setRGB(128 / 255, 64 / 255, 32 / 255, SRGBColorSpace);
+
+  return {
+    uv0: validateTexturedCase(renderer, {
+      map: uv0Map,
+      uv0: constantUvs(0.25, 0.5),
+      uv1: constantUvs(0.75, 0.5),
+      expectedAlbedo: [0.4, 0.1, 0.05],
+    }),
+    uv1: validateTexturedCase(renderer, {
+      map: uv1Map,
+      mapChannel: 1,
+      uv0: constantUvs(0.25, 0.5),
+      uv1: constantUvs(0.75, 0.5),
+      expectedAlbedo: [0.025, 0.7, 0.2],
+    }),
+    srgb: validateTexturedCase(renderer, {
+      map: srgbMap,
+      uv0: constantUvs(0.5, 0.5),
+      expectedAlbedo: [srgbColor.r * 0.5, srgbColor.g, srgbColor.b],
+    }),
+  };
+}
+
+type TexturedCase = {
+  map: DataTexture;
+  mapChannel?: 0 | 1;
+  uv0: number[];
+  uv1?: number[];
+  expectedAlbedo: [number, number, number];
+};
+
+function validateTexturedCase(
+  renderer: WebGLRenderer,
+  options: TexturedCase,
+): {
+  indirect: [number, number, number];
+  expectedAlbedo: [number, number, number];
+  sourceAlbedo: [number, number, number];
+  extractedUvs: number[];
+  compactBaseColorAtlas: boolean;
+  compactSurfaceAlbedo: boolean;
+} {
   const geometry = new BufferGeometry();
   geometry.setAttribute(
     'position',
@@ -48,13 +112,17 @@ export function validateTexturedBounce(renderer: WebGLRenderer): {
     'normal',
     new BufferAttribute(new Float32Array(Array.from({ length: 6 }, () => [0, -1, 0]).flat()), 3),
   );
+  geometry.setAttribute('uv', new BufferAttribute(new Float32Array(options.uv0), 2));
+  if (options.uv1) {
+    geometry.setAttribute('uv1', new BufferAttribute(new Float32Array(options.uv1), 2));
+  }
   geometry.setAttribute(
-    'uv',
+    'uv2',
     new BufferAttribute(new Float32Array([0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 1]), 2),
   );
-  geometry.setAttribute('uv2', geometry.getAttribute('uv').clone());
 
-  const map = dataTexture([0.4, 0.2, 0.1, 1]);
+  const map = options.map;
+  map.channel = options.mapChannel ?? 0;
   const material = new MeshStandardMaterial({
     color: new Color(0.5, 1, 1),
     map,
@@ -108,8 +176,11 @@ export function validateTexturedBounce(renderer: WebGLRenderer): {
     const sourceAlbedo = averageOccupied(sourcePixels);
     return {
       indirect: [pixels[0] ?? 0, pixels[1] ?? 0, pixels[2] ?? 0],
-      expectedAlbedo: [0.2, 0.2, 0.1],
+      expectedAlbedo: options.expectedAlbedo,
       sourceAlbedo,
+      extractedUvs: [...surfaces.uvs],
+      compactBaseColorAtlas: materialTextures.albedoMapAtlas.type !== FloatType,
+      compactSurfaceAlbedo: atlas.surfaceAlbedoTexture.type !== FloatType,
     };
   } finally {
     lightmapper.dispose();
@@ -124,12 +195,16 @@ export function validateTexturedBounce(renderer: WebGLRenderer): {
   }
 }
 
-function dataTexture(rgba: readonly [number, number, number, number]): DataTexture {
-  const texture = new DataTexture(new Float32Array(rgba), 1, 1, RGBAFormat, FloatType);
+function dataTexture(rgba: readonly number[], width = 1, height = 1): DataTexture {
+  const texture = new DataTexture(new Float32Array(rgba), width, height, RGBAFormat, FloatType);
   texture.minFilter = NearestFilter;
   texture.magFilter = NearestFilter;
   texture.needsUpdate = true;
   return texture;
+}
+
+function constantUvs(u: number, v: number): number[] {
+  return Array.from({ length: 6 }, () => [u, v]).flat();
 }
 
 function readTexture(renderer: WebGLRenderer, source: Texture, resolution: number): Float32Array {

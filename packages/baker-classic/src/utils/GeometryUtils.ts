@@ -10,10 +10,11 @@ import {
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BakeError } from '../errors';
 
-const KEPT_ATTRIBUTES = new Set(['position', 'normal', 'uv', 'uv2']);
+const KEPT_ATTRIBUTES = new Set(['position', 'normal', 'uv', 'uv1', 'uv2']);
 const MESH_INDEX_ATTRIBUTE = 'meshIndex';
 const MATERIAL_INDEX_ATTRIBUTE = 'sourceMaterialIndex';
 const HAS_UV_ATTRIBUTE = 'sourceHasUv';
+const HAS_UV1_ATTRIBUTE = 'sourceHasUv1';
 
 /**
  * Merge meshes into one indexed geometry suitable for MeshBVH.
@@ -41,14 +42,19 @@ export const mergeGeometry = (meshes: Mesh[]): BufferGeometry => {
     }
 
     const hadUv = geometry.hasAttribute('uv');
+    const hadUv1 = geometry.hasAttribute('uv1');
     if (!hadUv)
       geometry.setAttribute('uv', new BufferAttribute(new Float32Array(positions.count * 2), 2));
+    if (!hadUv1)
+      geometry.setAttribute('uv1', new BufferAttribute(new Float32Array(positions.count * 2), 2));
 
     const meshIndices = new Float32Array(positions.count);
     meshIndices.fill(meshIdx);
     const materialIndices = new Float32Array(positions.count);
     const hasUvs = new Float32Array(positions.count);
     hasUvs.fill(hadUv ? 1 : 0);
+    const hasUv1s = new Float32Array(positions.count);
+    hasUv1s.fill(hadUv1 ? 1 : 0);
     for (let triangle = 0; triangle < positions.count / 3; triangle++) {
       const slot = materialSlotForTriangle(mesh, triangle);
       materialIndices.fill(slot, triangle * 3, triangle * 3 + 3);
@@ -56,6 +62,7 @@ export const mergeGeometry = (meshes: Mesh[]): BufferGeometry => {
     geometry.setAttribute(MESH_INDEX_ATTRIBUTE, new BufferAttribute(meshIndices, 1));
     geometry.setAttribute(MATERIAL_INDEX_ATTRIBUTE, new BufferAttribute(materialIndices, 1));
     geometry.setAttribute(HAS_UV_ATTRIBUTE, new BufferAttribute(hasUvs, 1));
+    geometry.setAttribute(HAS_UV1_ATTRIBUTE, new BufferAttribute(hasUv1s, 1));
 
     return mergeVertices(geometry);
   });
@@ -75,7 +82,7 @@ export interface PerTriangleMaterials {
   /** Base material.color, RGB triplets keyed by post-BVH triangle ID. */
   albedo: Float32Array;
   emissive: Float32Array;
-  /** Source UV0 for all three vertices: u0,v0,u1,v1,u2,v2. */
+  /** Source UV channel selected by material.map.channel for all three vertices. */
   uvs: Float32Array;
   /** Texture.matrix coefficients a,b,c,d,e,f for each triangle. */
   mapTransforms: Float32Array;
@@ -93,6 +100,7 @@ type MaterialSurface = {
   albedo: readonly [number, number, number];
   emissive: readonly [number, number, number];
   map: Texture | null;
+  mapChannel: 0 | 1;
   transform: readonly [number, number, number, number, number, number];
   wrapS: number;
   wrapT: number;
@@ -102,6 +110,7 @@ const WHITE_FALLBACK: MaterialSurface = {
   albedo: [1, 1, 1],
   emissive: [0, 0, 0],
   map: null,
+  mapChannel: 0,
   transform: [1, 0, 0, 1, 0, 0],
   wrapS: 1001,
   wrapT: 1001,
@@ -133,7 +142,11 @@ function materialAtSlot(mesh: Mesh, slot: number): Material | undefined {
   return mesh.material[slot] ?? mesh.material[0];
 }
 
-function readMaterialSurface(material: Material | undefined, hasUv: boolean): MaterialSurface {
+function readMaterialSurface(
+  material: Material | undefined,
+  hasUv: boolean,
+  hasUv1: boolean,
+): MaterialSurface {
   if (!material) return WHITE_FALLBACK;
   const candidate = material as MeshStandardMaterial & MeshBasicMaterial;
   if (!('color' in candidate) || !candidate.color) return WHITE_FALLBACK;
@@ -142,13 +155,16 @@ function readMaterialSurface(material: Material | undefined, hasUv: boolean): Ma
     'emissive' in candidate && candidate.emissive
       ? candidate.emissive.clone().multiplyScalar(candidate.emissiveIntensity ?? 1)
       : null;
-  const map = hasUv && 'map' in candidate ? (candidate.map ?? null) : null;
+  const requestedMap = 'map' in candidate ? (candidate.map ?? null) : null;
+  const mapChannel: 0 | 1 = requestedMap?.channel === 1 ? 1 : 0;
+  const map = (mapChannel === 1 ? hasUv1 : hasUv) ? requestedMap : null;
   if (map?.matrixAutoUpdate) map.updateMatrix();
   const elements = map?.matrix.elements;
   return {
     albedo: [candidate.color.r, candidate.color.g, candidate.color.b],
     emissive: emissive ? [emissive.r, emissive.g, emissive.b] : [0, 0, 0],
     map,
+    mapChannel,
     transform: elements
       ? [elements[0]!, elements[1]!, elements[3]!, elements[4]!, elements[6]!, elements[7]!]
       : [1, 0, 0, 1, 0, 0],
@@ -174,8 +190,10 @@ export const extractPerTriangleMaterials = (
     | BufferAttribute
     | undefined;
   const hasUv = merged.getAttribute(HAS_UV_ATTRIBUTE) as BufferAttribute | undefined;
+  const hasUv1 = merged.getAttribute(HAS_UV1_ATTRIBUTE) as BufferAttribute | undefined;
   const uv = merged.getAttribute('uv') as BufferAttribute | undefined;
-  if (!meshIndex || !materialIndex || !hasUv || !uv) {
+  const uv1 = merged.getAttribute('uv1') as BufferAttribute | undefined;
+  if (!meshIndex || !materialIndex || !hasUv || !hasUv1 || !uv || !uv1) {
     throw new BakeError('merged geometry is missing source surface attributes', 'geometry');
   }
 
@@ -200,7 +218,11 @@ export const extractPerTriangleMaterials = (
     const slot = Math.max(0, materialIndex.getX(first) | 0);
     const sourceMesh = meshes[sourceMeshIndex];
     const surface = sourceMesh
-      ? readMaterialSurface(materialAtSlot(sourceMesh, slot), hasUv.getX(first) > 0.5)
+      ? readMaterialSurface(
+          materialAtSlot(sourceMesh, slot),
+          hasUv.getX(first) > 0.5,
+          hasUv1.getX(first) > 0.5,
+        )
       : WHITE_FALLBACK;
     meshIndices[triangle] = sourceMeshIndex;
     materialSlots[triangle] = slot;
@@ -211,8 +233,9 @@ export const extractPerTriangleMaterials = (
     wrapModes.set([surface.wrapS, surface.wrapT], triangle * 2);
     for (let corner = 0; corner < 3; corner++) {
       const vertex = vertices[corner] ?? first;
-      uvs[triangle * 6 + corner * 2] = uv.getX(vertex);
-      uvs[triangle * 6 + corner * 2 + 1] = uv.getY(vertex);
+      const sourceUv = surface.mapChannel === 1 ? uv1 : uv;
+      uvs[triangle * 6 + corner * 2] = sourceUv.getX(vertex);
+      uvs[triangle * 6 + corner * 2 + 1] = sourceUv.getY(vertex);
     }
   }
 

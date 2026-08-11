@@ -11,6 +11,7 @@ import {
   RGBAFormat,
   ShaderMaterial,
   Texture,
+  UnsignedByteType,
   Vector4,
   WebGLRenderer,
   WebGLRenderTarget,
@@ -41,6 +42,20 @@ function makeTexture(data: Float32Array, side: number): DataTexture {
   texture.wrapS = ClampToEdgeWrapping;
   texture.wrapT = ClampToEdgeWrapping;
   texture.generateMipmaps = false;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function makeCompactWhiteTexture(): DataTexture {
+  const texture = new DataTexture(
+    new Uint8Array([255, 255, 255, 255]),
+    1,
+    1,
+    RGBAFormat,
+    UnsignedByteType,
+  );
+  texture.minFilter = NearestFilter;
+  texture.magFilter = NearestFilter;
   texture.needsUpdate = true;
   return texture;
 }
@@ -155,7 +170,7 @@ function buildAlbedoMapAtlas(
 ): AtlasBuild {
   const uniqueMaps = [...new Set(maps.filter((map): map is Texture => map !== null))];
   if (!uniqueMaps.length) {
-    const texture = makeTexture(new Float32Array([1, 1, 1, 1]), 1);
+    const texture = makeCompactWhiteTexture();
     return { texture, rects: new Map(), dispose: () => texture.dispose() };
   }
 
@@ -176,7 +191,7 @@ function buildAlbedoMapAtlas(
   const atlasSize = stride * grid;
   const target = new WebGLRenderTarget(atlasSize, atlasSize, {
     format: RGBAFormat,
-    type: FloatType,
+    type: UnsignedByteType,
     minFilter: LinearFilter,
     magFilter: LinearFilter,
     generateMipmaps: false,

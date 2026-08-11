@@ -1,4 +1,4 @@
-import { Mesh, MeshStandardMaterial, Texture, WebGLRenderer } from 'three';
+import { Mesh, Texture, WebGLRenderer } from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
 import {
   generateAOMapper,
@@ -7,6 +7,7 @@ import {
   type PostProcessOptions,
 } from '../lightmap';
 import { exportLightmap, type ExportFormat } from '../utils/exportLightmap';
+import { mountMeshLightmaps } from '../utils/LightmapMaterials';
 import { BakeError } from '../errors';
 import type { BakeHooks, BakeStats, BakeGroupView } from './types';
 import type { GroupInternals } from './internals';
@@ -71,7 +72,6 @@ export class LightmapBakeResult {
         refinement: g.refinement?.texture ?? null,
         position: g.positionTex,
         normal: g.normalTex,
-        surface: g.surfaceTex,
         surfaceAlbedo: g.surfaceAlbedoTex,
       },
     }));
@@ -100,7 +100,6 @@ export class LightmapBakeResult {
             refinement: g.refinement?.texture ?? null,
             position: g.positionTex,
             normal: g.normalTex,
-            surface: g.surfaceTex,
             surfaceAlbedo: g.surfaceAlbedoTex,
           },
         };
@@ -111,17 +110,7 @@ export class LightmapBakeResult {
 
   /** Mounts each mesh's atlas texture as `mat.lightMap` (channel = 2). */
   apply(): void {
-    for (const [mesh, tex] of this.meshLightmaps) {
-      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      for (const candidate of materials) {
-        const mat = candidate as MeshStandardMaterial;
-        if (!mat?.isMeshStandardMaterial) continue;
-        mat.lightMap = tex;
-        tex.channel = 2;
-        mat.lightMapIntensity = 1;
-        mat.needsUpdate = true;
-      }
-    }
+    mountMeshLightmaps([...this.meshLightmaps].map(([mesh, lightMap]) => ({ mesh, lightMap })));
   }
 
   /**

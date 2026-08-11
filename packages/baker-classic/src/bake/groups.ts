@@ -227,7 +227,6 @@ export async function runGroupBake(
         meshes: groupMeshes,
         positionTex: completedAtlas.positionTexture,
         normalTex: completedAtlas.normalTexture,
-        surfaceTex: completedAtlas.surfaceTexture,
         surfaceAlbedoTex: completedAtlas.surfaceAlbedoTexture,
       },
       finalTex,

@@ -9,6 +9,7 @@ import {
   type WebGLRenderer,
 } from 'three';
 import type { LightmapBakeResult } from '../bake/result';
+import { mountMeshLightmaps } from '../utils/LightmapMaterials';
 import {
   captureNativeLightProbeGrid,
   captureNativeLightProbeGridFromJSON,
@@ -17,8 +18,6 @@ import {
   type NativeLightProbeGridRestoreOptions,
   type NativeLightProbeGridResult,
 } from './NativeLightProbeGrid';
-
-type CaptureMaterial = MeshStandardMaterial & { _originalMap?: Texture | null };
 
 export type LightmappedProbeGridOptions = NativeLightProbeGridOptions & {
   /** Multiplier applied to the baked lightmap while capturing. Default 1. */
@@ -87,79 +86,54 @@ function withCaptureState<T>(
   capture: () => T,
 ): T {
   const visibility = new Map<Object3D, boolean>();
-  const materialStates: Array<{
-    material: CaptureMaterial;
-    map: Texture | null;
-    lightMap: Texture | null;
-    lightMapIntensity: number;
-  }> = [];
-  const lightMapChannels = new Map<Texture, number>();
   const staticMeshes = new Set(staticLightmaps.keys());
   const intensity = finiteNonNegative(options.lightMapIntensity ?? 1, 'lightMapIntensity');
-
-  scene.traverse((object) => {
-    const renderable = object as Object3D & {
-      isLight?: boolean;
-      isMesh?: boolean;
-      isLine?: boolean;
-      isPoints?: boolean;
-      isSprite?: boolean;
-    };
-    const shouldHide =
-      renderable.isLight === true ||
-      ((renderable.isMesh || renderable.isLine || renderable.isPoints || renderable.isSprite) &&
-        !staticMeshes.has(object as Mesh));
-    if (shouldHide && object.visible) {
-      visibility.set(object, true);
-      object.visible = false;
-    }
-  });
-
-  for (const [mesh, lightMap] of staticLightmaps) {
-    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    for (const candidate of materials) {
-      if (!isStandardMaterial(candidate)) continue;
-      const material = candidate as CaptureMaterial;
-      materialStates.push({
-        material,
-        map: material.map,
-        lightMap: material.lightMap,
-        lightMapIntensity: material.lightMapIntensity,
-      });
-      const resolvedMap = options.resolveBaseColorMap?.(mesh, material);
-      if (resolvedMap !== undefined) material.map = resolvedMap;
-      if (!lightMapChannels.has(lightMap)) lightMapChannels.set(lightMap, lightMap.channel);
-      material.lightMap = lightMap;
-      lightMap.channel = 2;
-      material.lightMapIntensity = intensity;
-      material.needsUpdate = true;
-    }
-  }
-
   const background = scene.background;
   const environment = scene.environment;
   const toneMapping = renderer.toneMapping;
   const exposure = renderer.toneMappingExposure;
-  scene.background = null;
-  scene.environment = null;
-  renderer.toneMapping = NoToneMapping;
-  renderer.toneMappingExposure = 1;
-  scene.updateMatrixWorld(true);
+  let restoreMaterials = (): void => {};
 
   try {
+    scene.traverse((object) => {
+      const renderable = object as Object3D & {
+        isLight?: boolean;
+        isMesh?: boolean;
+        isLine?: boolean;
+        isPoints?: boolean;
+        isSprite?: boolean;
+      };
+      const shouldHide =
+        renderable.isLight === true ||
+        ((renderable.isMesh || renderable.isLine || renderable.isPoints || renderable.isSprite) &&
+          !staticMeshes.has(object as Mesh));
+      if (shouldHide && object.visible) {
+        visibility.set(object, true);
+        object.visible = false;
+      }
+    });
+
+    restoreMaterials = mountMeshLightmaps(
+      [...staticLightmaps].map(([mesh, lightMap]) => ({ mesh, lightMap })),
+      {
+        intensity,
+        temporary: true,
+        resolveBaseColorMap: options.resolveBaseColorMap,
+      },
+    );
+
+    scene.background = null;
+    scene.environment = null;
+    renderer.toneMapping = NoToneMapping;
+    renderer.toneMappingExposure = 1;
+    scene.updateMatrixWorld(true);
     return capture();
   } finally {
     scene.background = background;
     scene.environment = environment;
     renderer.toneMapping = toneMapping;
     renderer.toneMappingExposure = exposure;
-    for (const state of materialStates) {
-      state.material.map = state.map;
-      state.material.lightMap = state.lightMap;
-      state.material.lightMapIntensity = state.lightMapIntensity;
-      state.material.needsUpdate = true;
-    }
-    for (const [texture, channel] of lightMapChannels) texture.channel = channel;
+    restoreMaterials();
     for (const [object, wasVisible] of visibility) object.visible = wasVisible;
   }
 }

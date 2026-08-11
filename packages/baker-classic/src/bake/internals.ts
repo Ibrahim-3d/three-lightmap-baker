@@ -35,7 +35,6 @@ export type GroupInternals = {
    */
   positionTex: Texture;
   normalTex: Texture;
-  surfaceTex: Texture;
   surfaceAlbedoTex: Texture;
 };
 

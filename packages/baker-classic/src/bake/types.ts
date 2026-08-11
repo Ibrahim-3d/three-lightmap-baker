@@ -247,9 +247,7 @@ export type BakeGroupView = {
     position: Texture;
     /** UV-space world-normal G-buffer. */
     normal: Texture;
-    /** UV0.xy + one-based material slot used by textured legacy probe projection. */
-    surface: Texture;
-    /** Linear material.color * material.map source albedo for probe projection. */
+    /** Compact linear material.color * material.map source albedo for legacy probe projection. */
     surfaceAlbedo: Texture;
   };
 };

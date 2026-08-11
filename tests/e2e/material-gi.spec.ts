@@ -42,11 +42,61 @@ test('textured albedo reaches the GPU secondary-bounce transport', async ({ page
   }, validationModuleUrl);
   const [r, g, b] = result.indirect;
   expect(Math.max(r, g, b)).toBeGreaterThan(0.01);
-  expect(r / g).toBeCloseTo(result.expectedAlbedo[0] / result.expectedAlbedo[1], 2);
-  expect(b / r).toBeCloseTo(result.expectedAlbedo[2] / result.expectedAlbedo[0], 2);
+  expect(r / g).toBeCloseTo(result.expectedAlbedo[0] / result.expectedAlbedo[1], 1);
+  expect(b / r).toBeCloseTo(result.expectedAlbedo[2] / result.expectedAlbedo[0], 1);
   result.sourceAlbedo.forEach((value, index) =>
-    expect(value).toBeCloseTo(result.expectedAlbedo[index] ?? 0, 5),
+    expect(value).toBeCloseTo(result.expectedAlbedo[index] ?? 0, 2),
   );
+  expect(errors).toEqual([]);
+});
+
+test('base-color transport respects UV0, UV1, and standard sRGB decoding', async ({ page }) => {
+  const { errors } = trackConsoleErrors(page);
+  await page.goto(TEST_URL);
+  await waitReady(page);
+  const cases = await page.evaluate(async (moduleUrl) => {
+    const validation = (await import(moduleUrl)) as {
+      validateBaseColorUvAndSrgb(renderer: unknown): Record<
+        'uv0' | 'uv1' | 'srgb',
+        {
+          indirect: [number, number, number];
+          expectedAlbedo: [number, number, number];
+          sourceAlbedo: [number, number, number];
+          extractedUvs: number[];
+          compactBaseColorAtlas: boolean;
+          compactSurfaceAlbedo: boolean;
+        }
+      >;
+    };
+    const baker = (window as unknown as { __baker: { sceneController: { renderer: unknown } } })
+      .__baker;
+    return validation.validateBaseColorUvAndSrgb(baker.sceneController.renderer);
+  }, validationModuleUrl);
+
+  for (const [name, result] of Object.entries(cases)) {
+    const [r, g, b] = result.indirect;
+    expect(Math.max(r, g, b), `${name} secondary bounce`).toBeGreaterThan(0.005);
+    expect(
+      Math.abs(r / g - result.expectedAlbedo[0] / result.expectedAlbedo[1]),
+      `${name} red/green ratio`,
+    ).toBeLessThan(0.12);
+    expect(
+      Math.abs(b / g - result.expectedAlbedo[2] / result.expectedAlbedo[1]),
+      `${name} blue/green ratio`,
+    ).toBeLessThan(0.12);
+    result.sourceAlbedo.forEach((value, index) =>
+      expect(value, `${name} primary albedo ${index}`).toBeCloseTo(
+        result.expectedAlbedo[index] ?? 0,
+        2,
+      ),
+    );
+    expect(result.compactBaseColorAtlas).toBe(true);
+    expect(result.compactSurfaceAlbedo).toBe(true);
+  }
+  for (let offset = 0; offset < cases.uv0.extractedUvs.length; offset += 2) {
+    expect(cases.uv0.extractedUvs[offset]).toBeCloseTo(0.25, 5);
+    expect(cases.uv1.extractedUvs[offset]).toBeCloseTo(0.75, 5);
+  }
   expect(errors).toEqual([]);
 });
 
