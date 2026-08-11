@@ -1,6 +1,5 @@
 import {
-  BufferAttribute,
-  BufferGeometry,
+  BoxGeometry,
   Color,
   DataTexture,
   DoubleSide,
@@ -31,29 +30,9 @@ import {
  * isolated to secondary NEE/light visibility rather than ray intersection.
  */
 export function validateSecondaryEmissiveHit(renderer: WebGLRenderer): [number, number, number] {
-  const geometry = new BufferGeometry();
-  geometry.setAttribute(
-    'position',
-    new BufferAttribute(
-      new Float32Array([
-        -100, 1, -100, 100, 1, -100, -100, 1, 100,
-        100, 1, -100, 100, 1, 100, -100, 1, 100,
-      ]),
-      3,
-    ),
-  );
-  geometry.setAttribute(
-    'normal',
-    new BufferAttribute(new Float32Array(Array.from({ length: 6 }, () => [0, -1, 0]).flat()), 3),
-  );
-  geometry.setAttribute(
-    'uv',
-    new BufferAttribute(new Float32Array([0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 1]), 2),
-  );
-  geometry.setAttribute(
-    'uv2',
-    new BufferAttribute(new Float32Array([0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 1]), 2),
-  );
+  const geometry = new BoxGeometry(200, 0.1, 200);
+  geometry.translate(0, 1, 0);
+  geometry.setAttribute('uv2', geometry.getAttribute('uv').clone());
 
   const material = new MeshStandardMaterial({
     color: 0xffffff,
