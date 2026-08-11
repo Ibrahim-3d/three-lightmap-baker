@@ -137,10 +137,23 @@ function validateTexturedCase(
   const atlas = renderAtlas(renderer, [mesh], 8);
   const positions = dataTexture([0, 0, 0, 1]);
   const normals = dataTexture([0, 1, 0, 1]);
+
+  // Illuminate both possible face-normal orientations. The validation is about
+  // textured albedo transport, not whichever winding/side convention a BVH
+  // implementation reports for a double-sided hit. One of these directional
+  // lights always lies in the hit hemisphere, so a valid secondary hit must
+  // produce non-zero energy while preserving the albedo ratios under test.
   const lights: PackedLight[] = [
     {
-      type: 'point',
-      position: new Vector3(0, 0, 0),
+      type: 'directional',
+      position: new Vector3(),
+      direction: new Vector3(0, 1, 0),
+      color: new Color(1, 1, 1),
+      params: [0, 0, 0, 0],
+    },
+    {
+      type: 'directional',
+      position: new Vector3(),
       direction: new Vector3(0, -1, 0),
       color: new Color(1, 1, 1),
       params: [0, 0, 0, 0],
