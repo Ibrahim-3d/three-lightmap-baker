@@ -19,11 +19,13 @@ test('material GI headless portability diagnostics', async ({ page }) => {
       };
     };
     const hit = (await import(hitUrl)) as {
+      validateFixedGpuBvhRay(renderer: unknown): [number, number, number, number];
       validateSecondaryEmissiveHit(renderer: unknown): [number, number, number];
     };
     const baker = (window as unknown as { __baker: { sceneController: { renderer: unknown } } })
       .__baker;
     return {
+      fixedRay: hit.validateFixedGpuBvhRay(baker.sceneController.renderer),
       textured: validation.validateTexturedBounce(baker.sceneController.renderer),
       emissiveHit: hit.validateSecondaryEmissiveHit(baker.sceneController.renderer),
     };
