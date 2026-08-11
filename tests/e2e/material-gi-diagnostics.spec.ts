@@ -5,12 +5,13 @@ const root = `/three-lightmap-baker/@fs/${process.cwd().replace(/\\/g, '/')}/tes
 const validationModuleUrl = `${root}/materialGIValidation.ts`;
 const hitModuleUrl = `${root}/materialGIHitDiagnostics.ts`;
 const rngModuleUrl = `${root}/materialGIRngDiagnostics.ts`;
+const lookupModuleUrl = `${root}/materialGILookupDiagnostics.ts`;
 
 test('material GI headless portability diagnostics', async ({ page }) => {
   await page.goto(TEST_URL);
   await waitReady(page);
 
-  const result = await page.evaluate(async ({ validationUrl, hitUrl, rngUrl }) => {
+  const result = await page.evaluate(async ({ validationUrl, hitUrl, rngUrl, lookupUrl }) => {
     const validation = (await import(validationUrl)) as {
       validateTexturedBounce(renderer: unknown): {
         indirect: [number, number, number];
@@ -26,15 +27,19 @@ test('material GI headless portability diagnostics', async ({ page }) => {
     const rng = (await import(rngUrl)) as {
       validateLightmapperFirstRandomRay(renderer: unknown): [number, number, number, number];
     };
+    const lookup = (await import(lookupUrl)) as {
+      validateGpuHitMaterialLookup(renderer: unknown): [number, number, number, number];
+    };
     const baker = (window as unknown as { __baker: { sceneController: { renderer: unknown } } })
       .__baker;
     return {
       fixedRay: hit.validateFixedGpuBvhRay(baker.sceneController.renderer),
       randomRay: rng.validateLightmapperFirstRandomRay(baker.sceneController.renderer),
+      hitMaterial: lookup.validateGpuHitMaterialLookup(baker.sceneController.renderer),
       textured: validation.validateTexturedBounce(baker.sceneController.renderer),
       emissiveHit: hit.validateSecondaryEmissiveHit(baker.sceneController.renderer),
     };
-  }, { validationUrl: validationModuleUrl, hitUrl: hitModuleUrl, rngUrl: rngModuleUrl });
+  }, { validationUrl: validationModuleUrl, hitUrl: hitModuleUrl, rngUrl: rngModuleUrl, lookupUrl: lookupModuleUrl });
 
   expect(
     Math.max(...result.textured.indirect),
