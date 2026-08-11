@@ -141,8 +141,6 @@ export function normalisePBRMaterials(root: Object3D): void {
   root.traverse((obj) => {
     const m = obj as Mesh;
     if (!m.isMesh) return;
-    // Enable real-time shadow casting/receiving so pre-bake solid view shows
-    // directional sun shadows instead of looking flat-unlit.
     m.castShadow = true;
     m.receiveShadow = true;
     const mat = m.material as MeshStandardMaterial;
@@ -153,9 +151,6 @@ export function normalisePBRMaterials(root: Object3D): void {
     if (typeof mat.metalness === 'number') {
       mat.metalness = Math.min(1, Math.max(0, mat.metalness));
     }
-    // ESL GLBs ship envMapIntensity tuned for ESL's shader patch (gym=7.77).
-    // We don't have that patch, so even a faint scene.environment leaks bright
-    // ambient through. Force to 0 - user can crank in WorldPage if they want.
     mat.envMapIntensity = 0;
     mat.needsUpdate = true;
   });
@@ -178,17 +173,9 @@ export function addSunLight(
 ): DirectionalLight {
   const sun = new DirectionalLight(0xffffff, intensity);
   sun.position.set(-direction[0] * distance, -direction[1] * distance, -direction[2] * distance);
-  // Our baker reads light direction from the world-space Z axis of the light
-  // object (NOT from `target.position`). Default DirectionalLight has identity
-  // rotation → always lights from +Z regardless of position. Force the rotation
-  // by aiming at the origin so the baker picks up the intended direction.
   sun.lookAt(0, 0, 0);
   sun.updateMatrixWorld(true);
   sun.name = 'ESL Sun';
-  // Three real-time preview shadow map. Pre-bake "solid view" otherwise has
-  // no occlusion → surfaces lit uniformly = scene looks unlit. Shadow map
-  // gives some directional shape until the path-traced bake lands. Bake itself
-  // is unaffected (it casts BVH shadow rays regardless).
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.camera.near = 0.5;
@@ -222,22 +209,16 @@ export function applyLightmapMode(root: Object3D, mode: EslLightmapMode): void {
     const mat = m.material as MeshStandardMaterial;
     if (!mat || Array.isArray(mat)) return;
     if (mode === 'theirs') {
-      // Move Blender bake from emissive slot into lightmap slot.
       if (mat.emissiveMap && !mat.lightMap) {
         mat.lightMap = mat.emissiveMap;
         mat.lightMapIntensity = 1;
       }
     } else {
-      // Mode 'ours': flush every cached bake channel.
       mat.lightMap = null;
       mat.lightMapIntensity = 1;
       mat.aoMap = null;
       mat.aoMapIntensity = 1;
     }
-    // Always: zero the emissive contribution. The map carried Blender's bake;
-    // the color uniform sometimes ships non-zero too (gym props use it). Both
-    // get nuked so emission can't add a second lighting term on top of our
-    // path-traced lightmap.
     mat.emissiveMap = null;
     if (mat.emissive) mat.emissive.setRGB(0, 0, 0);
     mat.emissiveIntensity = 0;
@@ -245,8 +226,8 @@ export function applyLightmapMode(root: Object3D, mode: EslLightmapMode): void {
   });
 }
 
-/** Shorthand for the ESL public asset folder. */
-export const ESL_BASE = '/esl-demos';
+/** Shorthand for the ESL public asset folder, respecting Vite's deployment base path. */
+export const ESL_BASE = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/esl-demos`;
 
 /**
  * Apply ESL's box-projected envmap shader patch to every standard material in
@@ -275,7 +256,6 @@ export function applyBoxProjectedEnv(
       patch(shader);
       prev?.(shader, renderer);
     };
-    // Force shader rebuild so the patch lands on first render.
     mat.customProgramCacheKey = () => `boxproj:${envPos.join(',')}:${envSize.join(',')}`;
     mat.needsUpdate = true;
   });
