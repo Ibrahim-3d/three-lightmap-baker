@@ -16,13 +16,86 @@ import {
   type Texture,
   type WebGLRenderer,
 } from 'three';
-import { MeshBVH } from 'three-mesh-bvh';
+import {
+  MeshBVH,
+  MeshBVHUniformStruct,
+  shaderIntersectFunction,
+  shaderStructs,
+} from 'three-mesh-bvh';
 import {
   buildMaterialTextures,
   extractPerTriangleMaterials,
   generateLightmapper,
   mergeGeometry,
 } from 'baker-classic';
+
+/** Fixed-ray GPU traversal probe. Red=1 means the BVH shader reported a hit. */
+export function validateFixedGpuBvhRay(renderer: WebGLRenderer): [number, number, number, number] {
+  const geometry = new BoxGeometry(2, 0.1, 2);
+  geometry.translate(0, 1, 0);
+  const sourceMaterial = new MeshStandardMaterial({ side: DoubleSide });
+  const mesh = new Mesh(geometry, sourceMaterial);
+  mesh.updateMatrixWorld(true);
+  const merged = mergeGeometry([mesh]);
+  const bvh = new MeshBVH(merged);
+  const bvhUniform = new MeshBVHUniformStruct();
+  bvhUniform.updateFrom(bvh);
+  const material = new ShaderMaterial({
+    glslVersion: GLSL3,
+    depthTest: false,
+    depthWrite: false,
+    uniforms: { bvh: { value: bvhUniform } },
+    vertexShader: 'void main(){gl_Position=vec4(position,1.0);}',
+    fragmentShader: /* glsl */ `
+      precision highp float;
+      precision highp sampler2D;
+      precision highp isampler2D;
+      precision highp usampler2D;
+      ${shaderStructs}
+      ${shaderIntersectFunction}
+      uniform BVH bvh;
+      out vec4 outColor;
+      void main() {
+        uvec4 faceIndices = uvec4(0u);
+        vec3 faceNormal = vec3(0.0);
+        vec3 barycoord = vec3(0.0);
+        float side = 0.0;
+        float dist = 0.0;
+        bool hit = bvhIntersectFirstHit(
+          bvh,
+          vec3(0.0, 0.0, 0.0),
+          vec3(0.0, 1.0, 0.0),
+          faceIndices,
+          faceNormal,
+          barycoord,
+          side,
+          dist
+        );
+        outColor = vec4(hit ? 1.0 : 0.0, hit ? dist : 0.0, hit ? float(faceIndices.w + 1u) : 0.0, 1.0);
+      }
+    `,
+  });
+  const quad = new Mesh(new PlaneGeometry(2, 2), material);
+  const target = new WebGLRenderTarget(1, 1, { type: FloatType, depthBuffer: false });
+  const previousTarget = renderer.getRenderTarget();
+  const pixels = new Float32Array(4);
+  try {
+    renderer.setRenderTarget(target);
+    renderer.render(quad, new OrthographicCamera());
+    renderer.getContext().finish();
+    renderer.readRenderTargetPixels(target, 0, 0, 1, 1, pixels);
+    return [pixels[0] ?? 0, pixels[1] ?? 0, pixels[2] ?? 0, pixels[3] ?? 0];
+  } finally {
+    renderer.setRenderTarget(previousTarget);
+    target.dispose();
+    quad.geometry.dispose();
+    material.dispose();
+    bvhUniform.dispose();
+    sourceMaterial.dispose();
+    geometry.dispose();
+    merged.dispose();
+  }
+}
 
 /**
  * Diagnostic only: if this is non-zero, the GPU BVH secondary hit and
