@@ -14,6 +14,11 @@ import type { GroupInternals } from './internals';
 
 /** Result of a successful bake. Owns the GPU resources - call `dispose()` to release. */
 export class LightmapBakeResult {
+  private persistentMaterialMount: {
+    restore: () => void;
+    lightmaps: Map<Mesh, Texture>;
+  } | null = null;
+
   constructor(
     private readonly renderer: WebGLRenderer,
     private readonly meshLightmaps: Map<Mesh, Texture>,
@@ -110,7 +115,21 @@ export class LightmapBakeResult {
 
   /** Mounts each mesh's atlas texture as `mat.lightMap` (channel = 2). */
   apply(): void {
-    mountMeshLightmaps([...this.meshLightmaps].map(([mesh, lightMap]) => ({ mesh, lightMap })));
+    if (
+      this.persistentMaterialMount &&
+      mapsHaveSameEntries(this.persistentMaterialMount.lightmaps, this.meshLightmaps)
+    ) {
+      return;
+    }
+
+    this.persistentMaterialMount?.restore();
+    this.persistentMaterialMount = null;
+    const lightmaps = new Map(this.meshLightmaps);
+    const restore = mountMeshLightmaps(
+      [...lightmaps].map(([mesh, lightMap]) => ({ mesh, lightMap })),
+      { persistent: true },
+    );
+    this.persistentMaterialMount = { restore, lightmaps };
   }
 
   /**
@@ -140,6 +159,8 @@ export class LightmapBakeResult {
   }
 
   dispose(): void {
+    this.persistentMaterialMount?.restore();
+    this.persistentMaterialMount = null;
     for (const g of this.internals.groups) {
       g.downscale?.dispose();
       g.refinement?.dispose();
@@ -230,6 +251,14 @@ export class LightmapBakeResult {
       }
     }
   }
+}
+
+function mapsHaveSameEntries(left: Map<Mesh, Texture>, right: Map<Mesh, Texture>): boolean {
+  if (left.size !== right.size) return false;
+  for (const [mesh, texture] of left) {
+    if (right.get(mesh) !== texture) return false;
+  }
+  return true;
 }
 
 /**

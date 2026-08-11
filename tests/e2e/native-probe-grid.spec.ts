@@ -4,6 +4,34 @@ import { bakeDraft, TEST_URL, trackConsoleErrors, waitBakeDone, waitReady } from
 const sharedMaterialValidationUrl = `/three-lightmap-baker/@fs/${process.cwd().replace(/\\/g, '/')}/tests/browser/sharedMaterialValidation.ts`;
 
 test.describe('native Three.js LightProbeGrid runtime', () => {
+  test('keeps unbound owners unchanged and reuses the persistent material layer', async ({
+    page,
+  }) => {
+    const { errors } = trackConsoleErrors(page);
+    await page.goto(TEST_URL);
+    await waitReady(page);
+    const result = await page.evaluate(async (moduleUrl) => {
+      const validation = (await import(moduleUrl)) as {
+        validateUnboundSharedMaterialOwner(renderer: unknown): unknown;
+      };
+      const baker = (window as unknown as { __baker: { sceneController: { renderer: unknown } } })
+        .__baker;
+      return validation.validateUnboundSharedMaterialOwner(baker.sceneController.renderer);
+    }, sharedMaterialValidationUrl);
+
+    expect(result).toEqual({
+      bakedReceivesLightmap: true,
+      unboundRemainsOriginal: true,
+      unboundHasNoLightmap: true,
+      repeatedApplyReusesClone: true,
+      packageOwnershipMarked: true,
+      disposeRestoresBoundOwner: true,
+      ownedCloneDisposedOnce: true,
+      groupsPreserved: true,
+    });
+    expect(errors).toEqual([]);
+  });
+
   test('isolates shared materials per lightmap and restores native capture ownership', async ({
     page,
   }) => {

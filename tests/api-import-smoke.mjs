@@ -67,6 +67,9 @@ const assertExports = (label, mod) => {
 if (packageManifest.dependencies?.three !== undefined) {
   throw new Error('three must not be owned as a runtime dependency');
 }
+if (packageManifest.dependencies?.['@types/three'] !== '^0.185.4') {
+  throw new Error('@types/three must ship with the published r185 TypeScript contract');
+}
 for (const editorDependency of ['preact', '@preact/signals', 'lucide-preact']) {
   if (packageManifest.dependencies?.[editorDependency] !== undefined) {
     throw new Error(`${editorDependency} must not be owned as a runtime dependency`);
@@ -135,13 +138,6 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tlb-pack-'));
 try {
   runNpm(['init', '-y'], { cwd: tempDir, stdio: 'ignore' });
   runNpm(['install', tarballPath], { cwd: tempDir, stdio: 'ignore' });
-  runNpm(
-    ['install', '--save-dev', `@types/three@${packageManifest.devDependencies['@types/three']}`],
-    {
-      cwd: tempDir,
-      stdio: 'ignore',
-    },
-  );
 
   const installedManifest = JSON.parse(
     fs.readFileSync(
@@ -149,6 +145,9 @@ try {
       'utf8',
     ),
   );
+  if (installedManifest.dependencies?.['@types/three'] !== '^0.185.4') {
+    throw new Error('packed package is missing its @types/three runtime declaration dependency');
+  }
   for (const editorDependency of ['preact', '@preact/signals', 'lucide-preact']) {
     if (installedManifest.dependencies?.[editorDependency] !== undefined) {
       throw new Error(`packed package leaked editor runtime dependency ${editorDependency}`);

@@ -73,8 +73,10 @@ export function validateSharedMaterialLightmaps(renderer: WebGLRenderer): {
       mountedA[1]?.lightMap === lightMapA &&
       mountedB[0]?.lightMap === lightMapB &&
       mountedB[1]?.lightMap === lightMapB,
-    isolatedOnlyWhereNeeded: mountedA[0] === shared && mountedB[0] !== shared,
+    isolatedOnlyWhereNeeded:
+      mountedA[0] !== shared && mountedB[0] !== shared && mountedA[0] !== mountedB[0],
   };
+  result.dispose();
 
   const scene = new Scene();
   const captureGeometryA = geometryWithUv2();
@@ -151,7 +153,7 @@ export function validateSharedMaterialLightmaps(renderer: WebGLRenderer): {
     captureMeshA.visible &&
     captureMeshB.visible;
 
-  for (const material of new Set([...mountedA, ...mountedB, captureShared])) material.dispose();
+  for (const material of [shared, extraA, extraB, captureShared]) material.dispose();
   for (const geometry of [applyGeometryA, applyGeometryB, captureGeometryA, captureGeometryB]) {
     geometry.dispose();
   }
@@ -167,6 +169,76 @@ export function validateSharedMaterialLightmaps(renderer: WebGLRenderer): {
       stateRestored,
       exceptionSafe,
     },
+  };
+}
+
+export function validateUnboundSharedMaterialOwner(renderer: WebGLRenderer): {
+  bakedReceivesLightmap: boolean;
+  unboundRemainsOriginal: boolean;
+  unboundHasNoLightmap: boolean;
+  repeatedApplyReusesClone: boolean;
+  packageOwnershipMarked: boolean;
+  disposeRestoresBoundOwner: boolean;
+  ownedCloneDisposedOnce: boolean;
+  groupsPreserved: boolean;
+} {
+  const lightMap = texture([192, 160, 128, 255]);
+  const shared = new MeshStandardMaterial({ color: 0xffffff });
+  const bakedGeometry = geometryWithUv2();
+  const dynamicGeometry = geometryWithUv2();
+  const groupsBefore = JSON.stringify(bakedGeometry.groups);
+  const baked = new Mesh(bakedGeometry, shared);
+  const dynamic = new Mesh(dynamicGeometry, shared);
+  dynamic.userData.lightmapIgnore = true;
+  const result = new LightmapBakeResult(
+    renderer,
+    new Map([[baked, lightMap]]),
+    new Map([[baked, 16]]),
+    {
+      meshCount: 1,
+      texelCount: 0,
+      raysTraced: 0,
+      duration: { uvUnwrap: 0, geometry: 0, bake: 0, refine: 0, total: 0 },
+    },
+    {
+      groups: [],
+      bvh: null as never,
+      refinementOptions: { dilationIterations: 0 },
+      denoise: false,
+      matTexDispose: () => {},
+    },
+  );
+
+  result.apply();
+  const firstClone = baked.material as MeshStandardMaterial;
+  let disposeCount = 0;
+  firstClone.addEventListener('dispose', () => disposeCount++);
+  const bakedReceivesLightmap = firstClone !== shared && firstClone.lightMap === lightMap;
+  const unboundRemainsOriginal = dynamic.material === shared;
+  const unboundHasNoLightmap = shared.lightMap === null;
+  const packageOwnershipMarked = firstClone.userData.bakerOwnedLightmapMaterial === true;
+  result.apply();
+  const repeatedApplyReusesClone = baked.material === firstClone && disposeCount === 0;
+  const groupsPreserved = JSON.stringify(bakedGeometry.groups) === groupsBefore;
+
+  result.dispose();
+  const disposeRestoresBoundOwner = baked.material === shared && dynamic.material === shared;
+  const ownedCloneDisposedOnce = disposeCount === 1;
+
+  shared.dispose();
+  bakedGeometry.dispose();
+  dynamicGeometry.dispose();
+  lightMap.dispose();
+
+  return {
+    bakedReceivesLightmap,
+    unboundRemainsOriginal,
+    unboundHasNoLightmap,
+    repeatedApplyReusesClone,
+    packageOwnershipMarked,
+    disposeRestoresBoundOwner,
+    ownedCloneDisposedOnce,
+    groupsPreserved,
   };
 }
 

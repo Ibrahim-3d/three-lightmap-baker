@@ -10,6 +10,8 @@ export type MeshLightmapBinding = {
 export type MountLightmapOptions = {
   intensity?: number;
   temporary?: boolean;
+  /** Package-owned persistent layer: clone every bound material and restore/dispose on cleanup. */
+  persistent?: boolean;
   resolveBaseColorMap?: (mesh: Mesh, material: MeshStandardMaterial) => Texture | null | undefined;
 };
 
@@ -30,22 +32,29 @@ type MaterialState = {
 
 /**
  * Mount per-mesh lightmaps without allowing one shared material object to be
- * assigned conflicting textures. A material is cloned only for the second and
- * subsequent distinct (lightmap, base-color map) variants.
+ * assigned conflicting textures. Temporary capture uses the source material
+ * for one variant and clones only conflicts. Persistent mounting clones every
+ * bound variant so owners outside `bindings` can never be mutated indirectly.
  *
- * Temporary mounts return an exception-safe restoration callback that restores
- * the exact original `mesh.material` references (including material arrays).
+ * Managed mounts return an exception-safe cleanup callback. Temporary cleanup
+ * restores exact material references/state; persistent cleanup restores bound
+ * owners and disposes every package-owned clone.
  */
 export function mountMeshLightmaps(
   bindings: Iterable<MeshLightmapBinding>,
   options: MountLightmapOptions = {},
 ): () => void {
   const intensity = options.intensity ?? 1;
+  if (options.temporary && options.persistent) {
+    throw new Error('[baker] a lightmap material mount cannot be temporary and persistent');
+  }
+  const managed = options.temporary === true || options.persistent === true;
   const originalAssignments = new Map<Mesh, Material | Material[]>();
   const usagesByMaterial = new Map<StandardMaterial, Usage[]>();
   const materialStates: MaterialState[] = [];
   const clonedMaterials = new Set<StandardMaterial>();
   const lightMapChannels = new Map<Texture, number>();
+  const mountedAssignments = new Map<Mesh, Material | Material[]>();
   let restored = false;
 
   for (const { mesh, lightMap } of bindings) {
@@ -71,8 +80,12 @@ export function mountMeshLightmaps(
   const restore = (): void => {
     if (restored) return;
     restored = true;
-    if (options.temporary) {
-      for (const [mesh, material] of originalAssignments) mesh.material = material;
+    if (managed) {
+      for (const [mesh, material] of originalAssignments) {
+        if (options.temporary || mesh.material === mountedAssignments.get(mesh)) {
+          mesh.material = material;
+        }
+      }
       for (const state of materialStates) {
         state.material.map = state.map;
         state.material.lightMap = state.lightMap;
@@ -99,8 +112,17 @@ export function mountMeshLightmaps(
           (candidate) => candidate.lightMap === usage.lightMap && candidate.map === usage.map,
         );
         if (!variant) {
-          const material = variants.length === 0 ? source : (source.clone() as StandardMaterial);
+          const material =
+            variants.length === 0 && !options.persistent
+              ? source
+              : (source.clone() as StandardMaterial);
           if (material !== source) clonedMaterials.add(material);
+          if (options.persistent) {
+            material.userData = {
+              ...material.userData,
+              bakerOwnedLightmapMaterial: true,
+            };
+          }
           variant = { lightMap: usage.lightMap, map: usage.map, material };
           variants.push(variant);
         }
@@ -148,9 +170,10 @@ export function mountMeshLightmaps(
         const replacement = slotReplacements.get(0);
         if (replacement && replacement !== original) mesh.material = replacement;
       }
+      mountedAssignments.set(mesh, mesh.material);
     }
   } catch (error) {
-    if (options.temporary) restore();
+    if (managed) restore();
     throw error;
   }
 
