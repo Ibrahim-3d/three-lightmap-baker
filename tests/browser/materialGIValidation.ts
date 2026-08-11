@@ -1,6 +1,6 @@
 import {
-  BoxGeometry,
   BufferAttribute,
+  BufferGeometry,
   Color,
   DataTexture,
   DoubleSide,
@@ -16,7 +16,6 @@ import {
   SRGBColorSpace,
   WebGLRenderTarget,
   Vector3,
-  type BufferGeometry,
   type Texture,
   type WebGLRenderer,
 } from 'three';
@@ -30,29 +29,15 @@ import {
   type PackedLight,
 } from 'baker-classic';
 
-type MaterialGIDiagnostics = {
-  extFloatBlend: boolean;
-  extColorBufferFloat: boolean;
-  extFloatLinear: boolean;
-  framebufferComplete: boolean;
-  glErrorAfterRender: number;
-  indirectAlpha: number;
-  positionSample: [number, number, number, number];
-  normalSample: [number, number, number, number];
-  packedMapSample: [number, number, number, number];
-  materialAlbedoSample: [number, number, number, number];
-};
-
 /** Deterministic browser-only validation used by the focused material GI smoke. */
 export function validateTexturedBounce(renderer: WebGLRenderer): {
   indirect: [number, number, number];
   expectedAlbedo: [number, number, number];
   sourceAlbedo: [number, number, number];
-  diagnostics: MaterialGIDiagnostics;
 } {
   return validateTexturedCase(renderer, {
     map: dataTexture([0.4, 0.2, 0.1, 1]),
-    uv0: [0.5, 0.5],
+    uv0: [0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 1],
     expectedAlbedo: [0.2, 0.2, 0.1],
   });
 }
@@ -75,20 +60,20 @@ export function validateBaseColorUvAndSrgb(renderer: WebGLRenderer): {
   return {
     uv0: validateTexturedCase(renderer, {
       map: uv0Map,
-      uv0: [0.25, 0.5],
-      uv1: [0.75, 0.5],
+      uv0: constantUvs(0.25, 0.5),
+      uv1: constantUvs(0.75, 0.5),
       expectedAlbedo: [0.4, 0.1, 0.05],
     }),
     uv1: validateTexturedCase(renderer, {
       map: uv1Map,
       mapChannel: 1,
-      uv0: [0.25, 0.5],
-      uv1: [0.75, 0.5],
+      uv0: constantUvs(0.25, 0.5),
+      uv1: constantUvs(0.75, 0.5),
       expectedAlbedo: [0.025, 0.7, 0.2],
     }),
     srgb: validateTexturedCase(renderer, {
       map: srgbMap,
-      uv0: [0.5, 0.5],
+      uv0: constantUvs(0.5, 0.5),
       expectedAlbedo: [srgbColor.r * 0.5, srgbColor.g, srgbColor.b],
     }),
   };
@@ -97,8 +82,8 @@ export function validateBaseColorUvAndSrgb(renderer: WebGLRenderer): {
 type TexturedCase = {
   map: DataTexture;
   mapChannel?: 0 | 1;
-  uv0: readonly [number, number];
-  uv1?: readonly [number, number];
+  uv0: number[];
+  uv1?: number[];
   expectedAlbedo: [number, number, number];
 };
 
@@ -112,9 +97,29 @@ function validateTexturedCase(
   extractedUvs: number[];
   compactBaseColorAtlas: boolean;
   compactSurfaceAlbedo: boolean;
-  diagnostics: MaterialGIDiagnostics;
 } {
-  const geometry = makeSlabGeometry(options.uv0, options.uv1);
+  const geometry = new BufferGeometry();
+  geometry.setAttribute(
+    'position',
+    new BufferAttribute(
+      new Float32Array([
+        -100, 1, -100, 100, 1, -100, -100, 1, 100, 100, 1, -100, 100, 1, 100, -100, 1, 100,
+      ]),
+      3,
+    ),
+  );
+  geometry.setAttribute(
+    'normal',
+    new BufferAttribute(new Float32Array(Array.from({ length: 6 }, () => [0, -1, 0]).flat()), 3),
+  );
+  geometry.setAttribute('uv', new BufferAttribute(new Float32Array(options.uv0), 2));
+  if (options.uv1) {
+    geometry.setAttribute('uv1', new BufferAttribute(new Float32Array(options.uv1), 2));
+  }
+  geometry.setAttribute(
+    'uv2',
+    new BufferAttribute(new Float32Array([0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 1]), 2),
+  );
 
   const map = options.map;
   map.channel = options.mapChannel ?? 0;
@@ -132,19 +137,11 @@ function validateTexturedCase(
   const atlas = renderAtlas(renderer, [mesh], 8);
   const positions = dataTexture([0, 0, 0, 1]);
   const normals = dataTexture([0, 1, 0, 1]);
-
   const lights: PackedLight[] = [
     {
       type: 'point',
       position: new Vector3(0, 0, 0),
       direction: new Vector3(0, -1, 0),
-      color: new Color(1, 1, 1),
-      params: [0, 0, 0, 0],
-    },
-    {
-      type: 'point',
-      position: new Vector3(0, 2, 0),
-      direction: new Vector3(0, 1, 0),
       color: new Color(1, 1, 1),
       params: [0, 0, 0, 0],
     },
@@ -171,40 +168,12 @@ function validateTexturedCase(
     bounces: 1,
   });
 
-  const gl = renderer.getContext();
-  const previousTarget = renderer.getRenderTarget();
-  while (gl.getError() !== gl.NO_ERROR) {}
-  renderer.setRenderTarget(lightmapper.renderTarget);
-  const framebufferComplete = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
-  renderer.setRenderTarget(previousTarget);
-
   try {
     lightmapper.render();
-    gl.finish();
-    const glErrorAfterRender = gl.getError();
+    renderer.getContext().finish();
     const pixels = readTexture(renderer, lightmapper.textures.indirect, 1);
     const sourcePixels = readTexture(renderer, atlas.surfaceAlbedoTexture, 8);
     const sourceAlbedo = averageOccupied(sourcePixels);
-    const packedMapPixels = readTexture(renderer, materialTextures.albedoMapAtlas, 1);
-    const materialAlbedoPixels = readTexture(
-      renderer,
-      materialTextures.albedoTexture,
-      materialTextures.side,
-    );
-    const positionPixels = readTexture(renderer, positions, 1);
-    const normalPixels = readTexture(renderer, normals, 1);
-    const diagnostics: MaterialGIDiagnostics = {
-      extFloatBlend: !!gl.getExtension('EXT_float_blend'),
-      extColorBufferFloat: !!gl.getExtension('EXT_color_buffer_float'),
-      extFloatLinear: !!gl.getExtension('OES_texture_float_linear'),
-      framebufferComplete,
-      glErrorAfterRender,
-      indirectAlpha: pixels[3] ?? 0,
-      positionSample: firstPixel(positionPixels),
-      normalSample: firstPixel(normalPixels),
-      packedMapSample: firstPixel(packedMapPixels),
-      materialAlbedoSample: firstPixel(materialAlbedoPixels),
-    };
     return {
       indirect: [pixels[0] ?? 0, pixels[1] ?? 0, pixels[2] ?? 0],
       expectedAlbedo: options.expectedAlbedo,
@@ -212,7 +181,6 @@ function validateTexturedCase(
       extractedUvs: [...surfaces.uvs],
       compactBaseColorAtlas: materialTextures.albedoMapAtlas.type !== FloatType,
       compactSurfaceAlbedo: atlas.surfaceAlbedoTexture.type !== FloatType,
-      diagnostics,
     };
   } finally {
     lightmapper.dispose();
@@ -227,35 +195,16 @@ function validateTexturedCase(
   }
 }
 
-function makeSlabGeometry(
-  uv0: readonly [number, number],
-  uv1?: readonly [number, number],
-): BufferGeometry {
-  const geometry = new BoxGeometry(200, 0.1, 200);
-  geometry.translate(0, 1, 0);
-  const position = geometry.getAttribute('position');
-  const lightmapUvs = geometry.getAttribute('uv').clone();
-  geometry.setAttribute('uv', constantUvAttribute(position.count, uv0));
-  if (uv1) geometry.setAttribute('uv1', constantUvAttribute(position.count, uv1));
-  geometry.setAttribute('uv2', lightmapUvs);
-  return geometry;
-}
-
-function constantUvAttribute(count: number, uv: readonly [number, number]): BufferAttribute {
-  const data = new Float32Array(count * 2);
-  for (let i = 0; i < count; i++) {
-    data[i * 2] = uv[0];
-    data[i * 2 + 1] = uv[1];
-  }
-  return new BufferAttribute(data, 2);
-}
-
 function dataTexture(rgba: readonly number[], width = 1, height = 1): DataTexture {
   const texture = new DataTexture(new Float32Array(rgba), width, height, RGBAFormat, FloatType);
   texture.minFilter = NearestFilter;
   texture.magFilter = NearestFilter;
   texture.needsUpdate = true;
   return texture;
+}
+
+function constantUvs(u: number, v: number): number[] {
+  return Array.from({ length: 6 }, () => [u, v]).flat();
 }
 
 function readTexture(renderer: WebGLRenderer, source: Texture, resolution: number): Float32Array {
@@ -284,10 +233,6 @@ function readTexture(renderer: WebGLRenderer, source: Texture, resolution: numbe
     material.dispose();
     quad.geometry.dispose();
   }
-}
-
-function firstPixel(pixels: Float32Array): [number, number, number, number] {
-  return [pixels[0] ?? 0, pixels[1] ?? 0, pixels[2] ?? 0, pixels[3] ?? 0];
 }
 
 function averageOccupied(pixels: Float32Array): [number, number, number] {
