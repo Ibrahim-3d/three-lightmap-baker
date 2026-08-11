@@ -133,7 +133,7 @@ test.describe('scene presets', () => {
         expect(hard, `unexpected ESL preset errors: ${hard.join('; ')}`).toEqual([]);
     });
 
-    test('bake-cornell-draft survives a preset switch', async ({ page }) => {
+    test('bake-cornell-draft survives a preset switch @hardware-gpu', async ({ page }) => {
         const { errors } = trackConsoleErrors(page);
         await page.goto(TEST_URL);
         await waitReady(page);
