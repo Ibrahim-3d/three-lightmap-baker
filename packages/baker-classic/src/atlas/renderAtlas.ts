@@ -1,10 +1,12 @@
 import {
   Color,
+  DataTexture,
   DoubleSide,
   FloatType,
   GLSL3,
   HalfFloatType,
   Mesh,
+  Matrix3,
   NearestFilter,
   NoBlending,
   OrthographicCamera,
@@ -13,6 +15,7 @@ import {
   ShaderMaterial,
   Texture,
   Uniform,
+  UnsignedByteType,
   Vector2,
   WebGLRenderer,
   WebGLRenderTarget,
@@ -27,6 +30,8 @@ import {
 export type AtlasRenderResult = {
   positionTexture: Texture;
   normalTexture: Texture;
+  /** Compact linear source diffuse reflectance: material.color multiplied by material.map once. */
+  surfaceAlbedoTexture: Texture;
   dispose: () => void;
 };
 
@@ -103,6 +108,45 @@ const normalMaterial = new ShaderMaterial({
   },
 });
 
+const whiteMap = new DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, RGBAFormat);
+whiteMap.needsUpdate = true;
+const whiteColor = new Color(1, 1, 1);
+
+const surfaceAlbedoMaterial = new ShaderMaterial({
+  glslVersion: GLSL3,
+  vertexShader: /* glsl */ `
+    in vec2 uv2;
+    in vec2 uv1;
+    uniform vec2 offset;
+    uniform float baseColorUvChannel;
+    uniform mat3 baseColorMapTransform;
+    out vec2 vBaseColorUv;
+    void main() {
+      vec2 sourceUv = baseColorUvChannel > 0.5 ? uv1 : uv;
+      vBaseColorUv = (baseColorMapTransform * vec3(sourceUv, 1.0)).xy;
+      gl_Position = vec4((uv2 + offset) * 2.0 - 1.0, 0.0, 1.0);
+    }
+  `,
+  fragmentShader: /* glsl */ `
+    uniform vec3 baseColor;
+    uniform sampler2D baseColorMap;
+    in vec2 vBaseColorUv;
+    out vec4 fragColor;
+    void main() {
+      fragColor = vec4(baseColor * texture(baseColorMap, vBaseColorUv).rgb, 1.0);
+    }
+  `,
+  side: DoubleSide,
+  fog: false,
+  uniforms: {
+    offset: new Uniform(new Vector2(0, 0)),
+    baseColor: new Uniform(new Color(1, 1, 1)),
+    baseColorMap: new Uniform(whiteMap),
+    baseColorUvChannel: new Uniform(0),
+    baseColorMapTransform: new Uniform(new Matrix3()),
+  },
+});
+
 const scene = new Scene();
 const atlasCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
@@ -146,9 +190,24 @@ function makeAtlasMesh(mesh: Mesh, meshIndex: number): Mesh {
   clone.matrixWorld.copy(mesh.matrixWorld);
   clone.normalMatrix.getNormalMatrix(mesh.matrixWorld);
   clone.frustumCulled = false;
-  clone.onBeforeRender = (): void => {
+  clone.onBeforeRender = (_renderer, _scene, _camera, _geometry, _material, group): void => {
+    const materialIndex =
+      (group as unknown as { materialIndex?: number } | null)?.materialIndex ?? 0;
     const meshId = worldPositionMaterial.uniforms.meshId;
     if (meshId) meshId.value = meshIndex + 1;
+    const candidate = Array.isArray(mesh.material)
+      ? (mesh.material[materialIndex] ?? mesh.material[0])
+      : mesh.material;
+    const surface = candidate as { color?: Color; map?: Texture | null } | undefined;
+    surfaceAlbedoMaterial.uniforms.baseColor!.value.copy(surface?.color ?? whiteColor);
+    const requestedMap = surface?.map ?? null;
+    const mapChannel = requestedMap?.channel === 1 ? 1 : 0;
+    const sourceUvName = mapChannel === 1 ? 'uv1' : 'uv';
+    const map = requestedMap && mesh.geometry.hasAttribute(sourceUvName) ? requestedMap : whiteMap;
+    if (map.matrixAutoUpdate) map.updateMatrix();
+    surfaceAlbedoMaterial.uniforms.baseColorMap!.value = map;
+    surfaceAlbedoMaterial.uniforms.baseColorUvChannel!.value = mapChannel;
+    surfaceAlbedoMaterial.uniforms.baseColorMapTransform!.value.copy(map.matrix);
   };
   return clone;
 }
@@ -182,6 +241,13 @@ export function renderAtlas(
 
   const posRT = new WebGLRenderTarget(resolution, resolution, rtOptions);
   const normRT = new WebGLRenderTarget(resolution, resolution, rtOptions);
+  // Legacy RGB probes need source albedo, but it is bounded reflectance data.
+  // RGBA8 keeps that compatibility buffer at one quarter of RGBA32F's cost.
+  const surfaceAlbedoRT = new WebGLRenderTarget(resolution, resolution, {
+    ...rtOptions,
+    type: UnsignedByteType,
+  });
+  surfaceAlbedoRT.texture.name = 'Baker compact surface albedo';
 
   const prevRT = renderer.getRenderTarget();
   const prevAutoClear = renderer.autoClear;
@@ -197,6 +263,8 @@ export function renderAtlas(
       renderer.setRenderTarget(posRT);
       renderer.clear();
       renderer.setRenderTarget(normRT);
+      renderer.clear();
+      renderer.setRenderTarget(surfaceAlbedoRT);
       renderer.clear();
     }
 
@@ -218,6 +286,7 @@ export function renderAtlas(
 
     draw(worldPositionMaterial, posRT);
     draw(normalMaterial, normRT);
+    draw(surfaceAlbedoMaterial, surfaceAlbedoRT);
   } finally {
     renderer.setRenderTarget(prevRT);
     renderer.autoClear = prevAutoClear;
@@ -229,9 +298,11 @@ export function renderAtlas(
   return {
     positionTexture: posRT.texture,
     normalTexture: normRT.texture,
+    surfaceAlbedoTexture: surfaceAlbedoRT.texture,
     dispose: () => {
       posRT.dispose();
       normRT.dispose();
+      surfaceAlbedoRT.dispose();
     },
   };
 }
@@ -245,6 +316,7 @@ export function renderMeshToAtlas(
   mesh: Mesh,
   posRT: WebGLRenderTarget,
   normRT: WebGLRenderTarget,
+  surfaceAlbedoRT: WebGLRenderTarget,
   offset: Vector2,
 ): void {
   const prevRT = renderer.getRenderTarget();
@@ -268,6 +340,7 @@ export function renderMeshToAtlas(
 
     draw(worldPositionMaterial, posRT);
     draw(normalMaterial, normRT);
+    draw(surfaceAlbedoMaterial, surfaceAlbedoRT);
   } finally {
     renderer.setRenderTarget(prevRT);
     renderer.autoClear = prevAutoClear;

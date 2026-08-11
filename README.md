@@ -31,7 +31,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Three.js-r161-black?logo=threedotjs" alt="Three.js" />
+  <img src="https://img.shields.io/badge/Three.js-r185-black?logo=threedotjs" alt="Three.js" />
   <img src="https://img.shields.io/badge/TypeScript-strict-blue?logo=typescript" alt="TypeScript" />
   <img src="https://img.shields.io/badge/License-MIT-green" alt="MIT License" />
   <img src="https://img.shields.io/badge/GI_Bounces-1--4-orange" alt="GI Bounces" />
@@ -101,6 +101,9 @@ If you've used Unity's **Progressive Lightmapper** or Unreal's **Lightmass**, yo
 - **Gap flood / edge dilation** - prevents black seams at UV island borders.
 - **Bilateral denoiser** - smooths noise while preserving shadow edges, guided by world-position and normal textures.
 - **Dynamic-object light probes** - capture the baked static scene into Three.js' native GPU `LightProbeGrid` (L2 SH) for moving standard-material objects. The earlier RGB volume remains available as an explicit legacy fallback.
+- **Textured and multi-material GI** - secondary hits resolve the post-BVH
+  triangle's geometry-group material slot and sample `material.color × material.map`
+  at barycentrically interpolated UV0 coordinates.
 - **3D Camera Objects** - add cameras from the Asset Library, select them in the viewport, and snap your view to match any scene camera's perspective.
 - **TypeScript** - strict mode, fully typed API.
 
@@ -589,7 +592,7 @@ Releases all GPU resources (textures, render targets).
 
 ## Requirements
 
-- **Three.js** r161 (see `package.json`)
+- **Three.js** 0.185.1 / r185 tested baseline (see `package.json`)
 - **WebGL 2** with `EXT_color_buffer_float` (required for HDR lightmap accumulation)
 - **Browser/renderer context required** - the current development build is WebGL-first (Node headless adapter is planned, not shipped)
 - **GPU**: any discrete GPU from the last 5 years. Intel/AMD integrated GPUs work but bake slower - the library auto-detects and warns.

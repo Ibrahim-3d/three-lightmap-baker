@@ -1,4 +1,4 @@
-import { Mesh, MeshStandardMaterial, Texture, WebGLRenderer } from 'three';
+import { Mesh, Texture, WebGLRenderer } from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
 import {
   generateAOMapper,
@@ -7,12 +7,18 @@ import {
   type PostProcessOptions,
 } from '../lightmap';
 import { exportLightmap, type ExportFormat } from '../utils/exportLightmap';
+import { mountMeshLightmaps } from '../utils/LightmapMaterials';
 import { BakeError } from '../errors';
 import type { BakeHooks, BakeStats, BakeGroupView } from './types';
 import type { GroupInternals } from './internals';
 
 /** Result of a successful bake. Owns the GPU resources - call `dispose()` to release. */
 export class LightmapBakeResult {
+  private persistentMaterialMount: {
+    restore: () => void;
+    lightmaps: Map<Mesh, Texture>;
+  } | null = null;
+
   constructor(
     private readonly renderer: WebGLRenderer,
     private readonly meshLightmaps: Map<Mesh, Texture>,
@@ -71,6 +77,7 @@ export class LightmapBakeResult {
         refinement: g.refinement?.texture ?? null,
         position: g.positionTex,
         normal: g.normalTex,
+        surfaceAlbedo: g.surfaceAlbedoTex,
       },
     }));
   }
@@ -98,6 +105,7 @@ export class LightmapBakeResult {
             refinement: g.refinement?.texture ?? null,
             position: g.positionTex,
             normal: g.normalTex,
+            surfaceAlbedo: g.surfaceAlbedoTex,
           },
         };
       }
@@ -107,14 +115,21 @@ export class LightmapBakeResult {
 
   /** Mounts each mesh's atlas texture as `mat.lightMap` (channel = 2). */
   apply(): void {
-    for (const [mesh, tex] of this.meshLightmaps) {
-      const mat = mesh.material as MeshStandardMaterial;
-      if (!mat) continue;
-      mat.lightMap = tex;
-      tex.channel = 2;
-      mat.lightMapIntensity = 1;
-      mat.needsUpdate = true;
+    if (
+      this.persistentMaterialMount &&
+      mapsHaveSameEntries(this.persistentMaterialMount.lightmaps, this.meshLightmaps)
+    ) {
+      return;
     }
+
+    this.persistentMaterialMount?.restore();
+    this.persistentMaterialMount = null;
+    const lightmaps = new Map(this.meshLightmaps);
+    const restore = mountMeshLightmaps(
+      [...lightmaps].map(([mesh, lightMap]) => ({ mesh, lightMap })),
+      { persistent: true },
+    );
+    this.persistentMaterialMount = { restore, lightmaps };
   }
 
   /**
@@ -144,6 +159,8 @@ export class LightmapBakeResult {
   }
 
   dispose(): void {
+    this.persistentMaterialMount?.restore();
+    this.persistentMaterialMount = null;
     for (const g of this.internals.groups) {
       g.downscale?.dispose();
       g.refinement?.dispose();
@@ -234,6 +251,14 @@ export class LightmapBakeResult {
       }
     }
   }
+}
+
+function mapsHaveSameEntries(left: Map<Mesh, Texture>, right: Map<Mesh, Texture>): boolean {
+  if (left.size !== right.size) return false;
+  for (const [mesh, texture] of left) {
+    if (right.get(mesh) !== texture) return false;
+  }
+  return true;
 }
 
 /**

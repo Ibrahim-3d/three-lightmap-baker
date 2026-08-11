@@ -8,7 +8,7 @@ import { WorldPage } from './WorldPage';
 import { registerBakerMenus } from './menus';
 
 /**
- * Public UI surface for baker-classic. The playground app calls
+ * Editor integration surface for the demo shell. The playground app calls
  * `registerBakerClassicUI()` once at boot; this wires the renderer-specific
  * inspector tabs plus the Render menu items and lightmap export actions.
  *

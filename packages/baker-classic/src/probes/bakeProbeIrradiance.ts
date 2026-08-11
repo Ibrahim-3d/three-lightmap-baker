@@ -75,6 +75,7 @@ export async function bakeProbeIrradianceFromLightmaps(
       group.textures.refinement ?? group.textures.composite,
       resolution,
     );
+    const sourceAlbedo = readFloatTexture(renderer, group.textures.surfaceAlbedo, resolution);
 
     for (let y = 0; y < resolution; y += sampleStride) {
       for (let x = 0; x < resolution; x += sampleStride) {
@@ -114,12 +115,17 @@ export async function bakeProbeIrradianceFromLightmaps(
         const sourceG = Math.max(0, rawG);
         const sourceB = Math.max(0, rawB);
         addRGBSample(sourceLightmap, sourceR, sourceG, sourceB);
-        const surfaceAlbedo = resolveSurfaceAlbedo(group, encodedMeshId);
-        if (!surfaceAlbedo) {
+        const albedoR = sourceAlbedo[pixel] ?? NaN;
+        const albedoG = sourceAlbedo[pixel + 1] ?? NaN;
+        const albedoB = sourceAlbedo[pixel + 2] ?? NaN;
+        if (![albedoR, albedoG, albedoB].every(Number.isFinite)) {
           invalidSurfaceReferences++;
           continue;
         }
-        const [rr, rg, rb] = projectProbeSourceDiffuse([sourceR, sourceG, sourceB], surfaceAlbedo);
+        const [rr, rg, rb] = projectProbeSourceDiffuse(
+          [sourceR, sourceG, sourceB],
+          [Math.max(0, albedoR), Math.max(0, albedoG), Math.max(0, albedoB)],
+        );
         addRGBSample(projectedSurfaceLight, rr, rg, rb);
         validSourceSamples++;
 
@@ -349,20 +355,9 @@ function smallestPositiveSpacing(volume: ProbeVolume): number {
   return values.length ? Math.min(...values) : 0.5;
 }
 
-function resolveSurfaceAlbedo(
-  group: ProbeBakeSource['groups'][number],
-  encodedMeshId: number,
-): [number, number, number] | null {
-  if (!Number.isFinite(encodedMeshId)) return null;
-  const meshIndex = Math.round(encodedMeshId) - 1;
-  const mesh = group.meshes[meshIndex];
-  if (!mesh) return null;
-  return readProbeSurfaceAlbedo(mesh);
-}
-
 /**
- * Read the solid base color supported by the current baker material pipeline.
- * Texture maps and geometry material groups are deliberately not approximated.
+ * Read material slot zero's solid base color. Kept as a small compatibility
+ * utility; probe baking itself consumes the GPU-rasterized textured albedo atlas.
  */
 export function readProbeSurfaceAlbedo(mesh: Mesh): [number, number, number] | null {
   const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];

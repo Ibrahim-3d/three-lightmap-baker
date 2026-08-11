@@ -55,10 +55,9 @@ export type NativeLightProbeGridResult = {
 /**
  * Capture the currently rendered scene into Three.js' native GPU L2 SH grid.
  *
- * The caller controls which scene objects and lighting are visible during the
- * capture. This keeps the package helper usable for both fully baked static
- * scenes and conventional real-time scenes while leaving editor state policy
- * outside the library.
+ * This low-level API captures the scene exactly as configured. Applications
+ * capturing a completed bake should prefer `captureLightmappedProbeGrid`,
+ * which owns static-scene isolation and exception-safe state restoration.
  */
 export function captureNativeLightProbeGrid(
   renderer: WebGLRenderer,

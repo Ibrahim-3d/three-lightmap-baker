@@ -4,6 +4,10 @@ export {
   captureNativeLightProbeGrid,
   captureNativeLightProbeGridFromJSON,
 } from './NativeLightProbeGrid';
+export {
+  captureLightmappedProbeGrid,
+  captureLightmappedProbeGridFromJSON,
+} from './captureLightmappedProbeGrid';
 export { bakeProbeIrradianceFromLightmaps } from './bakeProbeIrradiance';
 export { generateProbeVolume } from './generateProbeVolume';
 export type { GeneratedProbeVolume } from './generateProbeVolume';
@@ -17,6 +21,10 @@ export type {
   NativeLightProbeGridResult,
   NativeLightProbeGridStats,
 } from './NativeLightProbeGrid';
+export type {
+  LightmappedProbeGridOptions,
+  LightmappedProbeGridRestoreOptions,
+} from './captureLightmappedProbeGrid';
 export type {
   GenerateProbeVolumeOptions,
   ProbeBakeHooks,

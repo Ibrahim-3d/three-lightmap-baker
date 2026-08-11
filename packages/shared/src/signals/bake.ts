@@ -38,7 +38,7 @@ export const isBaking = computed(() => bakeStatus.value === 'baking');
 
 /**
  * Path tracer settings - shared with the baker's sky/env fill so one slider
- * drives both. Lives in shared/ so `WorldPage` (baker-classic/ui) and the
+ * drives both. Lives in shared/ so `WorldPage` (demo-shell/baker) and the
  * PT inspector page (pt-renderer/ui) read the same atom.
  */
 export type PTSettings = {

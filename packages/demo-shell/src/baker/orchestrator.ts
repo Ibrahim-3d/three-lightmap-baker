@@ -1,5 +1,5 @@
 import { getOrchestratorAs, type Orchestrator } from 'shared';
-import type { ExportFormat } from '../utils/exportLightmap';
+import type { ExportFormat } from 'baker-classic';
 
 /**
  * Renderer-specific extension of the generic `Orchestrator`. The playground

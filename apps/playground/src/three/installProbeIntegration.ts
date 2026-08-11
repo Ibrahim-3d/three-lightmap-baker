@@ -56,6 +56,7 @@ type ProbeHost = {
   serializeProject(): ProbeProject;
   loadProject(project: ProbeProject): Promise<void>;
   saveProject(): void;
+  addFrameCallback(callback: (timeSeconds: number) => void): () => void;
   previewProbes?: () => void;
   generateProbes?: () => Promise<void>;
   clearProbes?: () => void;
@@ -222,7 +223,9 @@ export function installProbeIntegration(app: CornellBoxExample): ProbeController
 
   installPersistence(host, controller, invalidate);
   installProjectFileSurface(host);
-  startProbeLoop(controller);
+  controller.ownFrameLifecycle(
+    host.addFrameCallback((timeSeconds) => controller.update(timeSeconds)),
+  );
   requestAnimationFrame(() => host.previewProbes?.());
   return controller;
 }
@@ -404,12 +407,4 @@ function resetStatus(options: ProbeOptionBag): void {
   options.probeStatus = 'idle';
   options.probeProgress = 0;
   options.probeCount = 0;
-}
-
-function startProbeLoop(controller: ProbeController): void {
-  const tick = (timeMs: number): void => {
-    controller.update(timeMs / 1000);
-    requestAnimationFrame(tick);
-  };
-  requestAnimationFrame(tick);
 }

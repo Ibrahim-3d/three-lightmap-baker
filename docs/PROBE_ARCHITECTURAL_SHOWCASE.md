@@ -8,7 +8,10 @@ The scene has two connected rooms, a 0.42 m-thick separating wall with a
 2 m-wide doorway, a recessed alcove, a full-height column, a low obstruction,
 floor and ceiling slabs, red and green solid-color walls, neutral surrounding
 surfaces, two area lights, and one moving white `MeshStandardMaterial` sphere.
-All 15 static contributors have one solid-color material per mesh and no maps.
+This historical measurement scene intentionally keeps 15 static contributors
+to solid colors for repeatability. The v1 baker now also supports base-color
+maps and geometry-group material arrays; this scene is no longer a material
+capability constraint.
 
 ## Measurement conditions
 
@@ -33,11 +36,11 @@ source supplied 3342 valid source samples. Its RGB range was
 The shared scene bounds, after 0.1 m padding, were
 `[-7.34,-0.30,-6.14]` to `[7.34,4.30,4.10]`.
 
-| Target spacing | Actual XYZ spacing | Grid | Probes | Generation | Contributions | Empty before | Diffusion-filled | Fallback-filled | Physically dark | Non-zero | Payload |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1.20 m | 1.1292 / 1.1500 / 1.1378 | 14x5x10 | 700 | 64.4 ms | 22,736 | 79 | 79 | 0 | 12 (1.71%) | 98.29% | 39,892 B |
-| 0.65 m | 0.6383 / 0.5750 / 0.6400 | 24x9x17 | 3,672 | 58.6 ms | 22,736 | 1,209 | 1,209 | 0 | 236 (6.43%) | 93.57% | 198,494 B |
-| 0.50 m | 0.4893 / 0.4600 / 0.4876 | 31x11x22 | 7,502 | 67.8 ms | 26,592 | 3,340 | 3,340 | 0 | 711 (9.48%) | 90.52% | 392,503 B |
+| Target spacing | Actual XYZ spacing       |     Grid | Probes | Generation | Contributions | Empty before | Diffusion-filled | Fallback-filled | Physically dark | Non-zero |   Payload |
+| -------------- | ------------------------ | -------: | -----: | ---------: | ------------: | -----------: | ---------------: | --------------: | --------------: | -------: | --------: |
+| 1.20 m         | 1.1292 / 1.1500 / 1.1378 |  14x5x10 |    700 |    64.4 ms |        22,736 |           79 |               79 |               0 |      12 (1.71%) |   98.29% |  39,892 B |
+| 0.65 m         | 0.6383 / 0.5750 / 0.6400 |  24x9x17 |  3,672 |    58.6 ms |        22,736 |        1,209 |            1,209 |               0 |     236 (6.43%) |   93.57% | 198,494 B |
+| 0.50 m         | 0.4893 / 0.4600 / 0.4876 | 31x11x22 |  7,502 |    67.8 ms |        26,592 |        3,340 |            3,340 |               0 |     711 (9.48%) |   90.52% | 392,503 B |
 
 Every actual axis spacing is at or below its target. All trials used the same
 8192 cap; no spacing was enlarged. All structural empty probes were resolved by
@@ -54,15 +57,15 @@ path delta rose to 4.7821, mean delta to 1.2742, and local alcove jitter to
 
 ## Spatial RGB at 0.65 m
 
-| Point | Position | Stored/interpolated RGB | Luminance |
-| --- | --- | --- | ---: |
-| Red zone | `[-4.8,1.0,0.4]` | `[5.7840,4.9909,4.4704]` | 5.1219 |
-| Green zone | `[4.2,1.0,0.4]` | `[5.4305,5.4638,4.7273]` | 5.4035 |
-| Neutral center | `[-2.2,1.0,1.6]` | `[5.1876,4.8111,4.3170]` | 4.8555 |
-| Doorway | `[0,1.0,0]` | `[3.7986,3.5582,3.0356]` | 3.5716 |
-| Closed wall, red side | `[-0.65,1.0,-2.45]` | `[3.6319,3.2637,2.8287]` | 3.3106 |
-| Closed wall, green side | `[0.65,1.0,-2.45]` | `[3.6471,3.6273,3.0105]` | 3.5870 |
-| Alcove | `[5.65,1.0,-4.85]` | `[1.9126,2.0753,1.6651]` | 2.0111 |
+| Point                   | Position            | Stored/interpolated RGB  | Luminance |
+| ----------------------- | ------------------- | ------------------------ | --------: |
+| Red zone                | `[-4.8,1.0,0.4]`    | `[5.7840,4.9909,4.4704]` |    5.1219 |
+| Green zone              | `[4.2,1.0,0.4]`     | `[5.4305,5.4638,4.7273]` |    5.4035 |
+| Neutral center          | `[-2.2,1.0,1.6]`    | `[5.1876,4.8111,4.3170]` |    4.8555 |
+| Doorway                 | `[0,1.0,0]`         | `[3.7986,3.5582,3.0356]` |    3.5716 |
+| Closed wall, red side   | `[-0.65,1.0,-2.45]` | `[3.6319,3.2637,2.8287]` |    3.3106 |
+| Closed wall, green side | `[0.65,1.0,-2.45]`  | `[3.6471,3.6273,3.0105]` |    3.5870 |
+| Alcove                  | `[5.65,1.0,-4.85]`  | `[1.9126,2.0753,1.6651]` |    2.0111 |
 
 The red zone has positive red excess (`R-G = 0.7931`). The second zone crosses
 to a small green excess (`G-R = 0.0333`), and the alcove remains green-biased
@@ -92,21 +95,21 @@ matched direct `ProbeVolume.sample()` at every point (maximum RGB difference
 0), so the runtime transition uses the measured values rather than a separate
 display transform.
 
-| Path point | RGB | Luminance |
-| --- | --- | ---: |
-| Red | `[5.7840,4.9909,4.4704]` | 5.1219 |
-| Red -> door 25% | `[5.3492,4.8536,4.2859]` | 4.9180 |
-| Red -> door 50% | `[5.2123,4.8224,4.2398]` | 4.8632 |
-| Red -> door 75% | `[4.7202,4.3169,3.7716]` | 4.3633 |
-| Doorway | `[3.7986,3.5582,3.0356]` | 3.5716 |
-| Door -> green 25% | `[4.0385,3.9091,3.3484]` | 3.8961 |
-| Door -> green 50% | `[4.5203,4.3685,3.7978]` | 4.3595 |
-| Door -> green 75% | `[4.5980,4.6157,3.9384]` | 4.5631 |
-| Green | `[5.4305,5.4638,4.7273]` | 5.4035 |
-| Green -> alcove 25% | `[5.1717,5.2136,4.4910]` | 5.1525 |
-| Green -> alcove 50% | `[4.0347,4.1304,3.4848]` | 4.0635 |
-| Green -> alcove 75% | `[2.3816,2.5812,2.0506]` | 2.5005 |
-| Alcove | `[1.9126,2.0753,1.6651]` | 2.0111 |
+| Path point          | RGB                      | Luminance |
+| ------------------- | ------------------------ | --------: |
+| Red                 | `[5.7840,4.9909,4.4704]` |    5.1219 |
+| Red -> door 25%     | `[5.3492,4.8536,4.2859]` |    4.9180 |
+| Red -> door 50%     | `[5.2123,4.8224,4.2398]` |    4.8632 |
+| Red -> door 75%     | `[4.7202,4.3169,3.7716]` |    4.3633 |
+| Doorway             | `[3.7986,3.5582,3.0356]` |    3.5716 |
+| Door -> green 25%   | `[4.0385,3.9091,3.3484]` |    3.8961 |
+| Door -> green 50%   | `[4.5203,4.3685,3.7978]` |    4.3595 |
+| Door -> green 75%   | `[4.5980,4.6157,3.9384]` |    4.5631 |
+| Green               | `[5.4305,5.4638,4.7273]` |    5.4035 |
+| Green -> alcove 25% | `[5.1717,5.2136,4.4910]` |    5.1525 |
+| Green -> alcove 50% | `[4.0347,4.1304,3.4848]` |    4.0635 |
+| Green -> alcove 75% | `[2.3816,2.5812,2.0506]` |    2.5005 |
+| Alcove              | `[1.9126,2.0753,1.6651]` |    2.0111 |
 
 There were zero black flashes in both direct samples and runtime binding output
 at all three densities. At 0.65 m, the maximum adjacent RGB delta was 2.6813
@@ -119,11 +122,11 @@ them.
 
 ## Performance at 0.65 m
 
-| Configuration | Synchronous frame time | Throughput |
-| --- | ---: | ---: |
-| Static scene, debug probes hidden | 0.122 ms | 8,219 FPS |
-| Moving object with dynamic probe binding | 6.819 ms | 146.6 FPS |
-| Debug-probe instances, dynamic object hidden | 5.537 ms | 180.6 FPS |
+| Configuration                                | Synchronous frame time | Throughput |
+| -------------------------------------------- | ---------------------: | ---------: |
+| Static scene, debug probes hidden            |               0.122 ms |  8,219 FPS |
+| Moving object with dynamic probe binding     |               6.819 ms |  146.6 FPS |
+| Debug-probe instances, dynamic object hidden |               5.537 ms |  180.6 FPS |
 
 On this headless WebGL run, dynamic-object rendering plus binding update added
 6.697 ms over the static baseline. The debug instances added 5.416 ms. The

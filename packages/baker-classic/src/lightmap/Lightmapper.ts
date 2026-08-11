@@ -35,6 +35,12 @@ export type RaycastOptions = {
   albedoTexture: Texture;
   /** Per-triangle emissive lookup, same indexing as albedoTexture. Task 03. */
   emissiveTexture: Texture;
+  uv01Texture: Texture;
+  uv2MapTexture: Texture;
+  mapRectTexture: Texture;
+  mapTransform0Texture: Texture;
+  mapTransform1Texture: Texture;
+  albedoMapAtlas: Texture;
   /** Side length of the material textures (both are W×W). */
   materialTextureSize: number;
 
@@ -109,6 +115,12 @@ export const generateLightmapper = (
     normals,
     albedoTex: options.albedoTexture,
     emissiveTex: options.emissiveTexture,
+    uv01Tex: options.uv01Texture,
+    uv2MapTex: options.uv2MapTexture,
+    mapRectTex: options.mapRectTexture,
+    mapTransform0Tex: options.mapTransform0Texture,
+    mapTransform1Tex: options.mapTransform1Texture,
+    albedoMapAtlas: options.albedoMapAtlas,
     materialTextureSize: options.materialTextureSize,
     casts: options.casts,
     bounces: options.bounces ?? 1,

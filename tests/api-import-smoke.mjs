@@ -35,6 +35,9 @@ const assertExports = (label, mod) => {
   if (typeof mod?.captureNativeLightProbeGrid !== 'function') {
     throw new Error(`${label}: captureNativeLightProbeGrid export is missing`);
   }
+  if (typeof mod?.captureLightmappedProbeGrid !== 'function') {
+    throw new Error(`${label}: captureLightmappedProbeGrid export is missing`);
+  }
   if (typeof mod?.createRendererAdapter !== 'function') {
     throw new Error(`${label}: createRendererAdapter export is missing`);
   }
@@ -64,6 +67,17 @@ const assertExports = (label, mod) => {
 if (packageManifest.dependencies?.three !== undefined) {
   throw new Error('three must not be owned as a runtime dependency');
 }
+if (packageManifest.dependencies?.['@types/three'] !== '^0.185.4') {
+  throw new Error('@types/three must ship with the published r185 TypeScript contract');
+}
+for (const editorDependency of ['preact', '@preact/signals', 'lucide-preact']) {
+  if (packageManifest.dependencies?.[editorDependency] !== undefined) {
+    throw new Error(`${editorDependency} must not be owned as a runtime dependency`);
+  }
+  if (packageManifest.devDependencies?.[editorDependency] === undefined) {
+    throw new Error(`${editorDependency} must remain available to the demo as a dev dependency`);
+  }
+}
 if (packageManifest.peerDependencies?.three !== '>=0.185.1 <0.186.0') {
   throw new Error('three peer dependency must stay constrained to the tested r185 line');
 }
@@ -85,6 +99,11 @@ for (const bundlePath of [esmBundlePath, cjsBundlePath]) {
   }
   if (source.includes('cdn.jsdelivr.net')) {
     throw new Error(`${path.basename(bundlePath)} must not require the jsDelivr xatlas CDN`);
+  }
+  for (const forbidden of ['preact', '@preact/signals', 'panelRegistry', 'menuRegistry']) {
+    if (source.includes(forbidden)) {
+      throw new Error(`${path.basename(bundlePath)} leaked editor dependency ${forbidden}`);
+    }
   }
   if (!source.includes('data:application/wasm;base64,')) {
     throw new Error(`${path.basename(bundlePath)} is missing the packaged xatlas WASM asset`);
@@ -119,6 +138,24 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tlb-pack-'));
 try {
   runNpm(['init', '-y'], { cwd: tempDir, stdio: 'ignore' });
   runNpm(['install', tarballPath], { cwd: tempDir, stdio: 'ignore' });
+
+  const installedManifest = JSON.parse(
+    fs.readFileSync(
+      path.join(tempDir, 'node_modules', 'three-lightmap-baker', 'package.json'),
+      'utf8',
+    ),
+  );
+  if (installedManifest.dependencies?.['@types/three'] !== '^0.185.4') {
+    throw new Error('packed package is missing its @types/three runtime declaration dependency');
+  }
+  for (const editorDependency of ['preact', '@preact/signals', 'lucide-preact']) {
+    if (installedManifest.dependencies?.[editorDependency] !== undefined) {
+      throw new Error(`packed package leaked editor runtime dependency ${editorDependency}`);
+    }
+    if (fs.existsSync(path.join(tempDir, 'node_modules', ...editorDependency.split('/')))) {
+      throw new Error(`tarball install pulled editor runtime package ${editorDependency}`);
+    }
+  }
 
   const esmCheck = path.join(tempDir, 'esm-check.mjs');
   const cjsCheck = path.join(tempDir, 'cjs-check.cjs');
