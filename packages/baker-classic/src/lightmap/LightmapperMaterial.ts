@@ -49,8 +49,6 @@ export type LightmapperMaterialOptions = {
 export class LightmapperMaterial extends ShaderMaterial {
   private programKey = 'LightmapperMaterial|glsl3|mrt2';
 
-  // Program cache key includes loop bounds because both casts and bounces are
-  // compiled into GLSL for ANGLE portability.
   override customProgramCacheKey(): string {
     return this.programKey;
   }
@@ -145,9 +143,7 @@ export class LightmapperMaterial extends ShaderMaterial {
                 uniform sampler2D albedoMapAtlas;
                 uniform float materialTextureSize;
 
-                // Loop bounds that wrap texture/BVH traversal are compile-time on
-                // purpose. Dynamic loop bounds have produced driver-dependent
-                // failures on ANGLE software and D3D backends.
+                // Keep traversal-heavy loop bounds compile-time for ANGLE portability.
                 #define BOUNCES ${bounceCount}
                 #define MAX_LIGHTS 16
                 #define CASTS ${castCount}
@@ -252,10 +248,6 @@ export class LightmapperMaterial extends ShaderMaterial {
 
                 // ── Light texture access ─────────────────────────────────────────
 
-                /**
-                 * Read texel (slot, lightIdx) from the 4-wide light texture.
-                 * slot ∈ {0,1,2,3}. Guard: only call when lightCount > 0.
-                 */
                 vec4 readLight(int lightIdx, int slot) {
                     vec2 uv = (vec2(float(slot), float(lightIdx)) + 0.5)
                               / vec2(4.0, float(lightCount));
@@ -265,16 +257,11 @@ export class LightmapperMaterial extends ShaderMaterial {
                 // ── Light sampling ───────────────────────────────────────────────
 
                 struct LightSample {
-                    vec3  L;         // unit direction from hit toward light
-                    float distance;  // distance to light (1e6 for directional)
-                    vec3  emission;  // color * falloff (0 = skip shadow ray)
+                    vec3  L;
+                    float distance;
+                    vec3  emission;
                 };
 
-                /**
-                 * Sample light li at hitPos / hitNormal using 2D random input rnd.
-                 * Directional jitter uses tan(angularSize) approximation - valid for
-                 * small angles (sun disc ≲ 5°). Larger values over-bias the direction.
-                 */
                 LightSample sampleLight(int li, vec3 hitPos, vec3 hitNormal, vec2 rnd) {
                     vec4 t0 = readLight(li, 0);
                     vec4 t1 = readLight(li, 1);
@@ -284,14 +271,13 @@ export class LightmapperMaterial extends ShaderMaterial {
                     vec3 lpos   = t0.xyz;
                     vec3 ldir   = safeNormalize(t1.xyz, vec3(0.0, -1.0, 0.0));
                     vec3 lcolor = t2.xyz;
-                    float p0 = t1.w, p1 = t2.w; // p2=t3.x, p3=t3.y available if needed
+                    float p0 = t1.w, p1 = t2.w;
 
                     LightSample s;
                     s.emission = vec3(0.0);
                     s.distance = 1e6;
 
                     if (ltype == 0) {
-                        // Point - sphere jitter for soft shadows (radius = p0).
                         vec3 jitter = (p0 > 0.0) ? randomSpherePoint(vec3(rnd, rand())) * p0
                                                   : vec3(0.0);
                         vec3 d = (lpos + jitter) - hitPos;
@@ -300,7 +286,6 @@ export class LightmapperMaterial extends ShaderMaterial {
                         s.emission = lcolor;
                     }
                     else if (ltype == 1) {
-                        // Directional - effectively infinite distance.
                         vec3 baseL = -ldir;
                         vec3 jitter = (p0 > 0.0)
                             ? randomSpherePoint(vec3(rnd, rand())) * tan(p0)
@@ -310,8 +295,6 @@ export class LightmapperMaterial extends ShaderMaterial {
                         s.emission = lcolor;
                     }
                     else if (ltype == 2) {
-                        // Spot - point source with angular cone falloff.
-                        // p0 = innerAngleCos, p1 = outerAngleCos.
                         vec3 d = lpos - hitPos;
                         s.distance = max(length(d), 1.0e-5);
                         s.L = d / s.distance;
@@ -320,7 +303,6 @@ export class LightmapperMaterial extends ShaderMaterial {
                         s.emission = lcolor * falloff;
                     }
                     else {
-                        // Area - rectangle centered at lpos, normal = ldir, width=p0, height=p1.
                         vec3 up = abs(ldir.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
                         vec3 tu = safeNormalize(cross(up, ldir), vec3(1.0, 0.0, 0.0));
                         vec3 tv = cross(ldir, tu);
@@ -329,7 +311,6 @@ export class LightmapperMaterial extends ShaderMaterial {
                         vec3 d = sample_pos - hitPos;
                         s.distance = max(length(d), 1.0e-5);
                         s.L = d / s.distance;
-                        // One-sided emission: only emits in -ldir hemisphere.
                         s.emission = lcolor * max(0.0, dot(-s.L, ldir));
                     }
                     return s;
@@ -337,12 +318,6 @@ export class LightmapperMaterial extends ShaderMaterial {
 
                 // ── NEE (Next Event Estimation) ──────────────────────────────────
 
-                /**
-                 * Sum NEE contributions from ALL lights at a hit point.
-                 * One shadow ray per light. hitAlbedo: pass vec3(1.0) for the
-                 * direct channel (raw irradiance); pass surface albedo for GI bounces.
-                 * NaN guard: bvhIntersectFirstHit out-param sd initialised to 0.
-                 */
                 vec3 sampleAllLightsNEE(vec3 hitPos, vec3 hitNormal, vec3 hitAlbedo) {
                     if (lightCount <= 0) return vec3(0.0);
                     vec3 sum = vec3(0.0);
@@ -357,7 +332,6 @@ export class LightmapperMaterial extends ShaderMaterial {
                         uvec4 sfi = uvec4(0u); vec3 sfn = vec3(0.0,0.0,1.0); float sd = 0.0;
                         bool occ = bvhIntersectFirstHit(bvh, shadowOrigin, ls.L, sfi, sfn, bary, sideVal, sd);
                         if (occ && sd < ls.distance - 0.001) continue;
-                        // 1/PI dropped - matches pre-7C energy balance convention.
                         sum += hitAlbedo * cosL * ls.emission;
                     }
                     return sum;
@@ -366,17 +340,20 @@ export class LightmapperMaterial extends ShaderMaterial {
                 // ── Path tracer ──────────────────────────────────────────────────
 
                 /**
-                 * N-bounce path tracer. Called once per hemisphere cast.
-                 * faceNormal from three-mesh-bvh is already side-flipped.
-                 * DO NOT re-flip - re-flipping pushes shadow origins into surfaces.
+                 * N-bounce path tracer. It owns its BVH hit record rather than
+                 * accepting uvec/int hit state across a function boundary. This
+                 * avoids driver-dependent corruption of packed triangle indices
+                 * observed on ANGLE software paths while keeping the GI math intact.
                  */
-                vec3 tracePath(
-                    vec3 ro, vec3 rd,
-                    bool hit, uvec4 fi, vec3 fn, vec3 bary, float fd
-                ) {
+                vec3 tracePath(vec3 ro, vec3 rd) {
                     vec3 throughput = vec3(1.0);
                     vec3 radiance   = vec3(0.0);
+                    uvec4 fi = uvec4(0u);
+                    vec3 fn = vec3(0.0, 0.0, 1.0);
+                    vec3 bary = vec3(0.0);
                     float sideVal = 1.0;
+                    float fd = 0.0;
+                    bool hit = bvhIntersectFirstHit(bvh, ro, rd, fi, fn, bary, sideVal, fd);
 
                     for (int b = 0; b < BOUNCES; b++) {
                         if (!hit) {
@@ -390,23 +367,16 @@ export class LightmapperMaterial extends ShaderMaterial {
                         vec3 hitNormal   = fn;
                         vec3 hitOrigin   = hitPos + hitNormal * 0.001;
 
-                        // (a) Emissive surface contribution.
                         radiance += throughput * hitEmissive;
-
-                        // (b) NEE - all lights, with surface albedo (GI bounce).
                         radiance += throughput * sampleAllLightsNEE(hitOrigin, hitNormal, hitAlbedo);
-
-                        // (c) Throughput update - cosine/PDF cancel.
                         throughput *= hitAlbedo;
 
-                        // (d) Russian Roulette from bounce 2 onward.
                         if (b >= 2) {
                             float p = clamp(max(throughput.r, max(throughput.g, throughput.b)), 0.0, 1.0);
                             if (rand() > p) break;
                             throughput /= max(p, 1.0e-4);
                         }
 
-                        // (e) Next bounce - cosine-weighted hemisphere.
                         ro  = hitOrigin;
                         rd  = getHemisphereSample(hitNormal, rand4().xy);
                         fd  = 0.0;
@@ -421,8 +391,6 @@ export class LightmapperMaterial extends ShaderMaterial {
                     vec4 position = texture(positions, vUv);
                     vec4 normal   = texture(normals,   vUv);
 
-                    // Empty G-buffer pixels have no surface. Do not trace rays
-                    // from origin with a zero normal into the accumulation RTs.
                     if (position.a <= 0.0 || dot(normal.xyz, normal.xyz) <= 1.0e-10) {
                         directOut = vec4(0.0);
                         indirectOut = vec4(0.0);
@@ -435,35 +403,20 @@ export class LightmapperMaterial extends ShaderMaterial {
                     vec3 rayDirection = normal.rgb;
                     rayOrigin += rayDirection * 0.001;
 
-                    uvec4 faceIndices = uvec4(0u);
-                    vec3  faceNormal  = vec3(0.0, 0.0, 1.0);
-                    vec3  barycoord   = vec3(0.0);
-                    float side        = 1.0;
-                    float dist        = 0.0;
-
                     vec3  totalIndirectLight = vec3(0.0);
                     vec3  totalDirectLight   = vec3(0.0);
                     float castDivisor        = float(CASTS);
 
-                    // Indirect bounce loop. AO has been moved to its own pass
-                    // (AOMaterial / AOMapper) so AO sliders can be tweaked
-                    // without a bounce re-bake.
                     if (indirectLightEnabled) {
                         for (int i = 0; i < CASTS; i++) {
                             vec3 newDir = getHemisphereSample(normal.xyz, rand4().xy);
                             if (dot(rayDirection, newDir) > 0.0) {
-                                bool hit = bvhIntersectFirstHit(bvh, rayOrigin, newDir,
-                                    faceIndices, faceNormal, barycoord, side, dist);
-                                totalIndirectLight += tracePath(rayOrigin, newDir, hit,
-                                                                faceIndices, faceNormal, barycoord, dist);
+                                totalIndirectLight += tracePath(rayOrigin, newDir);
                             }
                         }
                     }
 
                     if (directLightEnabled) {
-                        // Direct lighting: NEE over all lights at the primary surface.
-                        // hitAlbedo=vec3(1.0) keeps directOut as raw irradiance so the
-                        // material color is applied at composite time (bake convention).
                         for (int i = 0; i < CASTS; i++) {
                             totalDirectLight += sampleAllLightsNEE(rayOrigin, normal.xyz, vec3(1.0));
                         }
