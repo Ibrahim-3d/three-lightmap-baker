@@ -21,7 +21,9 @@ import { TEST_URL, trackConsoleErrors, waitReady } from './helpers';
 
 const validationModuleUrl = `/three-lightmap-baker/@fs/${process.cwd().replace(/\\/g, '/')}/tests/browser/materialGIValidation.ts`;
 
-test('textured albedo reaches the GPU secondary-bounce transport', async ({ page }) => {
+test('textured albedo reaches the GPU secondary-bounce transport @hardware-gpu', async ({
+  page,
+}) => {
   const { errors } = trackConsoleErrors(page);
   await page.goto(TEST_URL);
   await waitReady(page);
@@ -50,7 +52,9 @@ test('textured albedo reaches the GPU secondary-bounce transport', async ({ page
   expect(errors).toEqual([]);
 });
 
-test('base-color transport respects UV0, UV1, and standard sRGB decoding', async ({ page }) => {
+test('base-color transport respects UV0, UV1, and standard sRGB decoding @hardware-gpu', async ({
+  page,
+}) => {
   const { errors } = trackConsoleErrors(page);
   await page.goto(TEST_URL);
   await waitReady(page);

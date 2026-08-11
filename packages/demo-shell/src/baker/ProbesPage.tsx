@@ -27,7 +27,7 @@ export function ProbesPage() {
   const cubemapSize = o.probeCubemapSize ?? 8;
   const sampleStride = o.probeSampleStride ?? 3;
   const fillIterations = o.probeFillIterations ?? 5;
-  const intensity = o.probeIntensity ?? 1;
+  const intensity = o.probeIntensity ?? 3.2;
   const showProbes = o.probeShow ?? true;
   const showDemo = o.probeDemoEnabled ?? true;
   const animateDemo = o.probeDemoAnimate ?? true;

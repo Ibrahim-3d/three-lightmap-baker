@@ -245,8 +245,8 @@ export function applyLightmapMode(root: Object3D, mode: EslLightmapMode): void {
   });
 }
 
-/** Shorthand for the ESL public asset folder. */
-export const ESL_BASE = '/esl-demos';
+/** Shorthand for the ESL public asset folder, respecting Vite's deployment base path. */
+export const ESL_BASE = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/esl-demos`;
 
 /**
  * Apply ESL's box-projected envmap shader patch to every standard material in

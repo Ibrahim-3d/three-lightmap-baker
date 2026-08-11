@@ -16,7 +16,8 @@ import {
  *  (a) registry populates ≥ 8 presets at boot
  *  (b) loadScenePreset() swaps the active scene
  *  (c) cornell.classic and cornell.advanced have different mesh counts
- *  (d) bake-cornell-draft regression: classic Cornell still bakes with the
+ *  (d) externally-backed ESL presets resolve real renderable content
+ *  (e) bake-cornell-draft regression: classic Cornell still bakes with the
  *      expected red/green GI signatures after a preset switch.
  */
 test.describe('scene presets', () => {
@@ -89,7 +90,50 @@ test.describe('scene presets', () => {
         expect(advancedCount).not.toBe(classicCount);
     });
 
-    test('bake-cornell-draft survives a preset switch', async ({ page }) => {
+    test('Gym, Desert, and Backrooms resolve their packaged GLB content', async ({ page }) => {
+        test.setTimeout(120_000);
+        const { errors } = trackConsoleErrors(page);
+        await page.goto(TEST_URL);
+        await waitReady(page);
+
+        const loaded = await page.evaluate(async () => {
+            const baker = (window as unknown as {
+                __baker: {
+                    loadScenePreset(id: string): Promise<void>;
+                    getMeshCount(): number;
+                    getScene(): { getObjectByName(name: string): unknown };
+                };
+            }).__baker;
+            const results: Record<string, { meshCount: number; hasRoot: boolean }> = {};
+            for (const [id, rootName] of [
+                ['esl.gym', 'esl-gym-root'],
+                ['esl.desert', 'esl-desert-root'],
+                ['esl.backrooms', 'esl-backrooms-root'],
+            ] as const) {
+                await baker.loadScenePreset(id);
+                results[id] = {
+                    meshCount: baker.getMeshCount(),
+                    hasRoot: !!baker.getScene().getObjectByName(rootName),
+                };
+            }
+            return results;
+        });
+
+        for (const [id, result] of Object.entries(loaded)) {
+            expect(result.hasRoot, `${id} should install its scene root`).toBe(true);
+            expect(
+                result.meshCount,
+                `${id} should contain bake-eligible renderable meshes`,
+            ).toBeGreaterThan(0);
+        }
+
+        const hard = errors.filter(
+            (e) => !e.includes('[baker:debug]') && !e.includes('Warning:'),
+        );
+        expect(hard, `unexpected ESL preset errors: ${hard.join('; ')}`).toEqual([]);
+    });
+
+    test('bake-cornell-draft survives a preset switch @hardware-gpu', async ({ page }) => {
         const { errors } = trackConsoleErrors(page);
         await page.goto(TEST_URL);
         await waitReady(page);

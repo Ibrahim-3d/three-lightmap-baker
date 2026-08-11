@@ -75,7 +75,7 @@ const RUNTIME_DEFAULTS = {
 const DEFAULTS: Omit<ProbeOptionBag, 'layer' | 'probeRuntime' | 'probeSpacing' | 'probeMaxProbes'> =
   {
     probePadding: 0.1,
-    probeIntensity: 1,
+    probeIntensity: 3.2,
     probeSampleStride: 3,
     probeFillIterations: 5,
     probeCubemapSize: 8,
