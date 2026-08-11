@@ -72,11 +72,6 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Browser smoke suite
-        env:
-          # GitHub-hosted Linux runners have no hardware GPU. Use Chromium's
-          # supported ANGLE software backend rather than Mesa/llvmpipe (`gl`),
-          # which does not reliably execute three-mesh-bvh GPU traversal.
-          BAKER_E2E_ANGLE: swiftshader
         run: pnpm run test:browser-smoke
 
   pr-preview:
