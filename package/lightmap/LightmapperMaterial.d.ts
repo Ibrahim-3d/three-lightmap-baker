@@ -9,6 +9,12 @@ export type LightmapperMaterialOptions = {
     albedoTex: Texture;
     /** Per-triangle emissive (RGBA float, same layout as albedoTex). Task 03. */
     emissiveTex: Texture;
+    uv01Tex: Texture;
+    uv2MapTex: Texture;
+    mapRectTex: Texture;
+    mapTransform0Tex: Texture;
+    mapTransform1Tex: Texture;
+    albedoMapAtlas: Texture;
     /** Side length of the material textures (both are W×W). */
     materialTextureSize: number;
     casts: number;

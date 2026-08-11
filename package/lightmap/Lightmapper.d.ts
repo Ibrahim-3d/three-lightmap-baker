@@ -17,6 +17,12 @@ export type RaycastOptions = {
     albedoTexture: Texture;
     /** Per-triangle emissive lookup, same indexing as albedoTexture. Task 03. */
     emissiveTexture: Texture;
+    uv01Texture: Texture;
+    uv2MapTexture: Texture;
+    mapRectTexture: Texture;
+    mapTransform0Texture: Texture;
+    mapTransform1Texture: Texture;
+    albedoMapAtlas: Texture;
     /** Side length of the material textures (both are W×W). */
     materialTextureSize: number;
     /** Stop accumulating once this many frames have been rendered (frames × casts = samples/texel). 0 = unlimited. */

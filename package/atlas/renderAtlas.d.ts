@@ -8,6 +8,8 @@ import { Mesh, Texture, Vector2, WebGLRenderer, WebGLRenderTarget } from 'three'
 export type AtlasRenderResult = {
     positionTexture: Texture;
     normalTexture: Texture;
+    /** Compact linear source diffuse reflectance: material.color multiplied by material.map once. */
+    surfaceAlbedoTexture: Texture;
     dispose: () => void;
 };
 /**
@@ -19,5 +21,5 @@ export declare function renderAtlas(renderer: WebGLRenderer, meshes: Mesh[], res
  * Internal-only variant for density-mode packing: renders a single mesh's
  * chart into a sub-region of an existing atlas.
  */
-export declare function renderMeshToAtlas(renderer: WebGLRenderer, mesh: Mesh, posRT: WebGLRenderTarget, normRT: WebGLRenderTarget, offset: Vector2): void;
+export declare function renderMeshToAtlas(renderer: WebGLRenderer, mesh: Mesh, posRT: WebGLRenderTarget, normRT: WebGLRenderTarget, surfaceAlbedoRT: WebGLRenderTarget, offset: Vector2): void;
 //# sourceMappingURL=renderAtlas.d.ts.map

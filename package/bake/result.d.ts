@@ -11,6 +11,7 @@ export declare class LightmapBakeResult {
     private readonly meshResolutions;
     readonly stats: BakeStats;
     private readonly internals;
+    private persistentMaterialMount;
     constructor(renderer: WebGLRenderer, meshLightmaps: Map<Mesh, Texture>, meshResolutions: Map<Mesh, number>, stats: BakeStats, internals: {
         groups: GroupInternals[];
         bvh: MeshBVH;

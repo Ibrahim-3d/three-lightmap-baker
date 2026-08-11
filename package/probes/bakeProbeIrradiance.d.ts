@@ -14,8 +14,8 @@ type RGB = readonly [number, number, number];
  */
 export declare function bakeProbeIrradianceFromLightmaps(renderer: WebGLRenderer, source: ProbeBakeSource, volume: ProbeVolume, options?: ProbeBakeOptions, hooks?: ProbeBakeHooks): Promise<ProbeBakeStats>;
 /**
- * Read the solid base color supported by the current baker material pipeline.
- * Texture maps and geometry material groups are deliberately not approximated.
+ * Read material slot zero's solid base color. Kept as a small compatibility
+ * utility; probe baking itself consumes the GPU-rasterized textured albedo atlas.
  */
 export declare function readProbeSurfaceAlbedo(mesh: Mesh): [number, number, number] | null;
 /**

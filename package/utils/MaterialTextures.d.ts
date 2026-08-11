@@ -1,17 +1,17 @@
-import { DataTexture } from 'three';
+import { DataTexture, Texture, WebGLRenderer } from 'three';
 import type { PerTriangleMaterials } from './GeometryUtils';
-/**
- * Two square float textures keyed by global triangle index.
- *   side = ceil(sqrt(totalTriangles))
- *   triangle i is at texel (i % side, i / side)
- *
- * Float storage so the emissive texture survives HDR intensity values
- * (Task 04's eventual ceiling-light source needs values > 1.0).
- */
+/** GPU surface records, all keyed by the post-BVH triangle ID. */
 export interface MaterialTextures {
     albedoTexture: DataTexture;
     emissiveTexture: DataTexture;
+    uv01Texture: DataTexture;
+    uv2MapTexture: DataTexture;
+    mapRectTexture: DataTexture;
+    mapTransform0Texture: DataTexture;
+    mapTransform1Texture: DataTexture;
+    albedoMapAtlas: Texture;
     side: number;
+    dispose(): void;
 }
-export declare const buildMaterialTextures: (perTri: PerTriangleMaterials) => MaterialTextures;
+export declare function buildMaterialTextures(renderer: WebGLRenderer, perTriangle: PerTriangleMaterials): MaterialTextures;
 //# sourceMappingURL=MaterialTextures.d.ts.map
