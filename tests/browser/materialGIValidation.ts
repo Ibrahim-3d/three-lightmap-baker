@@ -29,11 +29,22 @@ import {
   type PackedLight,
 } from 'baker-classic';
 
+type MaterialGIDiagnostics = {
+  extFloatBlend: boolean;
+  extColorBufferFloat: boolean;
+  extFloatLinear: boolean;
+  framebufferComplete: boolean;
+  glErrorAfterRender: number;
+  packedMapSample: [number, number, number, number];
+  materialAlbedoSample: [number, number, number, number];
+};
+
 /** Deterministic browser-only validation used by the focused material GI smoke. */
 export function validateTexturedBounce(renderer: WebGLRenderer): {
   indirect: [number, number, number];
   expectedAlbedo: [number, number, number];
   sourceAlbedo: [number, number, number];
+  diagnostics: MaterialGIDiagnostics;
 } {
   return validateTexturedCase(renderer, {
     map: dataTexture([0.4, 0.2, 0.1, 1]),
@@ -97,6 +108,7 @@ function validateTexturedCase(
   extractedUvs: number[];
   compactBaseColorAtlas: boolean;
   compactSurfaceAlbedo: boolean;
+  diagnostics: MaterialGIDiagnostics;
 } {
   const geometry = new BufferGeometry();
   geometry.setAttribute(
@@ -180,12 +192,33 @@ function validateTexturedCase(
     bounces: 1,
   });
 
+  const gl = renderer.getContext();
+  const previousTarget = renderer.getRenderTarget();
+  while (gl.getError() !== gl.NO_ERROR) {
+    // Drain setup errors so the post-render value identifies the lightmapper draw.
+  }
+  renderer.setRenderTarget(lightmapper.renderTarget);
+  const framebufferComplete = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+  renderer.setRenderTarget(previousTarget);
+
   try {
     lightmapper.render();
-    renderer.getContext().finish();
+    gl.finish();
+    const glErrorAfterRender = gl.getError();
     const pixels = readTexture(renderer, lightmapper.textures.indirect, 1);
     const sourcePixels = readTexture(renderer, atlas.surfaceAlbedoTexture, 8);
     const sourceAlbedo = averageOccupied(sourcePixels);
+    const packedMapPixels = readTexture(renderer, materialTextures.albedoMapAtlas, 1);
+    const materialAlbedoPixels = readTexture(renderer, materialTextures.albedoTexture, materialTextures.side);
+    const diagnostics: MaterialGIDiagnostics = {
+      extFloatBlend: !!gl.getExtension('EXT_float_blend'),
+      extColorBufferFloat: !!gl.getExtension('EXT_color_buffer_float'),
+      extFloatLinear: !!gl.getExtension('OES_texture_float_linear'),
+      framebufferComplete,
+      glErrorAfterRender,
+      packedMapSample: firstPixel(packedMapPixels),
+      materialAlbedoSample: firstPixel(materialAlbedoPixels),
+    };
     return {
       indirect: [pixels[0] ?? 0, pixels[1] ?? 0, pixels[2] ?? 0],
       expectedAlbedo: options.expectedAlbedo,
@@ -193,6 +226,7 @@ function validateTexturedCase(
       extractedUvs: [...surfaces.uvs],
       compactBaseColorAtlas: materialTextures.albedoMapAtlas.type !== FloatType,
       compactSurfaceAlbedo: atlas.surfaceAlbedoTexture.type !== FloatType,
+      diagnostics,
     };
   } finally {
     lightmapper.dispose();
@@ -245,6 +279,10 @@ function readTexture(renderer: WebGLRenderer, source: Texture, resolution: numbe
     material.dispose();
     quad.geometry.dispose();
   }
+}
+
+function firstPixel(pixels: Float32Array): [number, number, number, number] {
+  return [pixels[0] ?? 0, pixels[1] ?? 0, pixels[2] ?? 0, pixels[3] ?? 0];
 }
 
 function averageOccupied(pixels: Float32Array): [number, number, number] {
