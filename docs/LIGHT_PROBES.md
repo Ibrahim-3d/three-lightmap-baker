@@ -22,6 +22,10 @@ per-probe cubemaps into its packed GPU SH volume. Standard Three.js materials
 consume that grid without `onBeforeCompile`, per-object CPU sampling, or a
 per-frame custom probe update.
 
+That correctness policy is package-owned by `captureLightmappedProbeGrid`; the
+playground no longer reimplements capture-state mutations. Probe demo animation
+runs from the editor's existing application frame lifecycle.
+
 The previous RGB `ProbeVolume`, atlas projection, CPU trilinear interpolation,
 debug view, shader binding, diagnostics, and JSON payload remain intact behind
 the **Legacy RGB volume** selector until the native path has broader production
@@ -64,8 +68,6 @@ The retained fallback includes:
 - Diffuse probe energy respects the material diffuse BRDF and metallic workflow.
 - Focused tests for grid generation, interpolation, JSON round-trip, PBR shader injection, project restoration, demo creation, and probe-only visibility.
 
-No GitHub Actions workflow was added, changed, or manually dispatched for this work.
-
 ## Legacy RGB algorithm
 
 This implementation reuses the stable lightmap result instead of introducing another ray tracer.
@@ -100,7 +102,8 @@ calibrated SI radiometric units:
    should be understood as the baker's final light field rather than physical
    illuminance measured in SI units.
 2. Probe projection multiplies that field once by the source surface's linear
-   `material.color`. This reconstructs the source's reflected diffuse
+   `material.color * material.map` rasterized source albedo. Geometry material
+   groups select the same slot used by Three.js. This reconstructs the source's reflected diffuse
    contribution. No additional source `1 / PI` is applied because the baker's
    cosine-weighted bounce estimator deliberately folds that factor into its
    existing normalized convention.
@@ -149,16 +152,20 @@ Starting a new classic bake clears the old probe volume because it was derived f
 ## Native public API
 
 ```ts
-import { captureNativeLightProbeGrid } from 'three-lightmap-baker';
+import { captureLightmappedProbeGrid } from 'three-lightmap-baker';
 
-// Mount the completed lightmaps and choose the static scene visibility first.
-const { grid, stats, descriptor } = captureNativeLightProbeGrid(renderer, scene, scene, {
-  spacing: 1.25,
-  padding: 0.1,
-  maxProbes: 1024,
-  cubemapSize: 8,
-  bounces: 0, // the lightmaps already contain the path-traced indirect light
-});
+const { grid, stats, descriptor } = captureLightmappedProbeGrid(
+  renderer,
+  scene,
+  lightmapBakeResult,
+  {
+    spacing: 1.25,
+    padding: 0.1,
+    maxProbes: 1024,
+    cubemapSize: 8,
+    bounces: 0, // the lightmaps already contain the path-traced indirect light
+  },
+);
 
 // `grid` is already in the scene. Standard materials are lit natively.
 renderer.render(scene, camera);
@@ -168,8 +175,10 @@ scene.remove(grid);
 grid.dispose();
 ```
 
-`captureNativeLightProbeGridFromJSON()` recreates the GPU grid from a saved
-descriptor after the baked static scene has been restored.
+`captureLightmappedProbeGridFromJSON()` recreates the GPU grid from a saved
+descriptor after the baked static scene has been restored. The lower-level
+`captureNativeLightProbeGrid()` remains available for callers that intentionally
+configure capture visibility and lighting themselves.
 
 ## Legacy public API
 
@@ -300,14 +309,8 @@ Then perform the visual validation:
 - A single native grid is available to every light-reactive material in the same render pass. Strict dynamic-only sampling would require a separate static/dynamic render pass; v1 deliberately avoids adding that custom renderer split.
 - The legacy path still requires GPU texture readback, samples once at the object origin plus an optional offset, and can create large JSON arrays at high probe counts.
 - A shared material should not be independently legacy-bound to multiple meshes without cloning it first.
-- Static source albedo currently uses one solid `material.color` per mesh.
-  `material.map` and geometry material groups are unsupported in both the
-  baker's shared per-triangle material lookup and probe projection. The first
-  architectural probe showcase must therefore use solid-color static meshes.
-- Follow-up task: preserve material-slot identity and UVs in the merged BVH,
-  sample `material.color * material.map` consistently for bake bounces, retain a
-  matching base-color atlas per bake group for primary probe projection, and
-  add map/material-group energy-ratio tests before lifting the showcase gate.
+- Base-color texture tiles are capped at 512 px in the GI transport atlas.
+- Emissive color is transported, but `emissiveMap` is a follow-up.
 - Larger architectural-scene quality, leakage, and performance remain to be
   measured; Cornell validation alone does not establish those properties.
 - Visibility/occlusion data, relocation, per-probe validity, and reflection probes remain future work.

@@ -3,7 +3,7 @@ import './scenes/presets';
 import { effect } from '@preact/signals';
 import { render } from 'preact';
 import { loadXAtlasThree } from 'baker-classic';
-import { registerBakerClassicUI } from 'baker-classic/ui';
+import { registerBakerClassicUI } from 'demo-shell/baker';
 // PT renderer UI hidden 2026-05-19 while focus is on baker polish.
 // Code stays in tree (packages/pt-renderer/) - flip back on by uncommenting:
 //   import { registerPTRendererUI } from 'pt-renderer/ui';

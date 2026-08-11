@@ -35,6 +35,8 @@ export type GroupInternals = {
    */
   positionTex: Texture;
   normalTex: Texture;
+  surfaceTex: Texture;
+  surfaceAlbedoTex: Texture;
 };
 
 /** Mutable state shared between the canvas listener and the mapper loop. */

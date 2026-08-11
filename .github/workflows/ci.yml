@@ -224,20 +224,27 @@ jobs:
 
       - name: Verify three / three-mesh-bvh / xatlas-three versions unchanged
         run: |
-          EXPECT_THREE='^0.161.0'
-          EXPECT_MESHBVH='^0.7.3'
-          EXPECT_XATLAS='^0.2.0'
+          EXPECT_THREE_PEER='>=0.185.1 <0.186.0'
+          EXPECT_THREE_DEV='0.185.1'
+          EXPECT_MESHBVH='^0.9.14'
+          EXPECT_XATLAS='^0.2.1'
 
-          THREE=$(jq -r '.dependencies.three' package.json)
+          THREE_PEER=$(jq -r '.peerDependencies.three' package.json)
+          THREE_DEV=$(jq -r '.devDependencies.three' package.json)
+          THREE_RUNTIME=$(jq -r '.dependencies.three // empty' package.json)
           MESHBVH=$(jq -r '.dependencies["three-mesh-bvh"]' package.json)
           XATLAS=$(jq -r '.dependencies["xatlas-three"]' package.json)
 
-          echo "three          = $THREE   (expected $EXPECT_THREE)"
+          echo "three peer     = $THREE_PEER (expected $EXPECT_THREE_PEER)"
+          echo "three repo     = $THREE_DEV  (expected $EXPECT_THREE_DEV)"
+          echo "three runtime  = ${THREE_RUNTIME:-<none>} (expected <none>; supplied by consumer)"
           echo "three-mesh-bvh = $MESHBVH (expected $EXPECT_MESHBVH)"
           echo "xatlas-three   = $XATLAS  (expected $EXPECT_XATLAS)"
 
           fail=0
-          [ "$THREE"   = "$EXPECT_THREE"   ] || fail=1
+          [ "$THREE_PEER" = "$EXPECT_THREE_PEER" ] || fail=1
+          [ "$THREE_DEV"  = "$EXPECT_THREE_DEV"  ] || fail=1
+          [ -z "$THREE_RUNTIME" ] || fail=1
           [ "$MESHBVH" = "$EXPECT_MESHBVH" ] || fail=1
           [ "$XATLAS"  = "$EXPECT_XATLAS"  ] || fail=1
 

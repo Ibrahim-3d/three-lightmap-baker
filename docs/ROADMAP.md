@@ -23,13 +23,18 @@ The core product remains stable baked lighting. Probes now bridge static lightma
 ## Current State
 
 - **Core baker:** Browser/WebGL lightmap baking is implemented with path-traced GI, BVH traversal, auto UV2, AO, dilation, denoise, supersampling/downscale, progressive hooks, and `LightmapBakeResult` lifecycle helpers.
+- **Material transport:** Imported-style `MeshStandardMaterial` base-color maps
+  and geometry material groups participate in secondary GI. Post-BVH triangle
+  IDs resolve source mesh, material slot, and barycentrically interpolated UV0.
 - **Debug tooling:** Combined, refined/raw combined, direct, indirect, AO, raw lightmap, albedo, unlit albedo, position, normal, texel density, atlas, and probe-only views exist.
 - **Light probes:** Three.js `LightProbeGrid` is the preferred runtime. It captures the completed baked static scene into a GPU-resident L2 SH atlas and lights moving `MeshStandardMaterial` objects through the native renderer. The prior RGB volume, CPU interpolation, shader binding, diagnostics, and persistence remain available under **Legacy RGB volume**.
 - **Probe lifecycle:** Probe resources are cleared on scene replacement and invalidated before a new classic bake. Selecting the probe-only layer without a generated volume falls back to Combined.
 - **Public API:** Both renderer constructor styles and the optional `LightmapRendererAdapter` boundary are supported. Probe generation remains a separate opt-in API after the lightmap bake.
 - **Package engineering:** Local artifacts provide ESM/CJS/type declaration output, installed-tarball import smoke, packaged xatlas assets, browser regression coverage, and third-party notices. This does not indicate public-release readiness or authorization.
 - **Launch proof:** README uses committed Cornell screenshots and benchmark numbers recorded before the probe integration.
-- **Current validation truth:** The r185.1 migration, source/example typechecks, and production build pass on 2026-08-11. Native browser capture has dedicated regression coverage; a full GPU-suite rerun remains required on a machine where the Playwright browser launcher is responsive. No publication was performed.
+- **Current validation truth:** Three 0.185.1 is the tested baseline. Source and
+  example typechecks, focused textured/material-group checks, package build and
+  native browser capture regressions pass on 2026-08-11. No publication was performed.
 
 ## Now: Probe Showcase and Larger-Scene Measurement
 
@@ -106,9 +111,8 @@ Cornell proves correctness; the custom room should prove product value:
 - Move a recognizable product object through the room.
 - Capture lightmap-only, probes-only, and final views.
 - Add larger-scene visual regression after the showcase is stable.
-- Keep the first probe showcase's static contributors to one solid-color
-  material per mesh. Base-color maps and geometry material groups are not yet
-  represented by the baker's shared per-triangle material lookup.
+- Include ordinary textured GLB-style surfaces and grouped material slots in
+  the larger-scene proof; the v1 transport path now supports both.
 
 ### 5. Hybrid runtime lighting companion
 

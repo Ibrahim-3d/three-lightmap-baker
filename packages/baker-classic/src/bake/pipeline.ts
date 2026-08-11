@@ -145,7 +145,7 @@ export async function runBakePipeline(args: BakePipelineArgs): Promise<LightmapB
   hooks.onProgress?.('geometry', 0.5);
 
   const perTri = extractPerTriangleMaterials(merged, allMeshes);
-  const matTex = buildMaterialTextures(perTri);
+  const matTex = buildMaterialTextures(renderer, perTri);
   hooks.onProgress?.('geometry', 1);
   checkAbort('geometry');
   const tG1 = performance.now();
@@ -249,9 +249,6 @@ export async function runBakePipeline(args: BakePipelineArgs): Promise<LightmapB
     bvh,
     refinementOptions: opts.refinementOptions,
     denoise: opts.denoise,
-    matTexDispose: () => {
-      matTex.albedoTexture.dispose();
-      matTex.emissiveTexture.dispose();
-    },
+    matTexDispose: () => matTex.dispose(),
   });
 }

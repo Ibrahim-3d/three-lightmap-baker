@@ -17,6 +17,12 @@ export type LightmapperMaterialOptions = {
   albedoTex: Texture;
   /** Per-triangle emissive (RGBA float, same layout as albedoTex). Task 03. */
   emissiveTex: Texture;
+  uv01Tex: Texture;
+  uv2MapTex: Texture;
+  mapRectTex: Texture;
+  mapTransform0Tex: Texture;
+  mapTransform1Tex: Texture;
+  albedoMapAtlas: Texture;
   /** Side length of the material textures (both are W×W). */
   materialTextureSize: number;
 
@@ -65,6 +71,12 @@ export class LightmapperMaterial extends ShaderMaterial {
         normals: { value: options.normals },
         albedoTex: { value: options.albedoTex },
         emissiveTex: { value: options.emissiveTex },
+        uv01Tex: { value: options.uv01Tex },
+        uv2MapTex: { value: options.uv2MapTex },
+        mapRectTex: { value: options.mapRectTex },
+        mapTransform0Tex: { value: options.mapTransform0Tex },
+        mapTransform1Tex: { value: options.mapTransform1Tex },
+        albedoMapAtlas: { value: options.albedoMapAtlas },
         materialTextureSize: { value: options.materialTextureSize },
         invModelMatrix: { value: options.invModelMatrix },
         bounces: { value: options.bounces },
@@ -124,6 +136,12 @@ export class LightmapperMaterial extends ShaderMaterial {
                 // Per-triangle material lookup (Task 03). Indexed by faceIndices.w.
                 uniform sampler2D albedoTex;
                 uniform sampler2D emissiveTex;
+                uniform sampler2D uv01Tex;
+                uniform sampler2D uv2MapTex;
+                uniform sampler2D mapRectTex;
+                uniform sampler2D mapTransform0Tex;
+                uniform sampler2D mapTransform1Tex;
+                uniform sampler2D albedoMapAtlas;
                 uniform float materialTextureSize;
 
                 #define MAX_BOUNCES 4
@@ -200,10 +218,38 @@ export class LightmapperMaterial extends ShaderMaterial {
 
                 // ── Material lookup ──────────────────────────────────────────────
 
-                vec3 readTriangleMaterial(sampler2D tex, uint triIdx) {
+                vec4 readTriangleData(sampler2D tex, uint triIdx) {
                     uint W = uint(materialTextureSize);
                     vec2 uv = (vec2(triIdx % W, triIdx / W) + 0.5) / materialTextureSize;
-                    return texture(tex, uv).rgb;
+                    return texture(tex, uv);
+                }
+
+                float applyMapWrap(float value, float mode) {
+                    if (abs(mode - 1000.0) < 0.5) return fract(value);
+                    if (abs(mode - 1002.0) < 0.5) return 1.0 - abs(mod(value, 2.0) - 1.0);
+                    return clamp(value, 0.0, 1.0);
+                }
+
+                vec3 readSurfaceAlbedo(uint triIdx, vec3 barycoord) {
+                    vec3 baseColor = readTriangleData(albedoTex, triIdx).rgb;
+                    vec4 uv01 = readTriangleData(uv01Tex, triIdx);
+                    vec4 uv2Map = readTriangleData(uv2MapTex, triIdx);
+                    if (uv2Map.z < 0.5) return baseColor;
+
+                    vec2 sourceUv = uv01.xy * barycoord.x
+                                  + uv01.zw * barycoord.y
+                                  + uv2Map.xy * barycoord.z;
+                    vec4 transform0 = readTriangleData(mapTransform0Tex, triIdx);
+                    vec4 transform1 = readTriangleData(mapTransform1Tex, triIdx);
+                    vec2 transformedUv = vec2(
+                        transform0.x * sourceUv.x + transform0.z * sourceUv.y + transform1.x,
+                        transform0.y * sourceUv.x + transform0.w * sourceUv.y + transform1.y
+                    );
+                    transformedUv.x = applyMapWrap(transformedUv.x, transform1.z);
+                    transformedUv.y = applyMapWrap(transformedUv.y, transform1.w);
+                    vec4 rect = readTriangleData(mapRectTex, triIdx);
+                    vec3 mapColor = texture(albedoMapAtlas, rect.xy + transformedUv * rect.zw).rgb;
+                    return baseColor * mapColor;
                 }
 
                 // ── Light texture access ─────────────────────────────────────────
@@ -328,11 +374,10 @@ export class LightmapperMaterial extends ShaderMaterial {
                  */
                 vec3 tracePath(
                     vec3 ro, vec3 rd,
-                    bool hit, uvec4 fi, vec3 fn, float fd
+                    bool hit, uvec4 fi, vec3 fn, vec3 bary, float fd
                 ) {
                     vec3 throughput = vec3(1.0);
                     vec3 radiance   = vec3(0.0);
-                    vec3 bary = vec3(0.0);
                     float sideVal = 1.0;
 
                     for (int b = 0; b < MAX_BOUNCES; b++) {
@@ -342,8 +387,8 @@ export class LightmapperMaterial extends ShaderMaterial {
                             break;
                         }
 
-                        vec3 hitAlbedo   = readTriangleMaterial(albedoTex,   fi.w);
-                        vec3 hitEmissive = readTriangleMaterial(emissiveTex, fi.w);
+                        vec3 hitAlbedo   = readSurfaceAlbedo(fi.w, bary);
+                        vec3 hitEmissive = readTriangleData(emissiveTex, fi.w).rgb;
                         vec3 hitPos      = ro + rd * fd;
                         vec3 hitNormal   = fn;
                         vec3 hitOrigin   = hitPos + hitNormal * 0.001;
@@ -413,7 +458,7 @@ export class LightmapperMaterial extends ShaderMaterial {
                                 bool hit = bvhIntersectFirstHit(bvh, rayOrigin, newDir,
                                     faceIndices, faceNormal, barycoord, side, dist);
                                 totalIndirectLight += tracePath(rayOrigin, newDir, hit,
-                                                                faceIndices, faceNormal, dist);
+                                                                faceIndices, faceNormal, barycoord, dist);
                             }
                         }
                     }

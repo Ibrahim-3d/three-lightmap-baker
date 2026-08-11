@@ -71,6 +71,8 @@ export class LightmapBakeResult {
         refinement: g.refinement?.texture ?? null,
         position: g.positionTex,
         normal: g.normalTex,
+        surface: g.surfaceTex,
+        surfaceAlbedo: g.surfaceAlbedoTex,
       },
     }));
   }
@@ -98,6 +100,8 @@ export class LightmapBakeResult {
             refinement: g.refinement?.texture ?? null,
             position: g.positionTex,
             normal: g.normalTex,
+            surface: g.surfaceTex,
+            surfaceAlbedo: g.surfaceAlbedoTex,
           },
         };
       }
@@ -108,12 +112,15 @@ export class LightmapBakeResult {
   /** Mounts each mesh's atlas texture as `mat.lightMap` (channel = 2). */
   apply(): void {
     for (const [mesh, tex] of this.meshLightmaps) {
-      const mat = mesh.material as MeshStandardMaterial;
-      if (!mat) continue;
-      mat.lightMap = tex;
-      tex.channel = 2;
-      mat.lightMapIntensity = 1;
-      mat.needsUpdate = true;
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const candidate of materials) {
+        const mat = candidate as MeshStandardMaterial;
+        if (!mat?.isMeshStandardMaterial) continue;
+        mat.lightMap = tex;
+        tex.channel = 2;
+        mat.lightMapIntensity = 1;
+        mat.needsUpdate = true;
+      }
     }
   }
 

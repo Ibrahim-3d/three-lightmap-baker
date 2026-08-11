@@ -2,9 +2,7 @@ import {
   Box3,
   Mesh,
   MeshStandardMaterial,
-  NoToneMapping,
   Scene,
-  SphereGeometry,
   Vector3,
   type Object3D,
   type Texture,
@@ -13,10 +11,9 @@ import {
 import { LightProbeGrid } from 'three/addons/lighting/LightProbeGrid.js';
 import { LightProbeGridHelper } from 'three/addons/helpers/LightProbeGridHelper.js';
 import {
-  captureNativeLightProbeGrid,
-  captureNativeLightProbeGridFromJSON,
+  captureLightmappedProbeGrid,
+  captureLightmappedProbeGridFromJSON,
   ProbeDebugView,
-  ProbeLightingBinding,
   ProbeVolume,
   createProbeDebugView,
   generateProbeVolume,
@@ -28,6 +25,7 @@ import {
   type ProbeVolumeJSON,
 } from 'baker-classic';
 import { ProbeGridPreview, type ProbeGridPreviewResult } from './ProbeGridPreview';
+import { ProbeDemoController } from './ProbeDemoController';
 
 type LiveBakeGroup = {
   atlasIdx: number;
@@ -66,20 +64,30 @@ export class ProbeController {
   volume: ProbeVolume | null = null;
   debugView: ProbeDebugView | null = null;
   previewView: ProbeGridPreview | null = null;
-  demoMesh: Mesh<SphereGeometry, MeshStandardMaterial> | null = null;
-  demoBinding: ProbeLightingBinding | null = null;
   lastGenerationStats: ProbeBakeStats | NativeLightProbeGridStats | null = null;
 
   private readonly hiddenForProbeLayer = new Map<Object3D, boolean>();
   private probeOnly = false;
   private options: PlaygroundProbeOptions | null = null;
+  private releaseFrameLifecycle: (() => void) | null = null;
+  private readonly demo: ProbeDemoController;
 
   constructor(
     private readonly renderer: WebGLRenderer,
     private readonly scene: Scene,
     private readonly getBakeResult: () => LightmapBakeResult | null,
     private readonly getLiveBakeGroups: () => ReadonlyArray<LiveBakeGroup> = () => [],
-  ) {}
+  ) {
+    this.demo = new ProbeDemoController(scene);
+  }
+
+  get demoMesh(): ProbeDemoController['mesh'] {
+    return this.demo.mesh;
+  }
+
+  get demoBinding(): ProbeDemoController['binding'] {
+    return this.demo.binding;
+  }
 
   get probeCount(): number {
     if (this.nativeGrid) {
@@ -175,8 +183,8 @@ export class ProbeController {
     options: PlaygroundProbeOptions,
     hooks: ProbeGenerationHooks,
   ): Promise<NativeLightProbeGridStats> {
-    const staticLightmaps = this.resolveStaticLightmaps();
-    if (!staticLightmaps.size) {
+    const bakeResult = this.getBakeResult();
+    if (!bakeResult) {
       throw new Error('[baker:probes] bake the static scene before capturing native probes');
     }
 
@@ -186,27 +194,20 @@ export class ProbeController {
     await nextFrame();
     checkAbort(hooks.signal);
 
-    const restoreCaptureState = this.prepareNativeCapture(staticLightmaps, options.intensity);
-    try {
-      const result = captureNativeLightProbeGrid(
-        this.renderer,
-        this.scene,
-        boundsFromMeshes(staticLightmaps.keys()),
-        {
-          spacing: options.spacing,
-          padding: options.padding,
-          maxProbes: options.maxProbes,
-          cubemapSize: options.cubemapSize,
-          bounces: 0,
-        },
-      );
-      this.installNative(result.grid, result.descriptor, options);
-      this.lastGenerationStats = result.stats;
-      hooks.onProgress?.(1);
-      return result.stats;
-    } finally {
-      restoreCaptureState();
-    }
+    const result = captureLightmappedProbeGrid(this.renderer, this.scene, bakeResult, {
+      spacing: options.spacing,
+      padding: options.padding,
+      maxProbes: options.maxProbes,
+      cubemapSize: options.cubemapSize,
+      bounces: 0,
+      lightMapIntensity: options.intensity,
+      resolveBaseColorMap: (_mesh, material) =>
+        (material as MeshStandardMaterial & { _originalMap?: Texture | null })._originalMap,
+    });
+    this.installNative(result.grid, result.descriptor, options);
+    this.lastGenerationStats = result.stats;
+    hooks.onProgress?.(1);
+    return result.stats;
   }
 
   restore(json: ProbeVolumeJSON, options: PlaygroundProbeOptions): void {
@@ -217,22 +218,23 @@ export class ProbeController {
     json: NativeLightProbeGridJSON,
     options: PlaygroundProbeOptions,
   ): Promise<void> {
-    const staticLightmaps = this.resolveStaticLightmaps();
-    if (!staticLightmaps.size) {
-      throw new Error('[baker:probes] saved native probes require restored baked lightmaps');
-    }
+    const bakeResult = this.getBakeResult();
     this.clear();
     await nextFrame();
-    const restoreCaptureState = this.prepareNativeCapture(staticLightmaps, options.intensity);
-    try {
-      const result = captureNativeLightProbeGridFromJSON(this.renderer, this.scene, json, {
+    const result = captureLightmappedProbeGridFromJSON(
+      this.renderer,
+      this.scene,
+      bakeResult,
+      json,
+      {
         maxProbes: options.maxProbes,
-      });
-      this.installNative(result.grid, result.descriptor, { ...options, runtime: 'native' });
-      this.lastGenerationStats = result.stats;
-    } finally {
-      restoreCaptureState();
-    }
+        lightMapIntensity: options.intensity,
+        resolveBaseColorMap: (_mesh, material) =>
+          (material as MeshStandardMaterial & { _originalMap?: Texture | null })._originalMap,
+      },
+    );
+    this.installNative(result.grid, result.descriptor, { ...options, runtime: 'native' });
+    this.lastGenerationStats = result.stats;
   }
 
   serialize(): ProbeVolumeJSON | undefined {
@@ -246,7 +248,7 @@ export class ProbeController {
   clear(): void {
     this.setProbeOnly(false);
     this.clearPreview();
-    this.destroyDemo();
+    this.demo.clear();
     if (this.nativeHelper) {
       this.scene.remove(this.nativeHelper);
       this.nativeHelper.dispose();
@@ -277,25 +279,21 @@ export class ProbeController {
   setDemoEnabled(enabled: boolean): void {
     if (this.options) this.options.showDemo = enabled;
     if (!enabled) {
-      this.destroyDemo();
+      this.demo.clear();
       return;
     }
-    if (this.hasVolume && this.options && !this.demoMesh) this.createDemo(this.options);
+    this.demo.setEnabled(enabled, this.runtimeBounds(), this.volume);
   }
 
   setDemoAnimation(enabled: boolean): void {
     if (this.options) this.options.animateDemo = enabled;
+    this.demo.setAnimated(enabled);
   }
 
   setIntensity(intensity: number): void {
     if (!this.options) return;
     this.options.intensity = Math.max(0, intensity);
-    if (this.demoMesh && this.volume) {
-      this.demoBinding?.dispose();
-      this.demoBinding = new ProbeLightingBinding(this.demoMesh, this.volume, {
-        intensity: this.options.intensity,
-      });
-    }
+    this.demo.setIntensity(this.options.intensity, this.volume);
   }
 
   /** Hide normal renderables and leave only the probe debug instances. */
@@ -338,29 +336,18 @@ export class ProbeController {
   }
 
   update(timeSeconds: number): void {
-    const mesh = this.demoMesh;
     const bounds = this.runtimeBounds();
-    const options = this.options;
-    if (!mesh || !bounds || !options) return;
+    this.demo.update(timeSeconds, bounds);
+  }
 
-    if (options.animateDemo) {
-      const size = bounds.getSize(_size);
-      const center = bounds.getCenter(_center);
-      const margin = Math.min(size.x * 0.12, 0.25);
-      const minX = bounds.min.x + margin;
-      const maxX = bounds.max.x - margin;
-      const t = 0.5 + 0.5 * Math.sin(timeSeconds * 0.7);
-      mesh.position.set(
-        minX + Math.max(0, maxX - minX) * t,
-        bounds.min.y + size.y * 0.35,
-        center.z,
-      );
-    }
-
-    this.demoBinding?.update();
+  ownFrameLifecycle(release: () => void): void {
+    this.releaseFrameLifecycle?.();
+    this.releaseFrameLifecycle = release;
   }
 
   dispose(): void {
+    this.releaseFrameLifecycle?.();
+    this.releaseFrameLifecycle = null;
     this.clear();
   }
 
@@ -382,7 +369,8 @@ export class ProbeController {
     this.debugView.visible = options.showProbes;
     this.scene.add(this.debugView);
 
-    if (options.showDemo) this.createDemo(options);
+    this.demo.configure(options.showDemo, options.animateDemo, options.intensity);
+    this.demo.sync(this.runtimeBounds(), this.volume);
   }
 
   private installNative(
@@ -403,158 +391,16 @@ export class ProbeController {
     this.nativeHelper = helper;
     this.scene.add(helper);
 
-    if (options.showDemo) this.createDemo(options);
-  }
-
-  private createDemo(options: PlaygroundProbeOptions): void {
-    const bounds = this.runtimeBounds();
-    if (!bounds || this.demoMesh) return;
-
-    const size = bounds.getSize(_size);
-    const radius = Math.min(0.3, Math.max(0.08, Math.min(size.x, size.y, size.z) * 0.055));
-    const material = new MeshStandardMaterial({
-      name: 'ProbeDemoMaterial',
-      color: 0xffffff,
-      roughness: 0.72,
-      metalness: 0.05,
-    });
-    const mesh = new Mesh(new SphereGeometry(radius, 32, 20), material);
-    mesh.name = 'Probe Dynamic Demo Sphere';
-    mesh.userData.lightmapIgnore = true;
-    mesh.userData.bakerProbeDemo = true;
-    mesh.castShadow = true;
-    mesh.receiveShadow = false;
-    bounds.getCenter(mesh.position);
-    this.scene.add(mesh);
-
-    this.demoMesh = mesh;
-    if (this.volume) {
-      this.demoBinding = new ProbeLightingBinding(mesh, this.volume, {
-        intensity: Math.max(0, options.intensity),
-      });
-      this.demoBinding.update();
-    }
+    this.demo.configure(options.showDemo, options.animateDemo, options.intensity);
+    this.demo.sync(this.runtimeBounds(), this.volume);
   }
 
   private runtimeBounds(): Box3 | null {
     return this.nativeGrid?.boundingBox ?? this.volume?.bounds ?? null;
   }
-
-  private resolveStaticLightmaps(): Map<Mesh, Texture> {
-    const result = new Map<Mesh, Texture>();
-    const bakeResult = this.getBakeResult();
-    const liveGroups = this.getLiveBakeGroups();
-    if (bakeResult) {
-      for (let index = 0; index < bakeResult.groups.length; index++) {
-        const group = bakeResult.groups[index]!;
-        const live = liveGroups.find((item) => item.atlasIdx === index) ?? liveGroups[index];
-        const texture =
-          live?.refinement?.texture ?? live?.composite.texture ?? group.textures.composite;
-        for (const mesh of group.meshes) result.set(mesh, texture);
-      }
-      return result;
-    }
-
-    this.scene.traverse((object) => {
-      const mesh = object as Mesh;
-      if (!mesh.isMesh || object.userData?.lightmapIgnore) return;
-      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      const lightMap = materials.find(isStandardMaterial)?.lightMap;
-      if (
-        lightMap &&
-        materials.some((material) => isStandardMaterial(material) && material.lightMapIntensity > 0)
-      ) {
-        result.set(mesh, lightMap);
-      }
-    });
-    return result;
-  }
-
-  private prepareNativeCapture(staticLightmaps: Map<Mesh, Texture>, intensity: number): () => void {
-    const visibility = new Map<Object3D, boolean>();
-    const materialStates: Array<{
-      material: MeshStandardMaterial & { _originalMap?: Texture | null };
-      map: Texture | null;
-      lightMap: Texture | null;
-      lightMapIntensity: number;
-    }> = [];
-    const staticMeshes = new Set(staticLightmaps.keys());
-
-    this.scene.traverse((object) => {
-      const renderable = object as Object3D & {
-        isLight?: boolean;
-        isMesh?: boolean;
-        isLine?: boolean;
-        isPoints?: boolean;
-        isSprite?: boolean;
-      };
-      const shouldHide =
-        renderable.isLight === true ||
-        ((renderable.isMesh || renderable.isLine || renderable.isPoints || renderable.isSprite) &&
-          !staticMeshes.has(object as Mesh));
-      if (shouldHide && object.visible) {
-        visibility.set(object, true);
-        object.visible = false;
-      }
-    });
-
-    for (const [mesh, lightMap] of staticLightmaps) {
-      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      for (const candidate of materials) {
-        if (!isStandardMaterial(candidate)) continue;
-        const material = candidate as MeshStandardMaterial & { _originalMap?: Texture | null };
-        materialStates.push({
-          material,
-          map: material.map,
-          lightMap: material.lightMap,
-          lightMapIntensity: material.lightMapIntensity,
-        });
-        material.map = material._originalMap ?? material.map;
-        material.lightMap = lightMap;
-        material.lightMap.channel = 2;
-        material.lightMapIntensity = Math.max(0, intensity);
-        material.needsUpdate = true;
-      }
-    }
-
-    const background = this.scene.background;
-    const environment = this.scene.environment;
-    const toneMapping = this.renderer.toneMapping;
-    const exposure = this.renderer.toneMappingExposure;
-    this.scene.background = null;
-    this.scene.environment = null;
-    this.renderer.toneMapping = NoToneMapping;
-    this.renderer.toneMappingExposure = 1;
-    this.scene.updateMatrixWorld(true);
-
-    return () => {
-      this.scene.background = background;
-      this.scene.environment = environment;
-      this.renderer.toneMapping = toneMapping;
-      this.renderer.toneMappingExposure = exposure;
-      for (const state of materialStates) {
-        state.material.map = state.map;
-        state.material.lightMap = state.lightMap;
-        state.material.lightMapIntensity = state.lightMapIntensity;
-        state.material.needsUpdate = true;
-      }
-      for (const [object, wasVisible] of visibility) object.visible = wasVisible;
-    };
-  }
-
-  private destroyDemo(): void {
-    this.demoBinding?.dispose();
-    this.demoBinding = null;
-    if (!this.demoMesh) return;
-    this.scene.remove(this.demoMesh);
-    this.demoMesh.geometry.dispose();
-    this.demoMesh.material.dispose();
-    this.demoMesh = null;
-  }
 }
 
 const _size = new Vector3();
-const _center = new Vector3();
 
 function withLiveFinalTexture(
   group: BakeGroupView,
@@ -604,15 +450,6 @@ function boundsFromScene(scene: Scene): Box3 {
   });
   if (bounds.isEmpty()) throw new Error('[baker:probes] scene has no bounded lightmap surfaces');
   return bounds;
-}
-
-function isStandardMaterial(value: unknown): value is MeshStandardMaterial {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'isMeshStandardMaterial' in value &&
-    (value as { isMeshStandardMaterial?: boolean }).isMeshStandardMaterial === true
-  );
 }
 
 function checkAbort(signal: AbortSignal | undefined): void {

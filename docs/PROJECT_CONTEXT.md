@@ -1,4 +1,12 @@
-# Three Lightmap Baker — Current Project Context and Continuation Handoff
+# Historical Project Context and Continuation Handoff
+
+> **Archived on 2026-08-11.** This document preserves the pre-probe handoff and
+> its decision history. It is not a current implementation plan. Native Three.js
+> `LightProbeGrid` is now implemented and preferred; the RGB probe volume remains
+> as a fallback. The package baseline is Three 0.185.1, textured and grouped
+> multi-material GI is implemented, and baked-scene native capture policy now
+> lives in the publishable library. See `API_STATUS.md`, `ROADMAP.md`, and
+> `LIGHT_PROBES.md` for current status.
 
 Last audited: 2026-07-26  
 Repository: `Ibrahim-3d/three-lightmap-baker`  

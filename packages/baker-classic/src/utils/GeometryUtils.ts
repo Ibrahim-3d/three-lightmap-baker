@@ -5,58 +5,64 @@ import {
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
+  Texture,
 } from 'three';
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BakeError } from '../errors';
 
-// Attributes mergeGeometry preserves on every input. `mergeGeometries` rejects
-// the whole batch if attribute sets differ across inputs, so we strip every
-// other attribute (tangent, skinIndex, skinWeight, color, etc.) on the clone.
-const KEPT_ATTRIBUTES = new Set(['position', 'normal', 'uv', 'uv2', 'meshIndex']);
+const KEPT_ATTRIBUTES = new Set(['position', 'normal', 'uv', 'uv2']);
+const MESH_INDEX_ATTRIBUTE = 'meshIndex';
+const MATERIAL_INDEX_ATTRIBUTE = 'sourceMaterialIndex';
+const HAS_UV_ATTRIBUTE = 'sourceHasUv';
 
 /**
- * Merge meshes into a single BufferGeometry suitable for MeshBVH.
+ * Merge meshes into one indexed geometry suitable for MeshBVH.
  *
- * Side-effect: tags every vertex with a `meshIndex` attribute (its position in
- * the input `meshes` array). MeshBVH reorders the merged `index` buffer
- * in-place during construction (sortUtils.template.js partition swaps
- * triangles to build a spatially-sorted tree), so a triangle's position in
- * the post-BVH index buffer no longer matches its position in the original
- * mesh-by-mesh concatenation. Vertices are NOT reordered though, so reading
- * `meshIndex` from any of the triangle's vertices recovers the original mesh
- * identity. Used by extractPerTriangleMaterials to build a material lookup
- * keyed by post-BVH triangle index - matching what the GPU shader's
- * `faceIndices.w` returns at hit time.
- *
- * Normalizes inputs: forces indexed geometry (mergeVertices) and strips
- * non-essential attributes so mixed scenes (GLB imports + procedural meshes
- * + helpers) don't cause `mergeGeometries` to reject the batch.
+ * Every input is temporarily de-indexed so material-group identity can be
+ * tagged per triangle, then re-indexed with those tags participating in vertex
+ * equality. MeshBVH may reorder only the final index buffer; mesh/material tags
+ * and source UVs remain attached to vertices and therefore survive that reorder.
  */
 export const mergeGeometry = (meshes: Mesh[]): BufferGeometry => {
   const prepped = meshes.map((mesh, meshIdx) => {
-    let g = mesh.geometry.clone();
+    let geometry = mesh.geometry.clone();
+    for (const name of Object.keys(geometry.attributes)) {
+      if (!KEPT_ATTRIBUTES.has(name)) geometry.deleteAttribute(name);
+    }
+    geometry.applyMatrix4(mesh.matrixWorld);
+    if (geometry.index) geometry = geometry.toNonIndexed();
 
-    for (const name of Object.keys(g.attributes)) {
-      if (!KEPT_ATTRIBUTES.has(name)) g.deleteAttribute(name);
+    const positions = geometry.getAttribute('position');
+    if (!positions) {
+      throw new BakeError('mesh geometry has no position attribute', 'geometry', mesh.name);
+    }
+    if (positions.count % 3 !== 0) {
+      throw new BakeError('mesh geometry vertex count is not triangular', 'geometry', mesh.name);
     }
 
-    g.applyMatrix4(mesh.matrixWorld);
+    const hadUv = geometry.hasAttribute('uv');
+    if (!hadUv)
+      geometry.setAttribute('uv', new BufferAttribute(new Float32Array(positions.count * 2), 2));
 
-    if (!g.index) g = mergeVertices(g);
+    const meshIndices = new Float32Array(positions.count);
+    meshIndices.fill(meshIdx);
+    const materialIndices = new Float32Array(positions.count);
+    const hasUvs = new Float32Array(positions.count);
+    hasUvs.fill(hadUv ? 1 : 0);
+    for (let triangle = 0; triangle < positions.count / 3; triangle++) {
+      const slot = materialSlotForTriangle(mesh, triangle);
+      materialIndices.fill(slot, triangle * 3, triangle * 3 + 3);
+    }
+    geometry.setAttribute(MESH_INDEX_ATTRIBUTE, new BufferAttribute(meshIndices, 1));
+    geometry.setAttribute(MATERIAL_INDEX_ATTRIBUTE, new BufferAttribute(materialIndices, 1));
+    geometry.setAttribute(HAS_UV_ATTRIBUTE, new BufferAttribute(hasUvs, 1));
 
-    const posAttr = g.attributes.position;
-    if (!posAttr)
-      throw new BakeError('mesh geometry has no position attribute', 'geometry', mesh.name);
-    const vCount = posAttr.count;
-    const meshIdxArr = new Float32Array(vCount);
-    meshIdxArr.fill(meshIdx);
-    g.setAttribute('meshIndex', new BufferAttribute(meshIdxArr, 1));
-
-    return g;
+    return mergeVertices(geometry);
   });
+
   const merged = mergeGeometries(prepped);
   if (!merged) {
-    const names = meshes.map((m, i) => m.name || `<unnamed#${i}>`).join(', ');
+    const names = meshes.map((mesh, index) => mesh.name || `<unnamed#${index}>`).join(', ');
     throw new BakeError(
       `mergeGeometries returned null - incompatible attribute sets across meshes [${names}]`,
       'geometry',
@@ -65,133 +71,161 @@ export const mergeGeometry = (meshes: Mesh[]): BufferGeometry => {
   return merged;
 };
 
-/**
- * Per-triangle material data, in the same order as mergeGeometry concatenates
- * its inputs. Index N in these arrays refers to the same triangle the BVH
- * reports as faceIndex N at hit time.
- *
- * Both arrays are flat RGB triplets - length === totalTriangles * 3.
- */
 export interface PerTriangleMaterials {
+  /** Base material.color, RGB triplets keyed by post-BVH triangle ID. */
   albedo: Float32Array;
   emissive: Float32Array;
+  /** Source UV0 for all three vertices: u0,v0,u1,v1,u2,v2. */
+  uvs: Float32Array;
+  /** Texture.matrix coefficients a,b,c,d,e,f for each triangle. */
+  mapTransforms: Float32Array;
+  /** Three.js wrapping constants: wrapS, wrapT for each triangle. */
+  wrapModes: Float32Array;
+  /** Base-color texture per triangle; null means solid material.color. */
+  maps: Array<Texture | null>;
+  meshIndices: Uint32Array;
+  materialSlots: Uint32Array;
   totalTriangles: number;
   perMeshTriangleCounts: number[];
 }
 
-const triangleCount = (mesh: Mesh): number => {
-  const g = mesh.geometry;
-  if (g.index) return g.index.count / 3;
-  const pos = g.attributes.position;
-  if (!pos) throw new BakeError('mesh geometry missing position attribute', 'geometry', mesh.name);
-  return pos.count / 3;
+type MaterialSurface = {
+  albedo: readonly [number, number, number];
+  emissive: readonly [number, number, number];
+  map: Texture | null;
+  transform: readonly [number, number, number, number, number, number];
+  wrapS: number;
+  wrapT: number;
 };
 
-type MatColors = { aR: number; aG: number; aB: number; eR: number; eG: number; eB: number };
-
-const WHITE_FALLBACK: MatColors = { aR: 1, aG: 1, aB: 1, eR: 0, eG: 0, eB: 0 };
-
-const readMaterialColors = (material: Material | Material[]): MatColors => {
-  // Material arrays (faces with different materials per group). For now we
-  // take the first entry and warn - proper per-face lookup needs the
-  // geometry's `groups` mapping. None of Cornell's meshes use this path.
-  if (Array.isArray(material)) {
-    console.warn(
-      '[baker] material array detected; using slot 0 only - per-face material groups not yet supported',
-    );
-    const slot0 = material[0];
-    return slot0 ? readMaterialColors(slot0) : WHITE_FALLBACK;
-  }
-
-  const m = material as MeshStandardMaterial & MeshBasicMaterial;
-
-  // MeshStandardMaterial / MeshPhysicalMaterial - has both .color and .emissive
-  if ('emissive' in m && m.emissive) {
-    const intensity = (m as MeshStandardMaterial).emissiveIntensity ?? 1.0;
-    return {
-      aR: m.color.r,
-      aG: m.color.g,
-      aB: m.color.b,
-      eR: m.emissive.r * intensity,
-      eG: m.emissive.g * intensity,
-      eB: m.emissive.b * intensity,
-    };
-  }
-
-  // MeshBasicMaterial - has .color only, no emissive concept
-  if ('color' in m && m.color) {
-    return { aR: m.color.r, aG: m.color.g, aB: m.color.b, eR: 0, eG: 0, eB: 0 };
-  }
-
-  // ShaderMaterial / RawShaderMaterial / unknown - can't extract a single albedo
-  console.warn(
-    '[baker] material has no .color (likely ShaderMaterial); defaulting to white albedo',
-  );
-  return WHITE_FALLBACK;
+const WHITE_FALLBACK: MaterialSurface = {
+  albedo: [1, 1, 1],
+  emissive: [0, 0, 0],
+  map: null,
+  transform: [1, 0, 0, 1, 0, 0],
+  wrapS: 1001,
+  wrapT: 1001,
 };
+
+/** Resolve the material array slot assigned to an original source triangle. */
+export function materialSlotForTriangle(mesh: Mesh, triangle: number): number {
+  if (!Array.isArray(mesh.material)) return 0;
+  const offset = triangle * 3;
+  for (const group of mesh.geometry.groups) {
+    const end = group.start + group.count;
+    if (offset >= group.start && offset < end) return Math.max(0, (group.materialIndex ?? 0) | 0);
+  }
+  return 0;
+}
+
+function triangleCount(mesh: Mesh): number {
+  const geometry = mesh.geometry;
+  if (geometry.index) return geometry.index.count / 3;
+  const positions = geometry.getAttribute('position');
+  if (!positions) {
+    throw new BakeError('mesh geometry missing position attribute', 'geometry', mesh.name);
+  }
+  return positions.count / 3;
+}
+
+function materialAtSlot(mesh: Mesh, slot: number): Material | undefined {
+  if (!Array.isArray(mesh.material)) return mesh.material;
+  return mesh.material[slot] ?? mesh.material[0];
+}
+
+function readMaterialSurface(material: Material | undefined, hasUv: boolean): MaterialSurface {
+  if (!material) return WHITE_FALLBACK;
+  const candidate = material as MeshStandardMaterial & MeshBasicMaterial;
+  if (!('color' in candidate) || !candidate.color) return WHITE_FALLBACK;
+
+  const emissive =
+    'emissive' in candidate && candidate.emissive
+      ? candidate.emissive.clone().multiplyScalar(candidate.emissiveIntensity ?? 1)
+      : null;
+  const map = hasUv && 'map' in candidate ? (candidate.map ?? null) : null;
+  if (map?.matrixAutoUpdate) map.updateMatrix();
+  const elements = map?.matrix.elements;
+  return {
+    albedo: [candidate.color.r, candidate.color.g, candidate.color.b],
+    emissive: emissive ? [emissive.r, emissive.g, emissive.b] : [0, 0, 0],
+    map,
+    transform: elements
+      ? [elements[0]!, elements[1]!, elements[3]!, elements[4]!, elements[6]!, elements[7]!]
+      : [1, 0, 0, 1, 0, 0],
+    wrapS: map?.wrapS ?? 1001,
+    wrapT: map?.wrapT ?? 1001,
+  };
+}
 
 /**
- * Build per-triangle material arrays keyed by the triangle's index in the
- * post-BVH-construction merged index buffer (which is what the GPU shader
- * receives in `faceIndices.w` at hit time).
- *
- * MUST be called AFTER `new MeshBVH(merged)` - the BVH reorders `merged.index`
- * in place, so calling this before BVH construction produces an off-by-mesh
- * lookup table that returns the wrong colour for almost every hit.
- *
- * Recovery of mesh identity is via the per-vertex `meshIndex` attribute that
- * `mergeGeometry` writes. Vertices are not reordered, only the index buffer,
- * so reading `meshIndex` of any vertex of a triangle recovers the original
- * mesh.
+ * Extract material and UV records keyed by the post-BVH triangle ordering.
+ * MUST be called after `new MeshBVH(merged)` mutates `merged.index`.
  */
 export const extractPerTriangleMaterials = (
   merged: BufferGeometry,
   meshes: Mesh[],
 ): PerTriangleMaterials => {
-  const indexAttr = merged.index;
-  if (!indexAttr) {
-    throw new BakeError(
-      'mergeGeometry must produce an indexed geometry; got non-indexed',
-      'geometry',
-    );
+  const index = merged.index;
+  if (!index) {
+    throw new BakeError('mergeGeometry must produce an indexed geometry', 'geometry');
   }
-  const meshIdxAttr = merged.attributes.meshIndex as BufferAttribute | undefined;
-  if (!meshIdxAttr) {
-    throw new BakeError(
-      "merged geometry is missing 'meshIndex' attribute - did mergeGeometry skip the per-vertex tag?",
-      'geometry',
-    );
+  const meshIndex = merged.getAttribute(MESH_INDEX_ATTRIBUTE) as BufferAttribute | undefined;
+  const materialIndex = merged.getAttribute(MATERIAL_INDEX_ATTRIBUTE) as
+    | BufferAttribute
+    | undefined;
+  const hasUv = merged.getAttribute(HAS_UV_ATTRIBUTE) as BufferAttribute | undefined;
+  const uv = merged.getAttribute('uv') as BufferAttribute | undefined;
+  if (!meshIndex || !materialIndex || !hasUv || !uv) {
+    throw new BakeError('merged geometry is missing source surface attributes', 'geometry');
   }
 
-  const perMeshTriangleCounts = meshes.map(triangleCount); // for diagnostic logging only
-  const totalTriangles = indexAttr.count / 3;
-
+  const totalTriangles = index.count / 3;
   const albedo = new Float32Array(totalTriangles * 3);
   const emissive = new Float32Array(totalTriangles * 3);
+  const uvs = new Float32Array(totalTriangles * 6);
+  const mapTransforms = new Float32Array(totalTriangles * 6);
+  const wrapModes = new Float32Array(totalTriangles * 2);
+  const maps = new Array<Texture | null>(totalTriangles).fill(null);
+  const meshIndices = new Uint32Array(totalTriangles);
+  const materialSlots = new Uint32Array(totalTriangles);
 
-  const meshColors: MatColors[] = meshes.map((m) => readMaterialColors(m.material));
-
-  const indexArr = indexAttr.array as Uint16Array | Uint32Array;
-  const meshIdxArr = meshIdxAttr.array as Float32Array;
-
-  for (let tri = 0; tri < totalTriangles; tri++) {
-    // Read the first vertex of the triangle in the (BVH-reordered) index buffer
-    // and look up its mesh tag. All three vertices of a triangle share the same
-    // meshIndex by construction (every vertex in a per-mesh chunk got tagged
-    // uniformly), so any of them works.
-    // SAFETY: tri < totalTriangles = indexAttr.count/3, so tri*3 < indexArr.length;
-    // v0 is a vertex index < meshIdxArr.length by mergeGeometry's invariant.
-    const v0 = indexArr[tri * 3] ?? 0;
-    const meshIdx = (meshIdxArr[v0] ?? 0) | 0;
-    const c = meshColors[meshIdx] ?? WHITE_FALLBACK;
-    const o = tri * 3;
-    albedo[o] = c.aR;
-    albedo[o + 1] = c.aG;
-    albedo[o + 2] = c.aB;
-    emissive[o] = c.eR;
-    emissive[o + 1] = c.eG;
-    emissive[o + 2] = c.eB;
+  for (let triangle = 0; triangle < totalTriangles; triangle++) {
+    const vertices = [
+      index.getX(triangle * 3),
+      index.getX(triangle * 3 + 1),
+      index.getX(triangle * 3 + 2),
+    ];
+    const first = vertices[0] ?? 0;
+    const sourceMeshIndex = Math.max(0, meshIndex.getX(first) | 0);
+    const slot = Math.max(0, materialIndex.getX(first) | 0);
+    const sourceMesh = meshes[sourceMeshIndex];
+    const surface = sourceMesh
+      ? readMaterialSurface(materialAtSlot(sourceMesh, slot), hasUv.getX(first) > 0.5)
+      : WHITE_FALLBACK;
+    meshIndices[triangle] = sourceMeshIndex;
+    materialSlots[triangle] = slot;
+    maps[triangle] = surface.map;
+    albedo.set(surface.albedo, triangle * 3);
+    emissive.set(surface.emissive, triangle * 3);
+    mapTransforms.set(surface.transform, triangle * 6);
+    wrapModes.set([surface.wrapS, surface.wrapT], triangle * 2);
+    for (let corner = 0; corner < 3; corner++) {
+      const vertex = vertices[corner] ?? first;
+      uvs[triangle * 6 + corner * 2] = uv.getX(vertex);
+      uvs[triangle * 6 + corner * 2 + 1] = uv.getY(vertex);
+    }
   }
 
-  return { albedo, emissive, totalTriangles, perMeshTriangleCounts };
+  return {
+    albedo,
+    emissive,
+    uvs,
+    mapTransforms,
+    wrapModes,
+    maps,
+    meshIndices,
+    materialSlots,
+    totalTriangles,
+    perMeshTriangleCounts: meshes.map(triangleCount),
+  };
 };

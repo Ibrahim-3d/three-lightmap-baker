@@ -1,6 +1,6 @@
 # Launch Readiness
 
-Last updated: 2026-08-10
+Last updated: 2026-08-11
 
 > **Release status:** engineering and package-local checks do not authorize a
 > public npm release. The package is not approved for publication; npm publish,
@@ -10,8 +10,8 @@ Last updated: 2026-08-10
 ## Positioning
 
 Browser-based Three.js lightmap baker with path-traced global illumination,
-auto UV2 unwrapping, BVH ray tracing, AO, denoising, progressive preview, and an
-urgent path toward hybrid baked/runtime lighting.
+auto UV2 unwrapping, textured and grouped-material BVH transport, AO, denoising,
+progressive preview, and native Three.js L2 SH probes for dynamic objects.
 
 Built for procedural scenes, configurators, AI-generated 3D spaces, and web
 architectural visualization. No Blender round-trip.
@@ -29,6 +29,11 @@ architectural visualization. No Blender round-trip.
   browser test.
 - A real Draft bake generates non-empty RGB probe irradiance and drives the
   dynamic PBR demo object in the browser suite.
+- A deterministic material scene verifies GPU textured bounce transport,
+  post-BVH group-slot resolution, single application of color times map, the
+  legacy source-albedo convention, and solid Cornell compatibility.
+- Native baked-scene capture is a package API and the editor has no independent
+  unowned probe animation loop.
 - Existing publishing infrastructure is dormant and does not imply approval to
   configure, trigger, or use it.
 - Development currently uses source checkouts or locally built package artifacts.
@@ -74,9 +79,9 @@ architectural visualization. No Blender round-trip.
 
 - Do not publish, tag, bump a release version, or create a GitHub Release without
   Ibrahim's explicit approval, even when all engineering checks pass.
-- Keep release messaging honest: browser/WebGL lightmaps and RGB diffuse probes
-  now; true Node headless baking, directional SH probes, and WebGPU remain
-  staged next steps.
+- Keep release messaging honest: browser/WebGL textured lightmaps, preferred
+  native Three.js L2 SH probes, and legacy RGB fallback now; true Node headless
+  baking and WebGPU remain staged next steps.
 
 ## Urgent before flagship public launch
 

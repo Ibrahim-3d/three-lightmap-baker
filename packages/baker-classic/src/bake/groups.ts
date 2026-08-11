@@ -23,6 +23,7 @@ import type {
   TimeoutProtectionOptions,
 } from './types';
 import type { ContextLossState, GroupInternals } from './internals';
+import type { MaterialTextures } from '../utils/MaterialTextures';
 
 // Per-group bake driver + the tile-timeout-protected mapper loop. Pulled out
 // of `LightmapBaker.bakeInternal` (which previously spanned 240 LOC and 5+
@@ -47,7 +48,7 @@ export type GroupBakeContext = {
   bvh: MeshBVH;
   sceneLights: PackedLight[];
   skyColor: Color;
-  matTex: { albedoTexture: Texture; emissiveTexture: Texture; side: number };
+  matTex: MaterialTextures;
   tp: Required<TimeoutProtectionOptions>;
   ctxState: ContextLossState;
 };
@@ -63,7 +64,7 @@ export function buildRaycastOpts(
   resolution: number,
   lights: PackedLight[],
   skyColor: Color,
-  matTex: { albedoTexture: Texture; emissiveTexture: Texture; side: number },
+  matTex: MaterialTextures,
   tp: Required<TimeoutProtectionOptions>,
 ): RaycastOptions {
   return {
@@ -77,6 +78,12 @@ export function buildRaycastOpts(
     indirectLightEnabled: opts.gi.enabled,
     albedoTexture: matTex.albedoTexture,
     emissiveTexture: matTex.emissiveTexture,
+    uv01Texture: matTex.uv01Texture,
+    uv2MapTexture: matTex.uv2MapTexture,
+    mapRectTexture: matTex.mapRectTexture,
+    mapTransform0Texture: matTex.mapTransform0Texture,
+    mapTransform1Texture: matTex.mapTransform1Texture,
+    albedoMapAtlas: matTex.albedoMapAtlas,
     materialTextureSize: matTex.side,
     targetSamples: opts.samples,
     bounces: opts.bounces,
@@ -220,6 +227,8 @@ export async function runGroupBake(
         meshes: groupMeshes,
         positionTex: completedAtlas.positionTexture,
         normalTex: completedAtlas.normalTexture,
+        surfaceTex: completedAtlas.surfaceTexture,
+        surfaceAlbedoTex: completedAtlas.surfaceAlbedoTexture,
       },
       finalTex,
     };

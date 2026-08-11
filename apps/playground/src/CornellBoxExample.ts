@@ -30,7 +30,7 @@ import {
   LightmapBaker,
   type LightmapContextLossTarget,
 } from 'baker-classic';
-import type { BakerOrchestrator } from 'baker-classic/ui';
+import type { BakerOrchestrator } from 'demo-shell/baker';
 import type { AssetSpec } from 'shared';
 import {
   activeCameraId,
@@ -162,6 +162,7 @@ export class CornellBoxExample implements BakerOrchestrator {
   private atlasPreviewQuad: Mesh | null = null;
   private atlasPreviewSize = 0;
   private lastAtlasPreviewHash = '';
+  private readonly frameCallbacks = new Set<(timeSeconds: number) => void>();
 
   options = {
     preset: 'advanced' as 'classic' | 'advanced',
@@ -939,8 +940,10 @@ export class CornellBoxExample implements BakerOrchestrator {
     if (this.looping) return;
     this.looping = true;
 
-    const tick = (): void => {
+    const tick = (timeMs = performance.now()): void => {
       requestAnimationFrame(tick);
+
+      for (const callback of this.frameCallbacks) callback(timeMs / 1000);
 
       this.flyController.tick();
       this.sceneController.syncGizmo(this.options.showGizmo);
@@ -1009,6 +1012,12 @@ export class CornellBoxExample implements BakerOrchestrator {
       }
     };
     tick();
+  }
+
+  /** Register editor integrations on the application's owned animation loop. */
+  addFrameCallback(callback: (timeSeconds: number) => void): () => void {
+    this.frameCallbacks.add(callback);
+    return () => this.frameCallbacks.delete(callback);
   }
 
   private getAtlasPreviewTextures(

@@ -35,6 +35,9 @@ const assertExports = (label, mod) => {
   if (typeof mod?.captureNativeLightProbeGrid !== 'function') {
     throw new Error(`${label}: captureNativeLightProbeGrid export is missing`);
   }
+  if (typeof mod?.captureLightmappedProbeGrid !== 'function') {
+    throw new Error(`${label}: captureLightmappedProbeGrid export is missing`);
+  }
   if (typeof mod?.createRendererAdapter !== 'function') {
     throw new Error(`${label}: createRendererAdapter export is missing`);
   }
@@ -85,6 +88,11 @@ for (const bundlePath of [esmBundlePath, cjsBundlePath]) {
   }
   if (source.includes('cdn.jsdelivr.net')) {
     throw new Error(`${path.basename(bundlePath)} must not require the jsDelivr xatlas CDN`);
+  }
+  for (const forbidden of ['preact', '@preact/signals', 'panelRegistry', 'menuRegistry']) {
+    if (source.includes(forbidden)) {
+      throw new Error(`${path.basename(bundlePath)} leaked editor dependency ${forbidden}`);
+    }
   }
   if (!source.includes('data:application/wasm;base64,')) {
     throw new Error(`${path.basename(bundlePath)} is missing the packaged xatlas WASM asset`);

@@ -33,9 +33,12 @@ docs/                               Product docs, status, roadmap
 3. **UV unwrap**
    - `xatlas-three` generates/updates UV2 charts.
 4. **Shared geometry phase**
-   - Merge geometry, build shared `MeshBVH`, extract per-triangle materials, build material textures.
+   - Merge geometry, build shared `MeshBVH`, then extract per-triangle mesh,
+     material-slot, UV0, albedo, texture transform/wrap, and emissive records in
+     post-BVH order. Base-color maps are packed into a bounded GPU atlas.
 5. **Per-group bake**
-   - Pass 1: rasterize UV-space position/normal textures.
+   - Pass 1: rasterize UV-space position, normal, source-surface metadata, and
+     linear `material.color * material.map` textures.
    - Pass 2: progressive GI path tracing (direct + indirect accumulators) + standalone AO pass.
    - Composite pass combines direct/indirect/AO for live preview.
 6. **Refinement**
@@ -62,8 +65,12 @@ docs/                               Product docs, status, roadmap
    - `LightmapBakeResult` owns generated textures, render targets, atlas internals, AO/composite outputs, and the shared BVH view returned from the bake.
    - Callers may apply the textures to scene materials, but cleanup still flows through `result.dispose()`. New passes must either attach disposable resources to the result/group views or dispose them before returning.
 6. **Public material/light extraction boundary**
-   - Per-triangle albedo/emissive data must be extracted from mesh materials before shader texture packing, but after BVH index reorder as noted above.
-   - Do not move material extraction into shader setup or UI code; bake correctness depends on the extraction order being deterministic and testable.
+
+- Per-triangle albedo/emissive data must be extracted from mesh materials before shader texture packing, but after BVH index reorder as noted above.
+- Material-array group identity is attached per triangle before re-indexing, so
+  shared source vertices cannot collapse distinct material slots. Secondary
+  hits interpolate source UV0 from BVH barycentrics and sample the texture atlas.
+  - Do not move material extraction into shader setup or UI code; bake correctness depends on the extraction order being deterministic and testable.
 
 ## Public API shape
 

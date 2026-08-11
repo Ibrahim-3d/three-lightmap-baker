@@ -34,9 +34,14 @@ export type {
 } from './lightmap/Refinement';
 
 // --- Geometry & material extraction ---
-export { mergeGeometry, extractPerTriangleMaterials } from './utils/GeometryUtils';
+export {
+  mergeGeometry,
+  extractPerTriangleMaterials,
+  materialSlotForTriangle,
+} from './utils/GeometryUtils';
 export type { PerTriangleMaterials } from './utils/GeometryUtils';
 export { buildMaterialTextures } from './utils/MaterialTextures';
+export type { MaterialTextures } from './utils/MaterialTextures';
 
 // --- Density-aware atlas bin-packing (Stage 1 - multiple-atlas pipeline) ---
 export {
@@ -66,6 +71,8 @@ export type { TexelDensityMaterialOptions } from './lightmap/TexelDensityMateria
 export {
   ProbeVolume,
   generateProbeGrid,
+  captureLightmappedProbeGrid,
+  captureLightmappedProbeGridFromJSON,
   captureNativeLightProbeGrid,
   captureNativeLightProbeGridFromJSON,
   bakeProbeIrradianceFromLightmaps,
@@ -77,6 +84,8 @@ export {
 } from './probes';
 export type {
   GeneratedProbeVolume,
+  LightmappedProbeGridOptions,
+  LightmappedProbeGridRestoreOptions,
   NativeLightProbeGridCaptureOptions,
   NativeLightProbeGridJSON,
   NativeLightProbeGridOptions,
