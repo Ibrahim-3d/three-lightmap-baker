@@ -49,7 +49,8 @@ export type LightmapperMaterialOptions = {
 export class LightmapperMaterial extends ShaderMaterial {
   private programKey = 'LightmapperMaterial|glsl3|mrt2';
 
-  // Program cache key includes casts because the cast loop is compiled into GLSL.
+  // Program cache key includes loop bounds because both casts and bounces are
+  // compiled into GLSL for ANGLE portability.
   override customProgramCacheKey(): string {
     return this.programKey;
   }
@@ -58,6 +59,7 @@ export class LightmapperMaterial extends ShaderMaterial {
     const bvhUniformStruct = new MeshBVHUniformStruct();
     bvhUniformStruct.updateFrom(options.bvh);
     const castCount = Math.max(1, Math.min(256, options.casts | 0));
+    const bounceCount = Math.max(1, Math.min(4, options.bounces | 0));
 
     super({
       transparent: true,
@@ -79,7 +81,6 @@ export class LightmapperMaterial extends ShaderMaterial {
         albedoMapAtlas: { value: options.albedoMapAtlas },
         materialTextureSize: { value: options.materialTextureSize },
         invModelMatrix: { value: options.invModelMatrix },
-        bounces: { value: options.bounces },
         lightsTex: { value: options.lightsTex },
         lightCount: { value: options.lightCount },
         skyColor: { value: options.skyColor },
@@ -144,15 +145,12 @@ export class LightmapperMaterial extends ShaderMaterial {
                 uniform sampler2D albedoMapAtlas;
                 uniform float materialTextureSize;
 
-                #define MAX_BOUNCES 4
-                // Static upper cap on lights checked per shadow loop iteration.
-                // Runtime count is controlled by the lightCount uniform.
+                // Loop bounds that wrap texture/BVH traversal are compile-time on
+                // purpose. Dynamic loop bounds have produced driver-dependent
+                // failures on ANGLE software and D3D backends.
+                #define BOUNCES ${bounceCount}
                 #define MAX_LIGHTS 16
-                // Cast count is compile-time on purpose. A uniform-bound cast
-                // loop produced NaNs on ANGLE when it wrapped texture/BVH calls.
                 #define CASTS ${castCount}
-
-                uniform int bounces;
 
                 // Multi-light texture: 4 texels wide × lightCount tall, RGBA float.
                 uniform sampler2D lightsTex;
@@ -380,8 +378,7 @@ export class LightmapperMaterial extends ShaderMaterial {
                     vec3 radiance   = vec3(0.0);
                     float sideVal = 1.0;
 
-                    for (int b = 0; b < MAX_BOUNCES; b++) {
-                        if (b >= bounces) break;
+                    for (int b = 0; b < BOUNCES; b++) {
                         if (!hit) {
                             if (b == 0) radiance += throughput * skyColor * skyIntensity;
                             break;
@@ -481,6 +478,6 @@ export class LightmapperMaterial extends ShaderMaterial {
             `,
     });
 
-    this.programKey = `LightmapperMaterial|glsl3|mrt2|casts=${castCount}`;
+    this.programKey = `LightmapperMaterial|glsl3|mrt2|casts=${castCount}|bounces=${bounceCount}`;
   }
 }
