@@ -1,0 +1,57 @@
+name: Finalize zero-warning cleanup
+
+on:
+  push:
+    branches:
+      - fix/v1-eslint-zero-warnings
+    paths:
+      - scripts/finalize-eslint-zero-warnings.mjs
+      - .github/workflows/finalize-eslint-zero-warnings.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/v1-eslint-zero-warnings
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply final semantic fixes
+        run: node scripts/finalize-eslint-zero-warnings.mjs
+
+      - name: Format repository sources
+        run: pnpm exec prettier --write packages/ apps/ examples/
+
+      - name: Require zero ESLint warnings
+        run: pnpm exec eslint packages/ apps/ --max-warnings 0
+
+      - name: Typecheck
+        run: pnpm run typecheck && pnpm run typecheck:examples
+
+      - name: Commit cleanup
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages apps examples
+          if git diff --cached --quiet; then
+            echo "No source changes to commit"
+            exit 0
+          fi
+          git commit -m "chore: eliminate remaining ESLint warnings"
+          git push origin HEAD:fix/v1-eslint-zero-warnings
