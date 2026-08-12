@@ -1,3 +1,4 @@
+import type { JSX } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 
 /**
@@ -13,20 +14,20 @@ export function Splitter(props: {
   side: 'left' | 'right';
   min?: number;
   max?: number;
-}) {
+}): JSX.Element {
   const startX = useRef(0);
   const startW = useRef(0);
   const dragging = useRef(false);
 
   useEffect(() => {
-    const onMove = (e: MouseEvent) => {
+    const onMove = (e: MouseEvent): void => {
       if (!dragging.current) return;
       const dx = e.clientX - startX.current;
       const delta = props.side === 'left' ? dx : -dx;
       const next = Math.max(props.min ?? 180, Math.min(props.max ?? 500, startW.current + delta));
       props.onResize(next);
     };
-    const onUp = () => {
+    const onUp = (): void => {
       dragging.current = false;
       document.body.style.cursor = '';
     };

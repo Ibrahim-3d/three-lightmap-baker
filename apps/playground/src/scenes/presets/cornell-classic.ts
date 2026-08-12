@@ -14,17 +14,16 @@ function build(parent: Object3D): SceneBuildResult {
   root.name = 'sceneRoot';
   parent.add(root);
 
-  // Default scene camera
   const camera = new PerspectiveCamera(50, 1, 0.1, 100);
   camera.name = 'Main View';
   camera.position.set(0, 5, 18);
   camera.lookAt(0, 5, 0);
   root.add(camera);
 
-  const white = () => mat(0xf0f0f0);
-  const red = () => mat(0xd62728);
-  const green = () => mat(0x2ca02c);
-  const blockMat = () => mat(0xe8e8e8);
+  const white = (): MeshStandardMaterial => mat(0xf0f0f0);
+  const red = (): MeshStandardMaterial => mat(0xd62728);
+  const green = (): MeshStandardMaterial => mat(0x2ca02c);
+  const blockMat = (): MeshStandardMaterial => mat(0xe8e8e8);
 
   const floor = new Mesh(new BoxGeometry(ROOM, T, ROOM), white());
   floor.name = 'Floor';

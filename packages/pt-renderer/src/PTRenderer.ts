@@ -35,54 +35,38 @@ import vertSrc from './shaders/vertex.glsl?raw';
 import screenCopySrc from './shaders/screen-copy.frag.glsl?raw';
 import screenOutSrc from './shaders/screen-output.frag.glsl?raw';
 
-// ── Types ────────────────────────────────────────────────────────────────────
-
-/** Scene-specific uniforms merged into the PT pass material. */
 export type PTSceneUniforms = Record<string, { value: unknown }>;
 
 export interface PTRendererOptions {
-  /** Fragment shader source (may contain #include directives). */
   fragmentShader: string;
-  /** Scene-specific uniforms merged into PT pass (DataTextures, Colors, etc.). */
   sceneUniforms?: PTSceneUniforms;
-  /**
-   * When true sampleCounter stays at 1.0 every frame - always live.
-   * Set false for static scenes so progressive accumulation kicks in.
-   */
   sceneIsDynamic?: boolean;
-  /** Resolution scale factor. Default 1.0. Use 0.5 on mobile. */
   renderScale?: number;
-  /**
-   * Initial DEBUG_VIS define value (0=off, 1=normals, 2=shading normals,
-   * 3=albedo, 4=material type, 5=direct NdotL). Can be changed at runtime
-   * via setDefine('DEBUG_VIS', n).
-   */
   debugVis?: number;
 }
 
-// Shared fullscreen plane for all three passes
 const _planeGeo = new PlaneGeometry(2, 2);
-const _makeMesh = (mat: ShaderMaterial) => new Mesh(_planeGeo, mat);
+const _makeMesh = (mat: ShaderMaterial): Mesh => new Mesh(_planeGeo, mat);
 
-// ── PTRenderer ───────────────────────────────────────────────────────────────
+function requireUniform(material: ShaderMaterial, key: string): { value: unknown } {
+  const uniform = material.uniforms[key];
+  if (!uniform) throw new Error(`[pt-renderer] missing ${key} uniform`);
+  return uniform;
+}
 
 export class PTRenderer {
-  // Three scenes - one per pass
   private ptScene = new Scene();
   private copyScene = new Scene();
   private outputScene = new Scene();
   private orthoCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
-  // Render targets (ping-pong)
   private ptRT!: WebGLRenderTarget;
   private copyRT!: WebGLRenderTarget;
 
-  // Materials per pass
   private ptMat!: ShaderMaterial;
   private copyMat!: ShaderMaterial;
   private outputMat!: ShaderMaterial;
 
-  // Accumulation state (mirrors erichlof's InitCommon.js)
   private sampleCounter = 1;
   private frameCounter = 1;
   private elapsedTime = 0;
@@ -103,17 +87,7 @@ export class PTRenderer {
     this.renderScale = opts.renderScale ?? 1.0;
   }
 
-  // ── Async init (builds noise texture + materials) ────────────────────────
-
   async init(renderer: WebGLRenderer): Promise<void> {
-    // Procedural noise texture used as a per-pixel random seed by the rand()
-    // function in pathtracing_random_functions.glsl. The uniform is named
-    // tBlueNoiseTexture for compatibility with the erichlof reference, but
-    // the contents are currently WHITE noise (Math.random()) - a known
-    // quality regression vs. a real blue-noise PNG. Path tracing still works
-    // correctly; convergence at low SPP is just noisier than ideal. Replace
-    // with a void-and-cluster generator or load a static PNG when investing
-    // in image quality.
     const noiseSize = 128;
     const noiseData = new Uint8Array(noiseSize * noiseSize);
     for (let i = 0; i < noiseData.length; i++) noiseData[i] = Math.floor(Math.random() * 256);
@@ -139,7 +113,6 @@ export class PTRenderer {
     this.ptRT = new WebGLRenderTarget(w, h, rtOpts);
     this.copyRT = new WebGLRenderTarget(w, h, rtOpts);
 
-    // ── Shared PT uniforms ─────────────────────────────────────────────────
     const shared = {
       tPreviousTexture: { value: this.copyRT.texture },
       tBlueNoiseTexture: { value: noiseTex },
@@ -161,21 +134,14 @@ export class PTRenderer {
     };
 
     const ptUniforms = { ...shared, ...(this.opts.sceneUniforms ?? {}) };
-
-    // All materials use glslVersion: GLSL3 so Three.js does NOT inject
-    // sRGB output encoding. The PT output shader handles its own
-    // tone mapping + gamma. Each fragment shader declares pc_fragColor.
     const glslOpts = { glslVersion: GLSL3, depthTest: false, depthWrite: false };
 
-    // ── Pass 1: path tracing ───────────────────────────────────────────────
     const resolvedFrag = resolveIncludes(this.opts.fragmentShader);
     console.info('[PTRenderer] resolved fragment shader length:', resolvedFrag.length);
     this.ptMat = new ShaderMaterial({
       uniforms: ptUniforms,
       defines: {
         NUM_ALBEDO_TEXTURES: 0,
-        // Debug visualization: 0=off, 1=normals, 2=shading normals,
-        // 3=albedo, 4=material type, 5=direct NdotL
         DEBUG_VIS: this.opts.debugVis ?? 0,
       },
       vertexShader: vertSrc,
@@ -184,7 +150,6 @@ export class PTRenderer {
     });
     this.ptScene.add(_makeMesh(this.ptMat));
 
-    // ── Pass 2: copy (ping-pong) ───────────────────────────────────────────
     this.copyMat = new ShaderMaterial({
       uniforms: { tPathTracedImageTexture: { value: this.ptRT.texture } },
       vertexShader: vertSrc,
@@ -193,7 +158,6 @@ export class PTRenderer {
     });
     this.copyScene.add(_makeMesh(this.copyMat));
 
-    // ── Pass 3: output (edge-aware denoiser + tone mapping) ────────────────
     this.outputMat = new ShaderMaterial({
       uniforms: {
         tPathTracedImageTexture: { value: this.ptRT.texture },
@@ -213,8 +177,6 @@ export class PTRenderer {
 
     this._ready = true;
   }
-
-  // ── Public API ────────────────────────────────────────────────────────────
 
   notifyCameraMoving(): void {
     this._cameraIsMoving = true;
@@ -272,8 +234,6 @@ export class PTRenderer {
     this.outputMat?.dispose();
   }
 
-  // ── Private ───────────────────────────────────────────────────────────────
-
   private _syncResize(renderer: WebGLRenderer): void {
     const w = Math.floor(renderer.domElement.width * this.renderScale);
     const h = Math.floor(renderer.domElement.height * this.renderScale);
@@ -282,7 +242,7 @@ export class PTRenderer {
     this._h = h;
     this.ptRT.setSize(w, h);
     this.copyRT.setSize(w, h);
-    (this.ptMat.uniforms['uResolution']!.value as Vector2).set(w, h);
+    (requireUniform(this.ptMat, 'uResolution').value as Vector2).set(w, h);
     this.resetAccumulation();
   }
 
@@ -294,7 +254,7 @@ export class PTRenderer {
     } else {
       this.frameCounter += 1;
       if (!this._cameraRecentlyMoving) {
-        this.ptMat.uniforms['uPreviousSampleCount']!.value = this.sampleCounter;
+        requireUniform(this.ptMat, 'uPreviousSampleCount').value = this.sampleCounter;
         this.frameCounter = 1;
         this._cameraRecentlyMoving = true;
       }
@@ -304,24 +264,24 @@ export class PTRenderer {
 
   private _updateUniforms(camera: PerspectiveCamera): void {
     camera.updateMatrixWorld();
-    const u = this.ptMat.uniforms;
+    const u = this.ptMat;
 
-    (u['uCameraMatrix']!.value as Matrix4).copy(camera.matrixWorld);
+    (requireUniform(u, 'uCameraMatrix').value as Matrix4).copy(camera.matrixWorld);
     const fovRad = camera.fov * 0.5 * (Math.PI / 180);
     const vLen = Math.tan(fovRad);
-    u['uVLen']!.value = vLen;
-    u['uULen']!.value = vLen * camera.aspect;
-    u['uTime']!.value = this.elapsedTime;
-    u['uSampleCounter']!.value = this.sampleCounter;
-    u['uFrameCounter']!.value = this.frameCounter;
-    u['uCameraIsMoving']!.value = this._cameraIsMoving;
-    u['uSceneIsDynamic']!.value = this.sceneIsDynamic;
-    (u['uRandomVec2']!.value as Vector2).set(Math.random(), Math.random());
+    requireUniform(u, 'uVLen').value = vLen;
+    requireUniform(u, 'uULen').value = vLen * camera.aspect;
+    requireUniform(u, 'uTime').value = this.elapsedTime;
+    requireUniform(u, 'uSampleCounter').value = this.sampleCounter;
+    requireUniform(u, 'uFrameCounter').value = this.frameCounter;
+    requireUniform(u, 'uCameraIsMoving').value = this._cameraIsMoving;
+    requireUniform(u, 'uSceneIsDynamic').value = this.sceneIsDynamic;
+    (requireUniform(u, 'uRandomVec2').value as Vector2).set(Math.random(), Math.random());
 
-    const ou = this.outputMat.uniforms;
-    ou['uSampleCounter']!.value = this.sampleCounter;
-    ou['uOneOverSampleCounter']!.value = 1.0 / this.sampleCounter;
-    ou['uCameraIsMoving']!.value = this._cameraIsMoving;
-    ou['uSceneIsDynamic']!.value = this.sceneIsDynamic;
+    const ou = this.outputMat;
+    requireUniform(ou, 'uSampleCounter').value = this.sampleCounter;
+    requireUniform(ou, 'uOneOverSampleCounter').value = 1.0 / this.sampleCounter;
+    requireUniform(ou, 'uCameraIsMoving').value = this._cameraIsMoving;
+    requireUniform(ou, 'uSceneIsDynamic').value = this.sceneIsDynamic;
   }
 }

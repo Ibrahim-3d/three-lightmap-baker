@@ -1,3 +1,4 @@
+import type { JSX } from 'preact';
 import {
   BoolField,
   ColorField,
@@ -10,12 +11,6 @@ import {
   type PostFXSettings,
 } from 'shared';
 
-/**
- * Post-FX panel (Unreal-style). Master toggle gates the whole composer; per-
- * effect sliders edit the live signal which SceneController reads each frame.
- * CLAUDE.md note: this panel exists for the showcase view; baker QA workflow
- * must keep master = off so bake quality issues are not hidden by bloom etc.
- */
 function set<K extends keyof PostFXSettings>(key: K, value: PostFXSettings[K]): void {
   postFXSettings.value = { ...postFXSettings.value, [key]: value };
 }
@@ -29,7 +24,7 @@ const TONE_MAP_OPTIONS = [
   { value: 'agx', label: 'AgX (ACES fallback)' },
 ] as const;
 
-export function PostFXPage() {
+export function PostFXPage(): JSX.Element {
   const s = postFXSettings.value;
   return (
     <div class="text-[12px]">

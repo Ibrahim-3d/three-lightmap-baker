@@ -1,3 +1,4 @@
+import type { JSX } from 'preact';
 import { ptSettings, RangeField, Row, Section } from 'shared';
 
 /**
@@ -5,7 +6,7 @@ import { ptSettings, RangeField, Row, Section } from 'shared';
  * Registered by `registerPTRendererUI()` at boot.
  * Shows live PT controls: light scale, DOF, accumulation reset trigger.
  */
-export function PTPage() {
+export function PTPage(): JSX.Element {
   const pt = ptSettings.value;
 
   return (

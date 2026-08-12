@@ -66,7 +66,8 @@ export async function bakeProbeIrradianceFromLightmaps(
   checkAbort(hooks.signal);
   const groups = source.groups;
   for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
-    const group = groups[groupIndex]!;
+    const group = groups[groupIndex];
+    if (!group) throw new Error(`[baker:probes] missing bake group ${groupIndex}`);
     const resolution = group.internalResolution;
     const positions = readFloatTexture(renderer, group.textures.position, resolution);
     const normals = readFloatTexture(renderer, group.textures.normal, resolution);
@@ -129,10 +130,6 @@ export async function bakeProbeIrradianceFromLightmaps(
         addRGBSample(projectedSurfaceLight, rr, rg, rb);
         validSourceSamples++;
 
-        // A zero-radiance surface sample carries no lighting information. Letting
-        // it add weight would mark nearby probes as populated with black and stop
-        // the empty-probe diffusion pass from filling those cells from lit
-        // neighbours. This is especially visible with low-sample draft bakes.
         if (Math.max(rr, rg, rb) <= BLACK_THRESHOLD) continue;
 
         const sx = px + nx * surfaceOffset;

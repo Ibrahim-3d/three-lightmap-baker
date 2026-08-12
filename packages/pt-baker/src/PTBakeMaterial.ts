@@ -32,30 +32,20 @@ export class PTBakeMaterial extends ShaderMaterial {
     registerChunks();
 
     const uniforms: Record<string, { value: unknown }> = {
-      // BVH scene
       tTriangleTexture: { value: sceneData.triangleTexture },
       tAABBTexture: { value: sceneData.aabbTexture },
-      // Albedo sampler2DArray (layer 0 = white fallback; per-material layer
-      // index lives in triangle data slot 7). Single binding replaces the
-      // earlier 16 hardcoded sampler uniforms.
       tAlbedoArray: { value: sceneData.albedoArray },
-      // Previous accumulation buffer (ping-pong)
       tPreviousTexture: { value: null },
-      // Blue-noise texture for low-discrepancy sampling
       tBlueNoiseTexture: { value: null },
-      // Standard PT uniforms
       uSampleCounter: { value: 1.0 },
       uFrameCounter: { value: 1.0 },
       uEPS_intersect: { value: 0.001 },
       uRandomVec2: { value: { x: 0, y: 0 } },
-      // Sky
       uHasSkyTexture: { value: false },
       tHDRTexture: { value: null },
       uSkyLightIntensity: { value: 1.0 },
-      // Lights DataTexture
       tLightTexture: { value: lightTex },
       uNumPTLights: { value: 0 },
-      // Unused PT uniforms (still referenced by shared chunks)
       uResolution: { value: { x: 1, y: 1 } },
       uCameraMatrix: { value: null },
       uCameraIsMoving: { value: false },
@@ -76,13 +66,13 @@ export class PTBakeMaterial extends ShaderMaterial {
       glslVersion: GLSL3,
     });
 
-    // THREE.js doesn't include modelMatrix / normalMatrix in the auto-uniforms
-    // for ShaderMaterial - override by setting these in the material.
     this.customProgramCacheKey = () => 'pt-bake-v1';
   }
 
   /** Link an existing ping-pong RT as the previous-frame input. */
   setPreviousTexture(rt: WebGLRenderTarget | null): void {
-    this.uniforms['tPreviousTexture']!.value = rt?.texture ?? null;
+    const previous = this.uniforms['tPreviousTexture'];
+    if (!previous) throw new Error('[pt-baker] missing tPreviousTexture uniform');
+    previous.value = rt?.texture ?? null;
   }
 }

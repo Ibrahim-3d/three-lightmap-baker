@@ -1,3 +1,4 @@
+import type { JSX } from 'preact';
 import { useEffect } from 'preact/hooks';
 import { layout } from 'shared';
 import { Inspector } from './components/Inspector';
@@ -40,17 +41,8 @@ function saveLayout(): void {
   }, 500);
 }
 
-/**
- * Root shell. CSS grid: 36px topbar / 1fr middle / 40px status. Middle row
- * is a 3-column flex (Outliner | Viewport | Inspector). The center "Viewport"
- * region is intentionally empty + pointer-events:none so OrbitControls and
- * TransformControls reach the canvas underneath. Topbar/Outliner/Inspector/
- * StatusBar all set pointer-events:auto on themselves.
- *
- * ViewportToggle is an absolute-positioned overlay inside the viewport column
- * (pointer-events:auto on itself only, matching the canvas beneath).
- */
-export function App() {
+/** Root shell for the editor UI. */
+export function App(): JSX.Element {
   useEffect(() => {
     loadLayout();
     const unsub = layout.subscribe(() => saveLayout());
@@ -64,7 +56,6 @@ export function App() {
         <div class="flex-1 flex min-h-0 relative">
           <Outliner />
           <div class="flex-1 relative pointer-events-none">
-            {/* Top-right viewport overlay row - all dropdowns share one line. */}
             <div class="absolute top-3 right-3 z-20 flex items-start gap-2 pointer-events-none">
               <ViewportCameraSettings />
               <ViewportOverlaysMenu />

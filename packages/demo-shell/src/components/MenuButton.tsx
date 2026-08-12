@@ -1,3 +1,4 @@
+import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { menuRegistry, menuTick, type MenuId, type MenuItem } from 'shared';
 
@@ -6,21 +7,20 @@ import { menuRegistry, menuTick, type MenuId, type MenuItem } from 'shared';
  * Items pulled from `menuRegistry` keyed by `menuId`. Subscribed to `menuTick`
  * so late registrations re-render the popover.
  */
-export function MenuButton(props: { menuId: MenuId }) {
+export function MenuButton(props: { menuId: MenuId }): JSX.Element {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement>(null);
 
-  // Touch the signal so the component re-renders when registrations change.
   void menuTick.value;
   const items = menuRegistry.items_for(props.menuId);
 
   useEffect(() => {
     if (!open) return;
-    const onDown = (e: MouseEvent) => {
+    const onDown = (e: MouseEvent): void => {
       const a = anchorRef.current;
       if (a && !a.contains(e.target as Node)) setOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => {
+    const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') setOpen(false);
     };
     window.addEventListener('mousedown', onDown);
@@ -31,7 +31,7 @@ export function MenuButton(props: { menuId: MenuId }) {
     };
   }, [open]);
 
-  const onItemClick = (item: MenuItem) => {
+  const onItemClick = (item: MenuItem): void => {
     if (item.disabled) return;
     try {
       item.action();
@@ -73,7 +73,7 @@ export function MenuButton(props: { menuId: MenuId }) {
   );
 }
 
-function Row(props: { item: MenuItem; onClick: (i: MenuItem) => void }) {
+function Row(props: { item: MenuItem; onClick: (i: MenuItem) => void }): JSX.Element | null {
   const i = props.item;
   if (i.when && !i.when()) return null;
   const sep = i.separatorBefore ? 'border-t border-border/40 my-0.5' : '';

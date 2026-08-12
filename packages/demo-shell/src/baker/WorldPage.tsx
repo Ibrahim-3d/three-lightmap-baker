@@ -1,3 +1,4 @@
+import type { JSX } from 'preact';
 import { useRef } from 'preact/hooks';
 import { Color, EquirectangularReflectionMapping } from 'three';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader';
@@ -20,16 +21,7 @@ import {
 } from 'shared';
 import { getBakerOrchestrator } from './orchestrator';
 
-/**
- * World tab. Scene-level settings: viewport background, sky color/intensity
- * (shared baker GI fill + PT sky), PT-specific DOF, HDRI environment, and
- * future probe slot.
- *
- * HDRI file picker loads a .hdr file via RGBELoader and stores the resulting
- * DataTexture in the `hdriTexture` signal. PTController reads that signal
- * each frame and uploads it to the `tHDRTexture` / `uHasSkyTexture` uniforms.
- */
-export function WorldPage() {
+export function WorldPage(): JSX.Element | null {
   void objectTick.value;
   void optionsTick.value;
   const hdriInputRef = useRef<HTMLInputElement | null>(null);
@@ -53,9 +45,7 @@ export function WorldPage() {
       url,
       (tex) => {
         URL.revokeObjectURL(url);
-        // EquirectangularReflectionMapping required for correct panoramic projection.
         tex.mapping = EquirectangularReflectionMapping;
-        // Dispose old HDRI texture if any.
         hdriTexture.value?.dispose();
         hdriTexture.value = tex;
       },

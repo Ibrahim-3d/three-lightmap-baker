@@ -91,7 +91,7 @@ function renderToRT(
   return rt;
 }
 
-function triggerDownload(blob: Blob, filename: string) {
+function triggerDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -102,7 +102,7 @@ function triggerDownload(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-const ensureExt = (name: string, ext: string) =>
+const ensureExt = (name: string, ext: string): string =>
   name.toLowerCase().endsWith(`.${ext}`) ? name : `${name}.${ext}`;
 
 /**

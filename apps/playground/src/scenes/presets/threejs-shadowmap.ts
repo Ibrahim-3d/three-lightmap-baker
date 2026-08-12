@@ -20,22 +20,17 @@ function build(parent: Object3D): SceneBuildResult {
   root.name = 'sceneRoot';
   parent.add(root);
 
-  // Default scene camera
   const camera = new PerspectiveCamera(45, 1, 0.1, 100);
   camera.name = 'Outdoor View';
   camera.position.set(12, 10, 18);
   camera.lookAt(0, 1, 0);
   root.add(camera);
 
-  // Large ground plane (use a thin box for proper UV unwrapping).
   const ground = new Mesh(new BoxGeometry(40, 0.4, 40), mat(0x808080));
   ground.name = 'Ground';
   ground.position.set(0, -0.2, 0);
   root.add(ground);
 
-  // A handful of primitive obstacles - substitutes for the original example's
-  // knight + tree silhouettes. Lighting (a high directional sun) is what we
-  // care about reproducing.
   const obstacles: Array<[string, Mesh]> = [
     ['Cube A', new Mesh(new BoxGeometry(2, 2, 2), mat(0xd2691e))],
     ['Cube B', new Mesh(new BoxGeometry(1.5, 3, 1.5), mat(0x4682b4))],
@@ -51,15 +46,16 @@ function build(parent: Object3D): SceneBuildResult {
     [0, 2, 5],
   ];
   for (let i = 0; i < obstacles.length; i++) {
-    const [name, m] = obstacles[i]!;
-    const [x, y, z] = placements[i]!;
+    const obstacle = obstacles[i];
+    const placement = placements[i];
+    if (!obstacle || !placement) continue;
+    const [name, m] = obstacle;
+    const [x, y, z] = placement;
     m.name = name;
     m.position.set(x, y, z);
     root.add(m);
   }
 
-  // Directional "sun" - display-only; baker reads lightDummy.position for
-  // direct light.
   const sun = new DirectionalLight(0xfff4d0, 1.5);
   sun.position.set(10, 18, 8);
   sun.userData.lightmapIgnore = true;

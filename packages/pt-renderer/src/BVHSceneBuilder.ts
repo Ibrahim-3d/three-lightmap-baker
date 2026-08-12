@@ -47,81 +47,29 @@ import {
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { buildBVH } from './BVHBuilder';
 
-// Material type constants - match GLSL #defines in pathtracing_uniforms_and_defines
-const MAT_LIGHT = 0; // emissive area light
-const MAT_REFR = 2; // glass / dielectric refractive
-const MAT_PBR = 10; // unified PBR (all metals + dielectrics)
+const MAT_LIGHT = 0;
+const MAT_REFR = 2;
+const MAT_PBR = 10;
 
 const TEX_SIZE = 2048;
-const MAX_TRIANGLES = (TEX_SIZE * TEX_SIZE) / 8; // 524,288 - 8 texels per tri
+const MAX_TRIANGLES = (TEX_SIZE * TEX_SIZE) / 8;
 
-/**
- * Per-layer resolution for the albedo sampler2DArray. All source textures are
- * resized to this size on import. 1024 = good tradeoff between memory and
- * detail (≈ 4 MiB per layer). Bump to 2048 for hero scenes (16 MiB/layer);
- * drop to 512 for mobile (1 MiB/layer).
- */
 export const ALBEDO_LAYER_SIZE = 1024;
-
-/**
- * Default ceiling on layer count per scene. Memory cost grows linearly:
- * at ALBEDO_LAYER_SIZE=1024, RGBA8 = 4 MiB per layer, so:
- *   64 layers  →  256 MiB
- *   128 layers →  512 MiB
- *   256 layers →    1 GiB
- *
- * 64 is a safe default that fits comfortably under typical browser
- * `Uint8Array` allocation budgets across desktop + mid-tier mobile. Real
- * GPUs support up to 2048 layers (`MAX_ARRAY_TEXTURE_LAYERS`); raise this
- * ceiling deliberately once a per-scene asset pipeline can bucket textures
- * by size and pre-validate available memory.
- */
 export const MAX_ALBEDO_LAYERS = 64;
-
-/**
- * Enable verbose per-mesh / per-material console diagnostics during scene build.
- * Off by default - set to true (or wire to a build flag / URL param) when
- * investigating geometry / material packing bugs.
- */
 const DEBUG_BUILD_LOG = false;
-
-// ── Result type ──────────────────────────────────────────────────────────────
 
 export interface BVHSceneData {
   triangleTexture: DataTexture;
   aabbTexture: DataTexture;
-  /**
-   * Single sampler2DArray-compatible texture holding ALL unique scene
-   * albedo maps as layers. Layer 0 is always a white fallback. Layers 1+
-   * correspond to source textures in import order; triangle data stores the
-   * layer index in slot 7's first float. Materials without `.map` use -1.
-   */
   albedoArray: DataArrayTexture;
-  /** Layer count (≥ 1 - at least the fallback). */
   albedoLayerCount: number;
   triangleCount: number;
 }
 
-// ── Main build function ──────────────────────────────────────────────────────
-
-/**
- * Collect all Mesh objects from scene, bake world transforms, merge geometry,
- * build BVH, create GPU DataTextures + albedo array.
- *
- * Heavy CPU work (~50–500 ms depending on number/size of albedo textures).
- * Call off the hot path (scene load / preset switch), not per-frame.
- */
 export function buildBVHScene(scene: Scene): BVHSceneData {
-  // ── 1. Collect meshes ────────────────────────────────────────────────────
-
   const meshes: Mesh[] = [];
   scene.traverse((obj) => {
     if (!(obj instanceof Mesh) || !obj.geometry || !obj.visible) return;
-    // PT renderer needs ALL MeshStandardMaterial geometry for correct ray tracing -
-    // emissive surfaces are light sources, glass/mirrors affect reflections.
-    // lightmapIgnore is a classic-baker flag ("don't bake onto this"); the PT
-    // renderer must still see the mesh. Non-standard materials (gizmos, helpers)
-    // are filtered by the hasStandardMat check below.
     const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
     const hasStandardMat = mats.some((m) => m instanceof MeshStandardMaterial);
     if (!hasStandardMat) return;
@@ -129,9 +77,6 @@ export function buildBVHScene(scene: Scene): BVHSceneData {
   });
 
   if (meshes.length === 0) return _emptyScene();
-
-  // ── 2. Collect unique albedo source textures ─────────────────────────────
-  // Capped at MAX_ALBEDO_LAYERS − 1 (layer 0 reserved for fallback).
 
   const sourceTextures: Texture[] = [];
   for (const mesh of meshes) {
@@ -145,41 +90,37 @@ export function buildBVHScene(scene: Scene): BVHSceneData {
     }
   }
 
-  // ── 3. Build per-mesh material descriptors + triangle material markers ───
-
   const materialDescs: MatDesc[] = [];
-  const triangleMaterialMarkers: number[] = []; // cumulative tri count per material change
+  const triangleMaterialMarkers: number[] = [];
   let runningTriCount = 0;
 
   const geoList = [];
   for (const mesh of meshes) {
-    // Clone geometry and bake world transform into positions/normals
     const geo = mesh.geometry.clone();
     geo.applyMatrix4(mesh.matrixWorld);
 
     const nonIndexed = geo.index ? geo.toNonIndexed() : geo;
-    if (!nonIndexed.attributes['position']) {
+    const position = nonIndexed.attributes['position'];
+    if (!position) {
       geo.dispose();
       continue;
     }
 
     if (!nonIndexed.attributes['normal']) nonIndexed.computeVertexNormals();
+    const normal = nonIndexed.attributes['normal'];
+    if (!normal) {
+      if (nonIndexed !== geo) nonIndexed.dispose();
+      geo.dispose();
+      continue;
+    }
 
-    // Strip all attributes except position/normal/uv - avoids uv1/tangent/color
-    // mismatch errors when mergeGeometries processes heterogeneous geometries.
     const keep = new Set(['position', 'normal', 'uv']);
     for (const name of Object.keys(nonIndexed.attributes)) {
       if (!keep.has(name)) nonIndexed.deleteAttribute(name);
     }
 
-    const triCount = nonIndexed.attributes['position']!.count / 3;
+    const triCount = position.count / 3;
 
-    // Material lookup - Three.js convention:
-    //   • mesh.material as ARRAY → groups index into the array by group.materialIndex
-    //   • mesh.material as SINGLE → that material is used for ALL groups regardless of
-    //     group.materialIndex (BoxGeometry assigns 0..5 to its 6 face groups, but a single
-    //     material always wins). Falling back to mats[materialIndex] for a single material
-    //     mesh yielded undefined for indices ≥ 1 → 5 of 6 faces silently became default-white.
     const isArrayMat = Array.isArray(mesh.material);
     const mats: Material[] = isArrayMat
       ? (mesh.material as Material[])
@@ -208,15 +149,14 @@ export function buildBVHScene(scene: Scene): BVHSceneData {
       triangleMaterialMarkers.push(runningTriCount);
     }
 
-    // ── DEBUG: per-mesh diagnostics (guarded by DEBUG_BUILD_LOG) ─────────
     if (DEBUG_BUILD_LOG) {
-      const nrm = nonIndexed.attributes['normal']!;
-      const pos = nonIndexed.attributes['position']!;
-      const p0 = [pos.getX(0), pos.getY(0), pos.getZ(0)].map((v) => v.toFixed(2));
-      const n0 = [nrm.getX(0), nrm.getY(0), nrm.getZ(0)].map((v) => v.toFixed(3));
-      const midVtx = Math.min(Math.floor(pos.count / 2), pos.count - 1);
-      const nM = [nrm.getX(midVtx), nrm.getY(midVtx), nrm.getZ(midVtx)].map((v) => v.toFixed(3));
-      console.debug(
+      const p0 = [position.getX(0), position.getY(0), position.getZ(0)].map((v) => v.toFixed(2));
+      const n0 = [normal.getX(0), normal.getY(0), normal.getZ(0)].map((v) => v.toFixed(3));
+      const midVtx = Math.min(Math.floor(position.count / 2), position.count - 1);
+      const nM = [normal.getX(midVtx), normal.getY(midVtx), normal.getZ(midVtx)].map((v) =>
+        v.toFixed(3),
+      );
+      console.info(
         `[PTSceneBuilder] mesh="${mesh.name}" tris=${triCount} ` +
           `pos0=(${p0.join(',')}) nrm0=(${n0.join(',')}) nrmMid=(${nM.join(',')}) ` +
           `groups=${nonIndexed.groups.length} runTri=${runningTriCount}`,
@@ -224,20 +164,21 @@ export function buildBVHScene(scene: Scene): BVHSceneData {
     }
 
     geoList.push(nonIndexed);
-    // Only dispose the clone when toNonIndexed created a separate geometry
     if (nonIndexed !== geo) geo.dispose();
   }
 
   if (geoList.length === 0) return _emptyScene();
-
-  // ── 4. Merge all geometries ──────────────────────────────────────────────
 
   const merged = mergeGeometries(geoList, false);
   for (const g of geoList) g.dispose();
 
   if (!merged) return _emptyScene();
 
-  const posAttr = merged.attributes['position']!;
+  const posAttr = merged.attributes['position'];
+  if (!posAttr) {
+    merged.dispose();
+    return _emptyScene();
+  }
   const nrmAttr = merged.attributes['normal'];
   const uvAttr = merged.attributes['uv'];
   const totalTris = posAttr.count / 3;
@@ -249,16 +190,11 @@ export function buildBVHScene(scene: Scene): BVHSceneData {
   }
 
   const N = Math.min(totalTris, MAX_TRIANGLES);
-
-  // ── 5. Pack triangle_array and aabb_array ────────────────────────────────
-
-  const triangle_array = new Float32Array(TEX_SIZE * TEX_SIZE * 4); // 32 floats/tri
-  const aabb_array = new Float32Array(TEX_SIZE * TEX_SIZE * 4); // 9 floats/tri (input)
-
+  const triangle_array = new Float32Array(TEX_SIZE * TEX_SIZE * 4);
+  const aabb_array = new Float32Array(TEX_SIZE * TEX_SIZE * 4);
   let materialNumber = 0;
 
   for (let i = 0; i < N; i++) {
-    // Vertex positions (9 components)
     const vp0x = posAttr.getX(i * 3 + 0),
       vp0y = posAttr.getY(i * 3 + 0),
       vp0z = posAttr.getZ(i * 3 + 0);
@@ -269,7 +205,6 @@ export function buildBVHScene(scene: Scene): BVHSceneData {
       vp2y = posAttr.getY(i * 3 + 2),
       vp2z = posAttr.getZ(i * 3 + 2);
 
-    // Vertex normals (9 components, normalized)
     let vn0x = 0,
       vn0y = 1,
       vn0z = 0;
@@ -291,7 +226,6 @@ export function buildBVHScene(scene: Scene): BVHSceneData {
       vn2z = nrmAttr.getZ(i * 3 + 2);
     }
 
-    // UV coordinates (6 components, default -1 = no UVs)
     let vt0x = -1,
       vt0y = -1,
       vt1x = -1,
@@ -307,12 +241,12 @@ export function buildBVHScene(scene: Scene): BVHSceneData {
       vt2y = uvAttr.getY(i * 3 + 2);
     }
 
-    // Material assignment
     while (
       materialNumber < triangleMaterialMarkers.length - 1 &&
-      i >= triangleMaterialMarkers[materialNumber]!
-    )
+      i >= (triangleMaterialMarkers[materialNumber] ?? Infinity)
+    ) {
       materialNumber++;
+    }
     const md = materialDescs[materialNumber] ?? {
       type: MAT_PBR,
       r: 0.8,
@@ -325,11 +259,8 @@ export function buildBVHScene(scene: Scene): BVHSceneData {
       uvTransform: null,
     };
 
-    // Apply texture UV transform (repeat/offset/rotation encoded in texture.matrix).
-    // THREE.js applies this in its own shaders but our BVH packs raw UVs → must bake it in.
     if (uvAttr && md.uvTransform) {
       const [m00, m10, m01, m11, m02, m12] = md.uvTransform;
-      // Transform: u' = m00*u + m01*v + m02,  v' = m10*u + m11*v + m12
       const u0 = vt0x,
         v0 = vt0y;
       const u1 = vt1x,
@@ -344,7 +275,6 @@ export function buildBVHScene(scene: Scene): BVHSceneData {
       vt2y = m10 * u2 + m11 * v2 + m12;
     }
 
-    // Pack into triangle_array (32 floats at stride 32*i)
     const base = 32 * i;
     triangle_array[base + 0] = vp0x;
     triangle_array[base + 1] = vp0y;
@@ -374,12 +304,11 @@ export function buildBVHScene(scene: Scene): BVHSceneData {
     triangle_array[base + 25] = md.r;
     triangle_array[base + 26] = md.g;
     triangle_array[base + 27] = md.b;
-    triangle_array[base + 28] = md.albedoLayer; // -1 = no texture, ≥0 = layer index
+    triangle_array[base + 28] = md.albedoLayer;
     triangle_array[base + 29] = md.opacity;
     triangle_array[base + 30] = md.roughness;
     triangle_array[base + 31] = md.metalness;
 
-    // Build per-triangle AABB (9 floats at stride 9*i)
     const minX = Math.min(vp0x, vp1x, vp2x);
     const minY = Math.min(vp0y, vp1y, vp2y);
     const minZ = Math.min(vp0z, vp1z, vp2z);
@@ -394,17 +323,17 @@ export function buildBVHScene(scene: Scene): BVHSceneData {
     aabb_array[ab + 3] = maxX;
     aabb_array[ab + 4] = maxY;
     aabb_array[ab + 5] = maxZ;
-    aabb_array[ab + 6] = (vp0x + vp1x + vp2x) * 0.333333333; // centroid
+    aabb_array[ab + 6] = (vp0x + vp1x + vp2x) * 0.333333333;
     aabb_array[ab + 7] = (vp0y + vp1y + vp2y) * 0.333333333;
     aabb_array[ab + 8] = (vp0z + vp1z + vp2z) * 0.333333333;
   }
 
-  // ── DEBUG: dump material descriptors (guarded by DEBUG_BUILD_LOG) ───────
   if (DEBUG_BUILD_LOG) {
     for (let m = 0; m < materialDescs.length; m++) {
-      const md = materialDescs[m]!;
+      const md = materialDescs[m];
+      if (!md) continue;
       const marker = triangleMaterialMarkers[m] ?? '?';
-      console.debug(
+      console.info(
         `[PTSceneBuilder] mat[${m}] type=${md.type} ` +
           `rgb=(${md.r.toFixed(3)},${md.g.toFixed(3)},${md.b.toFixed(3)}) ` +
           `rough=${md.roughness.toFixed(2)} metal=${md.metalness.toFixed(2)} ` +
@@ -415,19 +344,15 @@ export function buildBVHScene(scene: Scene): BVHSceneData {
 
   merged.dispose();
 
-  // ── 6. Build BVH (modifies aabb_array in place) ──────────────────────────
-
-  console.time('[PTSceneBuilder] BVH build');
+  const bvhStarted = performance.now();
   buildBVH(aabb_array, N, 64);
-  console.timeEnd('[PTSceneBuilder] BVH build');
+  console.info(`[PTSceneBuilder] BVH build: ${(performance.now() - bvhStarted).toFixed(1)}ms`);
 
-  // ── 7. Build albedo array texture ────────────────────────────────────────
-
-  console.time('[PTSceneBuilder] albedo array build');
+  const albedoStarted = performance.now();
   const { albedoArray, albedoLayerCount } = _buildAlbedoArray(sourceTextures);
-  console.timeEnd('[PTSceneBuilder] albedo array build');
-
-  // ── 8. Create remaining DataTextures ─────────────────────────────────────
+  console.info(
+    `[PTSceneBuilder] albedo array build: ${(performance.now() - albedoStarted).toFixed(1)}ms`,
+  );
 
   const triangleTexture = new DataTexture(
     triangle_array,
@@ -451,7 +376,7 @@ export function buildBVHScene(scene: Scene): BVHSceneData {
   aabbTexture.generateMipmaps = false;
   aabbTexture.needsUpdate = true;
 
-  console.log(
+  console.info(
     `[PTSceneBuilder] ${N} triangles, ${albedoLayerCount} albedo layers (${sourceTextures.length} source maps)`,
   );
 
@@ -465,17 +390,6 @@ export function disposeBVHSceneData(d: BVHSceneData | null): void {
   d.albedoArray.dispose();
 }
 
-// ── Albedo array builder ─────────────────────────────────────────────────────
-
-/**
- * Try to allocate a `Uint8Array` of the requested layer count. If the
- * allocation throws (browser memory pressure, V8 fragmentation), retry with
- * progressively fewer layers until something succeeds - minimum 1 layer
- * (the white fallback). Returns the buffer + the actual layer count used.
- *
- * This shields us from a hard crash when MAX_ALBEDO_LAYERS is bumped high
- * (1024² × 256 × 4 = 1 GiB; can fail on 32-bit Chrome or low-memory mobile).
- */
 function _allocLayerBuffer(
   perLayerBytes: number,
   requestedLayers: number,
@@ -495,27 +409,9 @@ function _allocLayerBuffer(
       layers = Math.floor(layers / 2);
     }
   }
-  // Final fallback - always succeeds (1 layer at 1×1 is < 4 bytes).
   return { data: new Uint8Array(perLayerBytes), actualLayers: 1 };
 }
 
-/**
- * Pack source albedo textures into a single sampler2DArray-compatible
- * `DataArrayTexture`. Layer 0 is reserved as a white fallback. Layers 1..N
- * correspond to `sources[0..N-1]` resized to `ALBEDO_LAYER_SIZE²` via a
- * shared `<canvas>` with `drawImage`.
- *
- * Memory cost: 4 MiB per layer at the default 1024² (RGBA8). For 64 layers
- * that's 256 MiB - allocated once per scene build, reused until the next
- * `setScene`. Allocation is wrapped in `_allocLayerBuffer` which halves
- * the layer count on RangeError and logs a warning, so a too-ambitious
- * `MAX_ALBEDO_LAYERS` degrades gracefully instead of crashing.
- *
- * sRGB conversion is delegated to the GPU sampler (texture.colorSpace =
- * SRGBColorSpace). Source images that aren't canvas-drawable (raw DataTextures,
- * videos still loading, missing/CORS-tainted images) are skipped - the layer
- * falls back to white and a warning is logged.
- */
 function _buildAlbedoArray(sources: Texture[]): {
   albedoArray: DataArrayTexture;
   albedoLayerCount: number;
@@ -525,7 +421,7 @@ function _buildAlbedoArray(sources: Texture[]): {
   const perLayerBytes = W * H * 4;
   const requestedLayers = Math.min(sources.length + 1, MAX_ALBEDO_LAYERS);
   const estMiB = ((perLayerBytes * requestedLayers) / (1024 * 1024)).toFixed(1);
-  console.debug(
+  console.info(
     `[PTSceneBuilder] allocating albedo array: ${requestedLayers} layers × ${W}² × RGBA8 ≈ ${estMiB} MiB`,
   );
 
@@ -537,10 +433,8 @@ function _buildAlbedoArray(sources: Texture[]): {
     );
   }
 
-  // Layer 0 - white fallback
   for (let i = 0; i < perLayerBytes; i++) data[i] = 255;
 
-  // Layers 1..actualLayers-1 - rasterize sources via shared canvas
   const canvas = typeof document !== 'undefined' ? document.createElement('canvas') : null;
   if (canvas) {
     canvas.width = W;
@@ -552,7 +446,6 @@ function _buildAlbedoArray(sources: Texture[]): {
     const src = sources[i];
     const layerOffset = (i + 1) * perLayerBytes;
     if (!src || !src.image || !ctx) {
-      // Fall back to white for this layer
       for (let p = 0; p < perLayerBytes; p++) data[layerOffset + p] = 255;
       if (!ctx) {
         console.warn('[PTSceneBuilder] no 2d canvas context - albedo array filled with white');
@@ -561,9 +454,6 @@ function _buildAlbedoArray(sources: Texture[]): {
     }
     try {
       ctx.clearRect(0, 0, W, H);
-      // drawImage handles HTMLImageElement, HTMLCanvasElement, ImageBitmap,
-      // HTMLVideoElement (when ready) - covers the common Three.js paths.
-      // Stretch to W×H; aspect-ratio preservation can come later.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ctx.drawImage(src.image as any, 0, 0, W, H);
       const imgData = ctx.getImageData(0, 0, W, H);
@@ -580,9 +470,7 @@ function _buildAlbedoArray(sources: Texture[]): {
   const tex = new DataArrayTexture(data, W, H, actualLayers);
   tex.format = RGBAFormat;
   tex.type = UnsignedByteType;
-  // GPU-side sRGB → linear conversion at sample time (matches source maps).
   tex.colorSpace = SRGBColorSpace;
-  // Linear filtering for smooth texture sampling; mipmaps for distance LOD.
   tex.minFilter = LinearMipmapLinearFilter;
   tex.magFilter = LinearFilter;
   tex.wrapS = RepeatWrapping;
@@ -594,13 +482,10 @@ function _buildAlbedoArray(sources: Texture[]): {
   return { albedoArray: tex, albedoLayerCount: actualLayers };
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-/** Extract the 2×3 UV transform matrix from a texture (offset/repeat/rotation). Returns null if identity. */
 function _getUVTransform(tex: Texture | null): MatDesc['uvTransform'] {
   if (!tex) return null;
   if (tex.matrixAutoUpdate) tex.updateMatrix();
-  const m = tex.matrix.elements as number[]; // column-major Matrix3
+  const m = tex.matrix.elements as number[];
   const [m00 = 1, m10 = 0, , m01 = 0, m11 = 1, , m02 = 0, m12 = 0] = m;
   if (
     Math.abs(m00 - 1) < 1e-5 &&
@@ -625,8 +510,6 @@ function _emptyScene(): BVHSceneData {
   empty.colorSpace = NoColorSpace;
   empty.flipY = false;
   empty.generateMipmaps = false;
-  // Minimum 1-layer white fallback so the shader's sampler2DArray binding is
-  // always valid even when the scene is empty.
   const W = ALBEDO_LAYER_SIZE;
   const fallback = new Uint8Array(W * W * 4);
   for (let i = 0; i < fallback.length; i++) fallback[i] = 255;
@@ -655,11 +538,9 @@ interface MatDesc {
   g: number;
   b: number;
   opacity: number;
-  /** Layer index into the albedo sampler2DArray; -1 means no texture sampling. */
   albedoLayer: number;
   roughness: number;
   metalness: number;
-  /** Packed UV matrix: [m00,m10,m01,m11,m02,m12] or null for identity. Encodes texture.offset/repeat/rotation. */
   uvTransform: readonly [number, number, number, number, number, number] | null;
 }
 
@@ -677,7 +558,6 @@ function _matDesc(mat: MeshStandardMaterial | null, sourceTextures: Texture[]): 
       uvTransform: null,
     };
 
-  // Emissive area light - color = emissive * intensity
   if (mat.emissiveIntensity > 0 && mat.emissive.r + mat.emissive.g + mat.emissive.b > 0.001) {
     const e = mat.emissive;
     const ei = mat.emissiveIntensity;
@@ -694,21 +574,10 @@ function _matDesc(mat: MeshStandardMaterial | null, sourceTextures: Texture[]): 
     };
   }
 
-  // Glass / dielectric refraction - three paths:
-  // 1. Explicit transparent + low opacity (standard THREE.js transparent)
-  // 2. MeshPhysicalMaterial.transmission > 0 (KHR_materials_transmission GLTF extension)
-  // 3. Explicit transmissive check via duck typing (avoids importing MeshPhysicalMaterial)
   const physMat = mat as MeshStandardMaterial & { transmission?: number; ior?: number };
   const hasTransmission = typeof physMat.transmission === 'number' && physMat.transmission > 0.1;
   const isGlass = (mat.transparent && mat.opacity < 0.99) || hasTransmission;
-
-  // Capture texture UV transform (offset/repeat/rotation) - applied to UVs during packing.
-  // THREE.js stores this as texture.matrix (Matrix3). We pack as [m00,m10,m01,m11,m02,m12].
   const uvTransform = _getUVTransform(mat.map);
-
-  // Layer 0 is the white fallback; user textures occupy layers 1..N.
-  // A material with `.map` indexes its source's position in `sourceTextures` and
-  // adds 1; materials without a map return -1 (shader skips sampling).
   const layerIdx = mat.map ? sourceTextures.indexOf(mat.map) : -1;
   const albedoLayer = layerIdx >= 0 ? layerIdx + 1 : -1;
 
@@ -726,7 +595,6 @@ function _matDesc(mat: MeshStandardMaterial | null, sourceTextures: Texture[]): 
     };
   }
 
-  // Unified PBR - roughness + metalness drive specular/diffuse in the shader
   return {
     type: MAT_PBR,
     r: mat.color.r,

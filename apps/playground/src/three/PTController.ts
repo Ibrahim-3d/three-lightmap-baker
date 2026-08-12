@@ -28,36 +28,14 @@ import { ptSettings, hdriTexture } from 'shared';
 import { buildBVHScene, disposeBVHSceneData, type BVHSceneData } from 'pt-renderer';
 import bvhFrag from 'pt-renderer/shaders/bvh-scene.frag.glsl?raw';
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-/**
- * Max lights supported by the DataTexture layout.
- * Each light occupies 4 RGBA texels → 64-texel wide 1D texture = 16 lights.
- *
- * Texel layout for light i at offset i*4:
- *   texel i*4+0 : pos.xyz,   type  (0=dir, 1=point, 2=spot, 3=rectarea)
- *   texel i*4+1 : color.rgb, dist
- *   texel i*4+2 : dir.xyz,   spotCos
- *   texel i*4+3 : width,     height, 0, 0
- */
 const MAX_PT_LIGHTS = 16;
 const TEXELS_PER_LIGHT = 4;
-const LIGHT_TEX_WIDTH = MAX_PT_LIGHTS * TEXELS_PER_LIGHT; // 64
+const LIGHT_TEX_WIDTH = MAX_PT_LIGHTS * TEXELS_PER_LIGHT;
 
 const LIGHT_TYPE_NAMES = ['directional', 'point', 'spot', 'rectarea'] as const;
 
-/** Safe read from Float32Array - returns 0 for out-of-bounds. */
 const f = (arr: Float32Array, i: number): number => arr[i] ?? 0;
 
-/**
- * Read PT debug visualization mode from URL query string.
- *   ?ptdebug=1 → normals    (RGB = world normal XYZ)
- *   ?ptdebug=2 → shading normal nl (after camera-facing flip)
- *   ?ptdebug=3 → albedo (material color)
- *   ?ptdebug=4 → material type (white=light, cyan=glass, green=PBR)
- *   ?ptdebug=5 → direct N·L (one bounce, no shadows)
- * Returns 0 (off) when query param missing or invalid.
- */
 function readDebugVisFromURL(): number {
   if (typeof window === 'undefined') return 0;
   const params = new URLSearchParams(window.location.search);
@@ -67,11 +45,8 @@ function readDebugVisFromURL(): number {
   return Number.isFinite(n) && n >= 0 && n <= 5 ? n : 0;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-/** Create the empty 64×1 RGBA32F light DataTexture. */
 function makeLightTexture(): DataTexture {
-  const data = new Float32Array(LIGHT_TEX_WIDTH * 4); // 256 floats
+  const data = new Float32Array(LIGHT_TEX_WIDTH * 4);
   const t = new DataTexture(data, LIGHT_TEX_WIDTH, 1, RGBAFormat, FloatType);
   t.colorSpace = NoColorSpace;
   t.minFilter = t.magFilter = NearestFilter;
@@ -79,8 +54,6 @@ function makeLightTexture(): DataTexture {
   t.needsUpdate = true;
   return t;
 }
-
-// ── PTController ──────────────────────────────────────────────────────────────
 
 export interface PTControllerDeps {
   renderer: WebGLRenderer;
@@ -100,14 +73,11 @@ export class PTController {
   private lastMs = 0;
   private _lightsDumped = false;
 
-  // Reusable scratch vectors - avoids GC pressure in render loop.
   private readonly _lightPos = new Vector3();
   private readonly _lightTgt = new Vector3();
   private readonly _lightDir = new Vector3();
 
   constructor(private readonly deps: PTControllerDeps) {}
-
-  // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   async init(): Promise<void> {
     this.lightTex = makeLightTexture();
@@ -129,10 +99,6 @@ export class PTController {
       sceneUniforms: {
         tTriangleTexture: { value: null },
         tAABBTexture: { value: null },
-        // Albedo array texture (sampler2DArray). Populated on setScene().
-        // null is fine here; setScene swaps in the real DataArrayTexture
-        // BEFORE the first frame renders, so Three.js never tries to sample
-        // a null binding.
         tAlbedoArray: { value: null },
         uHasSkyTexture: { value: false },
         tHDRTexture: { value: null },
@@ -144,8 +110,6 @@ export class PTController {
     await this.pt.init(this.deps.renderer);
     this.deps.controls.addEventListener('change', this._onCameraChange);
 
-    // Expose for dev-console runtime toggling:
-    //   __pt.setDebug(1)  // 0=off, 1=normals, ..., 5=NdotL
     if (typeof window !== 'undefined') {
       (window as unknown as { __pt: { setDebug: (n: number) => void } }).__pt = {
         setDebug: (n: number) => {
@@ -182,7 +146,6 @@ export class PTController {
     }
 
     this.pt.resetAccumulation();
-    // Re-dump lights on next sync after scene change
     this._lightsDumped = false;
   }
 
@@ -204,7 +167,6 @@ export class PTController {
     return this.active;
   }
 
-  /** Expose light DataTexture + count for pt-baker to share. */
   get lightTextureState(): { tex: DataTexture; count: number } | null {
     if (!this.lightTex) return null;
     const count = (this.pt?.uniforms['uNumPTLights']?.value as number) ?? 0;
@@ -222,17 +184,17 @@ export class PTController {
     this.lightTex = null;
   }
 
-  // ── Private ────────────────────────────────────────────────────────────────
-
   private _loop = (): void => {
     if (!this.active) return;
+    const pt = this.pt;
+    if (!pt) return;
     this.rafId = requestAnimationFrame(this._loop);
     const now = performance.now();
     const delta = now - this.lastMs;
     this.lastMs = now;
     this._syncLights();
     this._syncSettings();
-    this.pt!.render(this.deps.renderer, this.deps.camera, delta);
+    pt.render(this.deps.renderer, this.deps.camera, delta);
   };
 
   private _onCameraChange = (): void => {
@@ -252,7 +214,6 @@ export class PTController {
     }
     if (u['uApertureSize']) u['uApertureSize'].value = s.aperture;
     if (u['uFocusDistance']) u['uFocusDistance'].value = s.focusDist;
-    // HDRI environment sync.
     const hdri = hdriTexture.value;
     if (hdri !== this._prevHdri) {
       this._prevHdri = hdri;
@@ -262,16 +223,6 @@ export class PTController {
     }
   }
 
-  /**
-   * Pack scene lights into the 64×1 RGBA32F DataTexture.
-   * 4 texels per light (see TEXELS_PER_LIGHT comment above).
-   * Marks texture.needsUpdate = true when count > 0.
-   *
-   * NOTE: lightmapIgnore is NOT checked here. That flag tells the classic baker
-   * "don't bake a lightmap onto this object" - it says nothing about whether
-   * the PT renderer should use the light. The PT renderer needs ALL scene
-   * lights for correct illumination.
-   */
   private _syncLights(): void {
     if (!this.pt || !this.lightTex) return;
     const u = this.pt.uniforms;
@@ -285,7 +236,7 @@ export class PTController {
 
     scene.traverse((obj) => {
       if (count >= MAX_PT_LIGHTS) return;
-      const base = count * TEXELS_PER_LIGHT * 4; // float offset
+      const base = count * TEXELS_PER_LIGHT * 4;
 
       if (obj instanceof DirectionalLight) {
         obj.getWorldPosition(this._lightPos);
@@ -357,7 +308,6 @@ export class PTController {
       }
     });
 
-    // One-time diagnostic dump on first sync after activation / scene change
     if (!this._lightsDumped && count > 0) {
       this._lightsDumped = true;
       console.groupCollapsed(`[baker] PT lights: ${count} found, lightScale=${lScale}`);

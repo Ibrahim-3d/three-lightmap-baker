@@ -22,14 +22,13 @@ function build(parent: Object3D): SceneBuildResult {
   root.name = 'sceneRoot';
   parent.add(root);
 
-  // Default scene camera
   const camera = new PerspectiveCamera(45, 1, 0.1, 100);
   camera.name = 'Room View';
   camera.position.set(0, 6, 20);
   camera.lookAt(0, 5, 0);
   root.add(camera);
 
-  const wallMat = () => mat(0xe0e0e0);
+  const wallMat = (): MeshStandardMaterial => mat(0xe0e0e0);
 
   const floor = new Mesh(new BoxGeometry(ROOM, T, ROOM), wallMat());
   floor.name = 'Floor';
@@ -60,15 +59,15 @@ function build(parent: Object3D): SceneBuildResult {
     root.add(w);
   }
 
-  // Three colored point lights - visual markers as small emissive spheres
-  // (`lightmapIgnore=true` so they aren't UV-unwrapped).
   const lights: [number, number, number, number][] = [
     [0xff4040, -3.0, 3.0, 0.0],
     [0x40ff40, 3.0, 6.0, -2.0],
     [0x4080ff, 0.0, 4.5, 3.0],
   ];
   for (let i = 0; i < lights.length; i++) {
-    const [color, x, y, z] = lights[i]!;
+    const entry = lights[i];
+    if (!entry) continue;
+    const [color, x, y, z] = entry;
     const p = new PointLight(color, 60, 0, 2);
     p.position.set(x, y, z);
     root.add(p);

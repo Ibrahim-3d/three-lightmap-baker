@@ -1,3 +1,4 @@
+import type { JSX } from 'preact';
 import { getOrchestrator, layout, sceneTree, selectedId, type SceneNode } from 'shared';
 import { AssetLibrary } from './AssetLibrary';
 import { Camera, Eye, EyeOff, Layers, Lightbulb, Square } from './icons';
@@ -7,7 +8,7 @@ import { Splitter } from './Splitter';
  * Left-side panel: scene tree (this task) + asset library (T-D7).
  * Tree is grouped by kind (Lights / Meshes); each row is select + visibility toggle.
  */
-export function Outliner() {
+export function Outliner(): JSX.Element {
   const tree = sceneTree.value;
   const lights = tree.filter((n) => n.kind === 'light');
   const cameras = tree.filter((n) => n.kind === 'camera');
@@ -50,7 +51,7 @@ export function Outliner() {
   );
 }
 
-function TreeGroup(props: { label: string; nodes: SceneNode[] }) {
+function TreeGroup(props: { label: string; nodes: SceneNode[] }): JSX.Element | null {
   if (props.nodes.length === 0) return null;
   return (
     <div class="border-b border-border/40 last:border-b-0">
@@ -66,7 +67,7 @@ function TreeGroup(props: { label: string; nodes: SceneNode[] }) {
   );
 }
 
-function TreeRow(props: { node: SceneNode }) {
+function TreeRow(props: { node: SceneNode }): JSX.Element {
   const selected = selectedId.value === props.node.id;
   return (
     <li
@@ -103,8 +104,6 @@ function TreeRow(props: { node: SceneNode }) {
           e.stopPropagation();
           const next = !props.node.visible;
           getOrchestrator()?.setNodeVisible(props.node.id, next);
-          // Tree signal needs refresh; orchestrator will not refire onSceneChanged,
-          // so update the signal slice in place.
           sceneTree.value = sceneTree.value.map((n) =>
             n.id === props.node.id ? { ...n, visible: next } : n,
           );
