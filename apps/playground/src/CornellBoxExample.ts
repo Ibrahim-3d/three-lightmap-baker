@@ -41,7 +41,7 @@ import {
   cameraLockId,
   dirtyMeshIds,
 } from 'shared';
-import { LAYERS } from './three/modes';
+import { LAYERS, type Layer } from './three/modes';
 import { BakeController } from './three/BakeController';
 import { FlyController } from './three/FlyController';
 import {
@@ -854,9 +854,10 @@ export class CornellBoxExample implements BakerOrchestrator {
       console.warn('[baker] export: no bake to export - bake first');
       return;
     }
-    const stage = groups[0]!.refinement ? 'refined' : 'composite';
-    for (let i = 0; i < groups.length; i++) {
-      const g = groups[i]!;
+    const [firstGroup] = groups;
+    if (!firstGroup) return;
+    const stage = firstGroup.refinement ? 'refined' : 'composite';
+    for (const [i, g] of groups.entries()) {
       const tex = g.refinement?.texture ?? g.composite.texture;
       const suffix = groups.length > 1 ? `_atlas${i}` : '';
       await this.runExport(tex, `lightmap_${stage}_${this.options.lightMapSize}${suffix}`);
@@ -897,11 +898,17 @@ export class CornellBoxExample implements BakerOrchestrator {
     this.renderModeRunner.apply();
     this.options.layer = previousLayer;
 
+    const root = this.sceneController.cornellRoot;
+    if (!root) {
+      console.warn('[baker] no scene root to export');
+      return;
+    }
+
     const { GLTFExporter } = await import('three/examples/jsm/exporters/GLTFExporter');
     const exporter = new GLTFExporter();
     const result = await new Promise<ArrayBuffer>((resolve, reject) => {
       exporter.parse(
-        this.sceneController.cornellRoot!,
+        root,
         (data) => {
           if (data instanceof ArrayBuffer) resolve(data);
           else reject(new Error('expected binary GLB output'));
@@ -927,8 +934,9 @@ export class CornellBoxExample implements BakerOrchestrator {
     if (targetSamples <= 0 || currentSamples >= targetSamples) return 0;
     const hist = this.bakeBatchHistory;
     if (hist.length < 2) return 0;
-    const first = hist[0]!;
-    const last = hist[hist.length - 1]!;
+    const [first] = hist;
+    const last = hist[hist.length - 1];
+    if (!first || !last) return 0;
     const dn = last.samples - first.samples;
     const dtMs = last.t - first.t;
     if (dn <= 0 || dtMs <= 0) return 0;
@@ -1020,9 +1028,14 @@ export class CornellBoxExample implements BakerOrchestrator {
     return () => this.frameCallbacks.delete(callback);
   }
 
-  private getAtlasPreviewTextures(
-    layer = LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0]!,
-  ): Texture[] {
+  private getSelectedLayer(): Layer {
+    const [defaultLayer] = LAYERS;
+    const layer = LAYERS.find((candidate) => candidate.id === this.options.layer) ?? defaultLayer;
+    if (!layer) throw new Error('No lightmap preview layers are configured');
+    return layer;
+  }
+
+  private getAtlasPreviewTextures(layer = this.getSelectedLayer()): Texture[] {
     const groups = this.bakeController.bakeGroups;
     const texs: Texture[] = [];
     for (const g of groups) {
@@ -1033,7 +1046,7 @@ export class CornellBoxExample implements BakerOrchestrator {
   }
 
   getAtlasPreviewInfo(): { layer: string; count: number; resolution: number } {
-    const layer = LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0]!;
+    const layer = this.getSelectedLayer();
     return {
       layer: layer.label,
       count: this.getAtlasPreviewTextures(layer).length,
@@ -1042,7 +1055,7 @@ export class CornellBoxExample implements BakerOrchestrator {
   }
 
   renderAtlasPreview(canvas: HTMLCanvasElement): boolean {
-    const layer = LAYERS.find((l) => l.id === this.options.layer) ?? LAYERS[0]!;
+    const layer = this.getSelectedLayer();
     const textures = this.getAtlasPreviewTextures(layer);
 
     // Performance: Skip redraw if nothing has changed. GPU-to-CPU readback is slow.
@@ -1081,7 +1094,8 @@ export class CornellBoxExample implements BakerOrchestrator {
       const row = Math.floor(i / cols);
       const x = col * cell;
       const y = row * cell;
-      this.paintTextureToCanvas(ctx, textures[i]!, x, y, cell);
+      const texture = textures[i];
+      if (texture) this.paintTextureToCanvas(ctx, texture, x, y, cell);
     }
     return true;
   }
@@ -1141,10 +1155,15 @@ export class CornellBoxExample implements BakerOrchestrator {
   ): void {
     this.ensureAtlasPreviewResources(size);
     const renderer = this.sceneController.renderer;
-    const target = this.atlasPreviewTarget!;
-    const material = this.atlasPreviewMaterial!;
-    const scene = this.atlasPreviewScene!;
-    const camera = this.atlasPreviewCamera!;
+    const target = this.atlasPreviewTarget;
+    const material = this.atlasPreviewMaterial;
+    const scene = this.atlasPreviewScene;
+    const camera = this.atlasPreviewCamera;
+    if (!target || !material || !scene || !camera) {
+      throw new Error('Atlas preview resources failed to initialize');
+    }
+    const mapUniform = material.uniforms.map;
+    if (!mapUniform) throw new Error('Atlas preview material is missing its map uniform');
     const previousTarget = renderer.getRenderTarget();
     const previousAutoClear = renderer.autoClear;
     const previousScissorTest = renderer.getScissorTest();
@@ -1157,7 +1176,7 @@ export class CornellBoxExample implements BakerOrchestrator {
     const pixels = this.atlasPreviewBuffer;
 
     try {
-      material.uniforms.map!.value = texture;
+      mapUniform.value = texture;
       renderer.autoClear = true;
       renderer.setScissorTest(false);
       renderer.setRenderTarget(target);
@@ -1212,7 +1231,7 @@ export class CornellBoxExample implements BakerOrchestrator {
     return this.sceneController.meshes;
   }
 
-  get scene() {
+  get scene(): Scene {
     return this.sceneController.scene;
   }
 
@@ -1365,7 +1384,7 @@ export class CornellBoxExample implements BakerOrchestrator {
     return this.sceneController.lookupObject(id);
   }
 
-  getScene() {
+  getScene(): Scene {
     return this.sceneController.scene;
   }
 
@@ -1422,7 +1441,8 @@ export class CornellBoxExample implements BakerOrchestrator {
     const buf = new Uint8Array(4);
     const h = gl.drawingBufferHeight;
     gl.readPixels(x, h - y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, buf);
-    return [buf[0]!, buf[1]!, buf[2]!, buf[3]!];
+    const [r = 0, g = 0, b = 0, a = 0] = buf;
+    return [r, g, b, a];
   }
 
   getRenderDiag(): { canvasW: number; canvasH: number; gbW: number; gbH: number; glError: number } {

@@ -363,7 +363,9 @@ export class SceneController {
     // Walk parents up the closest hit until we find either a bake mesh or the
     // light group that owns the helper/bulb that was clicked.
     const meshIds = new Set(this.meshes.map((m) => m.uuid));
-    let obj: Object3D | null = hits[0]!.object;
+    const [closestHit] = hits;
+    if (!closestHit) return null;
+    let obj: Object3D | null = closestHit.object;
     while (obj) {
       if (obj.userData?.bakerLightType || obj.userData?.bakerCameraType) return obj.uuid;
       if (meshIds.has(obj.uuid)) return obj.uuid;
@@ -1072,7 +1074,8 @@ export class SceneController {
 
     const meshIdx = this.meshes.findIndex((m) => m.uuid === id);
     if (meshIdx !== -1) {
-      const mesh = this.meshes[meshIdx]!;
+      const mesh = this.meshes[meshIdx];
+      if (!mesh) return null;
       const parent = mesh.parent;
       if (!parent) return null;
       parent.remove(mesh);

@@ -48,10 +48,7 @@ export interface PTRendererOptions {
 const _planeGeo = new PlaneGeometry(2, 2);
 const _makeMesh = (mat: ShaderMaterial): Mesh => new Mesh(_planeGeo, mat);
 
-function requireUniform(
-  material: ShaderMaterial,
-  key: string,
-): { value: unknown } {
+function requireUniform(material: ShaderMaterial, key: string): { value: unknown } {
   const uniform = material.uniforms[key];
   if (!uniform) throw new Error(`[pt-renderer] missing ${key} uniform`);
   return uniform;

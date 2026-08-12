@@ -6,7 +6,11 @@ import type { ComponentChildren, JSX } from 'preact';
  * theme stays in one place (`theme.css`).
  */
 
-export function Row(props: { label: string; children: ComponentChildren; hint?: string }): JSX.Element {
+export function Row(props: {
+  label: string;
+  children: ComponentChildren;
+  hint?: string;
+}): JSX.Element {
   return (
     <div class="flex items-center gap-2 px-2 min-h-[24px] py-0.5 hover:bg-bg-2">
       <label
