@@ -118,7 +118,8 @@ export function buildLightTexture(lights: PackedLight[]): {
   const data = new Float32Array(LIGHT_TEX_WIDTH * capacity * 4);
 
   for (let i = 0; i < lights.length; i++) {
-    const l = lights[i]!;
+    const l = lights[i];
+    if (!l) continue;
     const base = i * LIGHT_TEX_WIDTH * 4;
     // texel 0: pos.xyz, type
     data[base + 0] = l.position.x;
