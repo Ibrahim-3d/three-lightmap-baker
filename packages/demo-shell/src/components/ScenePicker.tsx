@@ -1,3 +1,4 @@
+import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { activeSceneId, getOrchestrator, sceneRegistry } from 'shared';
 import { ChevronDown } from './icons';
@@ -17,7 +18,7 @@ const CATEGORY_LABEL: Record<string, string> = {
  * menu; clicking sets `activeSceneId` and calls `loadScenePreset(id)`. When the
  * registry is empty (A3 not merged yet) renders a single disabled hint item.
  */
-export function ScenePicker() {
+export function ScenePicker(): JSX.Element {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement>(null);
 
@@ -28,11 +29,11 @@ export function ScenePicker() {
 
   useEffect(() => {
     if (!open) return;
-    const onDown = (e: MouseEvent) => {
+    const onDown = (e: MouseEvent): void => {
       const a = anchorRef.current;
       if (a && !a.contains(e.target as Node)) setOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => {
+    const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') setOpen(false);
     };
     window.addEventListener('mousedown', onDown);
@@ -43,7 +44,7 @@ export function ScenePicker() {
     };
   }, [open]);
 
-  const pick = (id: string) => {
+  const pick = (id: string): void => {
     activeSceneId.value = id;
     void getOrchestrator()?.loadScenePreset(id);
     setOpen(false);
