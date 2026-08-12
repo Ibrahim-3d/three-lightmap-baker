@@ -1,3 +1,4 @@
+import type { JSX } from 'preact';
 import { useEffect } from 'preact/hooks';
 import { signal } from '@preact/signals';
 import { AlertTriangle, Info } from './icons';
@@ -18,7 +19,7 @@ export function showToast(kind: ToastKind, text: string): void {
  * Top-center floating chip. One at a time - newer pushes replace older.
  * Auto-dismisses after 4s. Renders nothing when toastMsg is null.
  */
-export function Toast() {
+export function Toast(): JSX.Element | null {
   const msg = toastMsg.value;
 
   useEffect(() => {
