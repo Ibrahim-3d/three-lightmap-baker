@@ -1,8 +1,9 @@
+import type { JSX } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import { bakeProgress, optionsTick, Section } from 'shared';
 import { getBakerOrchestrator } from './orchestrator';
 
-export function AtlasPage() {
+export function AtlasPage(): JSX.Element {
   void optionsTick.value;
   void bakeProgress.value;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -11,7 +12,7 @@ export function AtlasPage() {
 
   useEffect(() => {
     let raf = 0;
-    const paint = () => {
+    const paint = (): void => {
       const canvas = canvasRef.current;
       const current = getBakerOrchestrator();
       if (canvas && current) current.renderAtlasPreview(canvas);

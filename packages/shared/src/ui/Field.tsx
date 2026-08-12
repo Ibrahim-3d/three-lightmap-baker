@@ -1,4 +1,4 @@
-import type { ComponentChildren } from 'preact';
+import type { ComponentChildren, JSX } from 'preact';
 
 /**
  * Inspector field primitives. Dense rows: 24px tall, label on left, control on
@@ -6,7 +6,11 @@ import type { ComponentChildren } from 'preact';
  * theme stays in one place (`theme.css`).
  */
 
-export function Row(props: { label: string; children: ComponentChildren; hint?: string }) {
+export function Row(props: {
+  label: string;
+  children: ComponentChildren;
+  hint?: string;
+}): JSX.Element {
   return (
     <div class="flex items-center gap-2 px-2 min-h-[24px] py-0.5 hover:bg-bg-2">
       <label
@@ -20,7 +24,7 @@ export function Row(props: { label: string; children: ComponentChildren; hint?: 
   );
 }
 
-export function Section(props: { title: string; children: ComponentChildren }) {
+export function Section(props: { title: string; children: ComponentChildren }): JSX.Element {
   return (
     <div class="mb-1">
       <div class="px-2 py-1 text-[10px] uppercase tracking-wider text-text-2 font-semibold bg-bg-2/40">
@@ -35,7 +39,7 @@ export function TextField(props: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
-}) {
+}): JSX.Element {
   return (
     <input
       type="text"
@@ -53,7 +57,7 @@ export function NumberField(props: {
   step?: number;
   min?: number;
   max?: number;
-}) {
+}): JSX.Element {
   return (
     <input
       type="number"
@@ -76,7 +80,7 @@ export function RangeField(props: {
   min: number;
   max: number;
   step?: number;
-}) {
+}): JSX.Element {
   return (
     <>
       <input
@@ -95,7 +99,7 @@ export function RangeField(props: {
   );
 }
 
-export function ColorField(props: { value: string; onChange: (v: string) => void }) {
+export function ColorField(props: { value: string; onChange: (v: string) => void }): JSX.Element {
   return (
     <input
       type="color"
@@ -110,7 +114,7 @@ export function BoolField(props: {
   value: boolean;
   onChange: (v: boolean) => void;
   label?: string;
-}) {
+}): JSX.Element {
   return (
     <label class="flex items-center gap-1.5 cursor-pointer text-[11px] text-text-1">
       <input
@@ -128,7 +132,7 @@ export function SelectField<T extends string>(props: {
   value: T;
   options: ReadonlyArray<{ value: T; label: string }>;
   onChange: (v: T) => void;
-}) {
+}): JSX.Element {
   return (
     <select
       class="flex-1 px-1.5 py-0.5 text-[12px] bg-bg-2 border border-border rounded text-text-0 focus:border-accent focus:outline-none"

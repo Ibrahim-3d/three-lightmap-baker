@@ -24,31 +24,17 @@ import {
 } from 'baker-classic';
 import type { PerMeshMap } from './types';
 
-/**
- * One bake group = one atlas. Demo-side handle into a single group of the
- * library's `LightmapBakeResult`.
- *
- * Demo-OWNED (disposed in `disposeAllGroups`):
- *   - `composite` - view-time composite created here via `runComposite()`
- *   - `refinement` - lazy dilation/denoise RT created by `runRefinement()`
- *
- * Library-OWNED (freed by `LightmapBakeResult.dispose()` - do NOT dispose here):
- *   - `lightmapper`, `aoMapper`, `positionTexture`, `normalTexture`,
- *     BVH, per-tri material textures, atlas RT.
- */
 export type BakeGroup = {
   atlasIdx: number;
   meshes: Mesh[];
   positionTexture: Texture;
   normalTexture: Texture;
   lightmapper: Lightmapper;
-  /** Standalone AO bake - independent ray budget; AO-only re-bake on slider change. */
   aoMapper: AOMapper;
   composite: CompositeResult;
   refinement: RefinementResult | null;
 };
 
-/** Subset of the orchestrator's option bag this controller reads on `runBake`. */
 export type BakeOptions = {
   lightMapSize: number;
   targetSamples: number;
@@ -89,41 +75,21 @@ export type RunBakeOptions = {
   signal?: AbortSignal;
 };
 
-/** Returned each RAF tick during an active bake. */
 export type BakeTickResult = {
-  /** True while a bake is in progress (groups exist + not done + not paused). */
   active: boolean;
-  /** True once every group's lightmapper + aoMapper reports done. */
   allDone: boolean;
-  /** Minimum of (bounceSamples, aoSamples) across groups. 0 if no progress yet. */
   minSamples: number;
-  /** Per-atlas min(bounceSamples, aoSamples). Empty if no groups. */
   perAtlasSamples: number[];
 };
 
-/**
- * Owns the LightmapBaker call site, bake-state, dummy-LM shader-variant pin,
- * AO-only re-bake, refinement, and the view-time composite for each atlas.
- *
- * The orchestrator's RAF drives the bake forward by calling `tick()` every
- * frame; this controller knows nothing about timing, FPS, or the DOM. Likewise
- * it does NOT mount textures onto materials - that lives in `modes.ts`
- * (`RenderModeRunner.apply`).
- */
 export class BakeController {
   bakeGroups: BakeGroup[] = [];
   meshToGroup: Map<Mesh, BakeGroup> = new Map();
   restoredLightmaps: Map<Mesh, Texture> = new Map();
   bakeResult: LightmapBakeResult | null = null;
-
-  /** Set true on the RAF immediately after `runBake` returns - orchestrator instruments that frame. */
   firstPostBakeRender = false;
-
   diag: Diagnostics;
-
-  /** Progress reporter used during bake - orchestrator sets this once at startup. */
   onProgress: ((info: BakeFrameInfo) => void) | null = null;
-
   private dummyLightmap: Texture | null = null;
 
   constructor(
@@ -133,9 +99,6 @@ export class BakeController {
     this.diag = new Diagnostics(renderer);
   }
 
-  /** 1×1 white texture reused across meshes - placeholder lightmap that pins the
-   *  USE_LIGHTMAP shader variant so the first post-bake render needs zero new
-   *  programs (NVIDIA D3D11 TDR mitigation, see Session 12 in progress.md). */
   getDummyLightmap(): Texture {
     if (this.dummyLightmap) return this.dummyLightmap;
     const data = new Uint8Array([255, 255, 255, 255]);
@@ -146,9 +109,6 @@ export class BakeController {
     return tex;
   }
 
-  /** Attach the dummy lightmap (intensity=0) to every mesh material. Called by
-   *  SceneController after scene rebuild + GLB import. Must run before the first
-   *  scene render or the USE_LIGHTMAP variant won't be pinned. */
   installDummyLightmaps(meshes: ReadonlyArray<Mesh>): void {
     const dummy = this.getDummyLightmap();
     for (const m of meshes) {
@@ -160,10 +120,6 @@ export class BakeController {
     }
   }
 
-  /** Tear down every group + its GPU resources. Safe to call repeatedly.
-   *  Releases demo-owned per-group artifacts (composite, refinement) and then
-   *  routes library-owned resources (lightmapper/aoMapper/atlas/matTex/BVH)
-   *  through a single `LightmapBakeResult.dispose()` call. */
   disposeAllGroups(): void {
     for (const g of this.bakeGroups) {
       g.refinement?.dispose();
@@ -203,13 +159,6 @@ export class BakeController {
     return this.restoredLightmaps.get(mesh) ?? null;
   }
 
-  /**
-   * Full bake. Returns when LightmapBaker.bake() resolves and per-group view-time
-   * composites are built. RAF then drives the accumulators forward via `tick()`.
-   *
-   * Note: this does NOT mount textures onto materials. The orchestrator should
-   * call its RenderModeRunner.apply after this returns.
-   */
   async runBake(
     meshes: ReadonlyArray<Mesh>,
     lightPosition: Vector3,
@@ -219,7 +168,6 @@ export class BakeController {
     if (!meshes.length) return;
 
     this.diag.snap('bake() entry');
-
     const res = options.lightMapSize;
     this.scene.updateMatrixWorld(true);
 
@@ -229,11 +177,8 @@ export class BakeController {
       return;
     }
 
-    // Tear down previous bake (disposes both demo-owned and library-owned resources).
     this.disposeAllGroups();
 
-    // Secondary directional light: collectLightsFromScene reads scene lights only,
-    // so the demo's UI-driven directional must be parented to the scene for the bake.
     let tempSecondaryLight: DirectionalLight | null = null;
     if (options.secondaryLightEnabled) {
       tempSecondaryLight = new DirectionalLight(
@@ -249,7 +194,6 @@ export class BakeController {
       this.scene.add(tempSecondaryLight);
     }
 
-    // Build per-mesh overrides for the library (density × exclude).
     const perMesh: LightmapBakerOptions['perMesh'] = {};
     for (const m of meshes) {
       const e = options.perMesh[m.uuid];
@@ -300,17 +244,13 @@ export class BakeController {
       result = await baker.bake(this.scene, {
         signal: runOptions.signal,
         onFrame: (info: BakeFrameInfo) => {
-          // Refresh demo's per-group composites so view-time intensity sliders
-          // see the latest accumulator state.
           const g = this.bakeGroups[info.groupIndex];
           if (g) g.composite.refresh();
-
           if (info.bounceSamples % 30 === 0 || info.done) {
             this.diag.snap(
               `bake RAF samples=${info.bounceSamples}/${info.targetSamples} done=${info.done}`,
             );
           }
-
           this.onProgress?.(info);
         },
       });
@@ -318,12 +258,12 @@ export class BakeController {
       if (tempSecondaryLight) this.scene.remove(tempSecondaryLight);
     }
 
-    // Adapter: BakeGroupView → BakeGroup.
     this.bakeResult = result;
     this.bakeGroups = [];
     this.meshToGroup.clear();
     for (let i = 0; i < result.groups.length; i++) {
-      const gv = result.groups[i]!;
+      const gv = result.groups[i];
+      if (!gv) throw new Error(`[baker] missing result group ${i}`);
       const composite = runComposite(
         this.renderer,
         {
@@ -358,13 +298,6 @@ export class BakeController {
     this.firstPostBakeRender = true;
   }
 
-  /**
-   * RAF bake step. Returns null when no bake active. Returns aggregate sample
-   * counts otherwise. Orchestrator handles progress DOM + ETA from the return value.
-   *
-   * Also calls each group's composite.refresh() so layer views reflect the
-   * latest accumulator state.
-   */
   tick(): BakeTickResult | null {
     if (!this.bakeGroups.length) return null;
 
@@ -381,7 +314,6 @@ export class BakeController {
     }
     if (!Number.isFinite(minSamples)) minSamples = 0;
 
-    // Refresh composite per group so layer views reflect the latest accumulation.
     if (!allDone) {
       for (const g of this.bakeGroups) g.composite.refresh();
     }
@@ -389,7 +321,6 @@ export class BakeController {
     return { active: !allDone, allDone, minSamples, perAtlasSamples };
   }
 
-  /** Push uniform overrides into every group's view-time composite. */
   refreshAllComposites(overrides: {
     directIntensity?: number;
     giIntensity?: number;
@@ -400,10 +331,6 @@ export class BakeController {
     for (const g of this.bakeGroups) g.composite.refresh(overrides);
   }
 
-  /**
-   * AO-only re-bake - delegates to LightmapBakeResult.rebakeAO and re-binds
-   * each demo group's view-time composite to the freshly-built AO texture.
-   */
   async runAOOnly(opts: {
     samples: number;
     distance: number;
@@ -413,7 +340,8 @@ export class BakeController {
     await this.bakeResult.rebakeAO(opts);
     const fresh = this.bakeResult.groups;
     for (let i = 0; i < this.bakeGroups.length; i++) {
-      const g = this.bakeGroups[i]!;
+      const g = this.bakeGroups[i];
+      if (!g) throw new Error(`[baker] missing demo bake group ${i}`);
       const gv = fresh[i];
       if (!gv) continue;
       g.aoMapper = gv.aoMapper;
@@ -421,11 +349,6 @@ export class BakeController {
     }
   }
 
-  /**
-   * Run dilation+denoise refinement on every group. `onProgress(groupIndex, fraction)`
-   * fires throughout. After the call, every group has a fresh refinement RT;
-   * orchestrator should re-run RenderModeRunner.apply to mount.
-   */
   async runRefinement(
     options: {
       dilationIterations: number;
@@ -440,7 +363,8 @@ export class BakeController {
     if (!this.bakeGroups.length) return;
 
     for (let i = 0; i < this.bakeGroups.length; i++) {
-      const g = this.bakeGroups[i]!;
+      const g = this.bakeGroups[i];
+      if (!g) throw new Error(`[baker] missing demo bake group ${i}`);
       g.refinement?.dispose();
       g.refinement = await runRefinement(
         this.renderer,
@@ -453,7 +377,6 @@ export class BakeController {
     }
   }
 
-  /** Drop every group's refinement RT (revert to raw composite view). */
   clearRefinement(): void {
     for (const g of this.bakeGroups) {
       g.refinement?.dispose();

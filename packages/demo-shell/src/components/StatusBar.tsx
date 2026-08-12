@@ -1,10 +1,11 @@
+import type { JSX } from 'preact';
 import { computed } from '@preact/signals';
 import { bakeProgress, bakeStatus, getOrchestrator, isStale, layout, logBuffer } from 'shared';
 import { ChevronUp, Info, Play, Square } from './icons';
 
 const isBakingC = computed(() => bakeStatus.value === 'baking');
 
-function onBakeClick() {
+function onBakeClick(): void {
   const app = getOrchestrator();
   if (bakeStatus.peek() === 'baking') {
     app?.cancelBake?.();
@@ -14,7 +15,7 @@ function onBakeClick() {
   void app.requestBake();
 }
 
-function toggleLog() {
+function toggleLog(): void {
   layout.value = { ...layout.value, logOpen: !layout.value.logOpen };
 }
 
@@ -23,7 +24,7 @@ function toggleLog() {
  * T-D9 will swap the placeholder render-mode pill for an overlay dropdown
  * inside the viewport itself.
  */
-export function StatusBar() {
+export function StatusBar(): JSX.Element {
   const p = bakeProgress.value;
   const baking = isBakingC.value;
   const stale = isStale.value;
@@ -82,7 +83,7 @@ export function StatusBar() {
   );
 }
 
-function LogPopover() {
+function LogPopover(): JSX.Element {
   const entries = logBuffer.value.slice().reverse();
   return (
     <div class="absolute bottom-full right-2 mb-1 w-[420px] max-h-72 overflow-auto bg-bg-1 border border-border rounded shadow-xl font-mono text-[11px] z-50">

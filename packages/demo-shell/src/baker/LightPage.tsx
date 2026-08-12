@@ -1,3 +1,4 @@
+import type { JSX } from 'preact';
 import { useMemo } from 'preact/hooks';
 import {
   Color,
@@ -23,14 +24,7 @@ import {
 } from 'shared';
 import { getBakerOrchestrator } from './orchestrator';
 
-/**
- * Light tab. Every light - including the scene's default area light - is now
- * an asset-library-style group (with `userData.bakerLightType`). Editing
- * mutates the THREE Light directly so the viewport preview updates in real
- * time. The baker walks the scene and reads each Light via
- * `collectLightsFromScene`; there is no options-mirror.
- */
-export function LightPage() {
+export function LightPage(): JSX.Element | null {
   void optionsTick.value;
   void objectTick.value;
   const id = selectedId.value;
@@ -48,10 +42,6 @@ export function LightPage() {
   );
 }
 
-/**
- * Find the actual Light child inside a light Group (skip helper + target).
- * Returns the first descendant where `isLight === true`.
- */
 function findLightChild(group: Object3D): Light | null {
   let found: Light | null = null;
   group.traverse((c) => {
@@ -65,7 +55,7 @@ function colorToHex(c: Color): string {
   return `#${c.getHexString()}`;
 }
 
-function SceneLightPage({ obj, type }: { obj: Object3D; type: string }) {
+function SceneLightPage({ obj, type }: { obj: Object3D; type: string }): JSX.Element {
   const light = useMemo(() => findLightChild(obj), [obj.uuid]);
   if (!light) {
     return (
@@ -75,8 +65,6 @@ function SceneLightPage({ obj, type }: { obj: Object3D; type: string }) {
     );
   }
 
-  // Field hooks (read directly from the Light each render - `objectTick` causes
-  // re-render after transform/gizmo mutations).
   const colorHex = colorToHex(light.color);
   const setColor = (hex: string): void => {
     light.color.set(new Color(hex));

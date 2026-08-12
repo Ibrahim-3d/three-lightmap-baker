@@ -1,3 +1,4 @@
+import type { JSX } from 'preact';
 import { bakeStatus, dirtyMeshIds, getOrchestrator, isStale } from 'shared';
 import { AlertTriangle } from './icons';
 
@@ -7,13 +8,13 @@ import { AlertTriangle } from './icons';
  * to kick a re-bake. Dirty meshes meanwhile render unlit (intensity 0) so
  * the user can see which objects need rebuilding (Unreal-style).
  */
-export function StaleBanner() {
+export function StaleBanner(): JSX.Element | null {
   const stale = isStale.value;
   const baking = bakeStatus.value === 'baking';
   const dirtyCount = dirtyMeshIds.value.size;
   if ((!stale && dirtyCount === 0) || baking) return null;
 
-  const onClick = () => {
+  const onClick = (): void => {
     const app = getOrchestrator();
     if (!app?.requestBake) return;
     void app.requestBake();

@@ -1,3 +1,4 @@
+import type { JSX } from 'preact';
 import '../menus/index';
 import { compareMode, inspectorTab, layout, type MenuId } from 'shared';
 import { GitCompareArrows, Settings } from './icons';
@@ -22,7 +23,7 @@ function openSettings(): void {
  * row's relative stacking context (Outliner / Inspector / StaleBanner).
  * ScenePicker moved to gallery landing page (no longer in Topbar).
  */
-export function Topbar() {
+export function Topbar(): JSX.Element {
   const compareOn = compareMode.value;
   return (
     <header class="relative z-50 h-9 bg-bg-1/95 backdrop-blur border-b border-border flex items-center px-2 select-none pointer-events-auto">

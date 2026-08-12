@@ -216,7 +216,8 @@ export const generateAtlas = async (
       if (attempt > 0) {
         for (let i = 0; i < geometry.length; i++) {
           const snapshot = snapshots[i];
-          if (snapshot) restoreGeometry(geometry[i]!, snapshot);
+          const targetGeometry = geometry[i];
+          if (snapshot && targetGeometry) restoreGeometry(targetGeometry, snapshot);
         }
       }
       setPackTexelsPerUnit(densityMode, texelsPerUnit);

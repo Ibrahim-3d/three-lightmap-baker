@@ -1,3 +1,4 @@
+import type { JSX } from 'preact';
 import { type PerspectiveCamera } from 'three';
 import {
   BoolField,
@@ -26,10 +27,8 @@ interface BakerOrchestratorLike {
 }
 
 /** Object tab: name + visible + transform numeric inputs. */
-export function ObjectPage() {
-  void objectTick.value; // re-render on transform/visibility writes
-  // Cast to a structural interface to access options without importing the specific
-  // BakerOrchestrator interface from baker-classic, avoiding a circular dependency.
+export function ObjectPage(): JSX.Element {
+  void objectTick.value;
   const app = getOrchestrator() as unknown as BakerOrchestratorLike;
   const obj = lookupSelected(selectedId.value);
   if (!obj) {
@@ -45,7 +44,7 @@ export function ObjectPage() {
   if (meshSelected && options && !options.perMesh[obj.uuid]) {
     options.perMesh[obj.uuid] = { scaleInLightmap: 1.0, exclude: false };
   }
-  const entry = meshSelected && options ? options.perMesh[obj.uuid]! : null;
+  const entry = meshSelected && options ? (options.perMesh[obj.uuid] ?? null) : null;
 
   return (
     <div class="text-[12px]">
@@ -250,7 +249,7 @@ function Vec3Row(props: {
   y: number;
   z: number;
   onChange: (x: number, y: number, z: number) => void;
-}) {
+}): JSX.Element {
   return (
     <Row label={props.label}>
       <NumberField
@@ -272,6 +271,6 @@ function Vec3Row(props: {
   );
 }
 
-function Empty() {
+function Empty(): JSX.Element {
   return <div class="p-2 italic text-text-2 text-[12px]">Nothing selected.</div>;
 }

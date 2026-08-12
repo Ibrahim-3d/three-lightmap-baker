@@ -33,7 +33,7 @@ import {
  */
 type IconProps = JSX.SVGAttributes<SVGSVGElement> & { size?: number | string };
 type IconFC = (props: IconProps) => JSX.Element;
-const cast = <T,>(c: T) => c as unknown as IconFC;
+const cast = <T,>(c: T): IconFC => c as unknown as IconFC;
 
 export const AlertTriangle = cast(LucideAlertTriangle);
 export const Box = cast(LucideBox);

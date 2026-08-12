@@ -1,4 +1,4 @@
-import type { ComponentChildren } from 'preact';
+import type { ComponentChildren, JSX } from 'preact';
 import { primitiveCatalog } from 'shared';
 import { Box, Camera, Circle, Cylinder, Disc, Lightbulb, Square, Sun, Triangle } from './icons';
 
@@ -8,7 +8,7 @@ import { Box, Camera, Circle, Cylinder, Disc, Lightbulb, Square, Sun, Triangle }
  * `application/x-baker-asset` mime - main.tsx listens for the drop on the
  * renderer canvas and routes to `SceneController.addAsset`.
  */
-export function AssetLibrary() {
+export function AssetLibrary(): JSX.Element {
   return (
     <div class="flex-1 overflow-auto bg-bg-1 text-[12px]">
       <Category label="Primitives">
@@ -48,7 +48,7 @@ export function AssetLibrary() {
   );
 }
 
-function Category(props: { label: string; children: ComponentChildren }) {
+function Category(props: { label: string; children: ComponentChildren }): JSX.Element {
   return (
     <div class="border-b border-border/40 last:border-b-0">
       <div class="px-2 py-1 text-[10px] uppercase tracking-wider text-text-2 font-semibold">
@@ -77,8 +77,8 @@ type TileProps = {
   enabled: boolean;
 };
 
-function Tile(props: TileProps) {
-  const onDragStart = (e: DragEvent) => {
+function Tile(props: TileProps): JSX.Element {
+  const onDragStart = (e: DragEvent): void => {
     if (!props.enabled) {
       e.preventDefault();
       return;
@@ -106,7 +106,7 @@ function Tile(props: TileProps) {
   );
 }
 
-function pickIcon(name: TileProps['icon']) {
+function pickIcon(name: TileProps['icon']): typeof Box {
   switch (name) {
     case 'box':
       return Box;

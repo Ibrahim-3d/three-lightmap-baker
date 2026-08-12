@@ -160,14 +160,22 @@ function readMaterialSurface(
   const map = (mapChannel === 1 ? hasUv1 : hasUv) ? requestedMap : null;
   if (map?.matrixAutoUpdate) map.updateMatrix();
   const elements = map?.matrix.elements;
+  const transform: MaterialSurface['transform'] = elements
+    ? [
+        elements[0] ?? 1,
+        elements[1] ?? 0,
+        elements[3] ?? 0,
+        elements[4] ?? 1,
+        elements[6] ?? 0,
+        elements[7] ?? 0,
+      ]
+    : [1, 0, 0, 1, 0, 0];
   return {
     albedo: [candidate.color.r, candidate.color.g, candidate.color.b],
     emissive: emissive ? [emissive.r, emissive.g, emissive.b] : [0, 0, 0],
     map,
     mapChannel,
-    transform: elements
-      ? [elements[0]!, elements[1]!, elements[3]!, elements[4]!, elements[6]!, elements[7]!]
-      : [1, 0, 0, 1, 0, 0],
+    transform,
     wrapS: map?.wrapS ?? 1001,
     wrapT: map?.wrapT ?? 1001,
   };

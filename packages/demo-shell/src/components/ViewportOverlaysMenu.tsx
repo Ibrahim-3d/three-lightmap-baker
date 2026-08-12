@@ -1,18 +1,9 @@
+import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Signal } from '@preact/signals';
 import { showAxes, showGrid } from 'shared';
 import { ChevronDown } from './icons';
 
-/**
- * Top-right viewport overlay - Blender/Unreal-style "Overlays" toggle list.
- * Renders a single pill button that opens a popover with one row per boolean
- * signal (grid, axes). Each row is a click-target with a
- * leading checkbox; clicking flips the underlying signal.
- *
- * Lives in the same horizontal row as `ViewportToggle` and the camera-speed
- * dropdown - the row container handles positioning, this component is
- * pure inline + relatively-anchored popover.
- */
 type Entry = {
   id: string;
   label: string;
@@ -25,20 +16,19 @@ const ENTRIES: Entry[] = [
   { id: 'axes', label: 'World Axes', signal: showAxes },
 ];
 
-export function ViewportOverlaysMenu() {
+export function ViewportOverlaysMenu(): JSX.Element {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement>(null);
 
-  // Touch each signal so the popover re-renders on toggle.
   for (const e of ENTRIES) void e.signal.value;
 
   useEffect(() => {
     if (!open) return;
-    const onDown = (e: MouseEvent) => {
+    const onDown = (e: MouseEvent): void => {
       const a = anchorRef.current;
       if (a && !a.contains(e.target as Node)) setOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => {
+    const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') setOpen(false);
     };
     window.addEventListener('mousedown', onDown);

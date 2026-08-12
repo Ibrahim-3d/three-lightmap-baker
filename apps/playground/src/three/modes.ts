@@ -10,7 +10,6 @@ import { resolveDensityTexelsPerMeter, TexelDensityMaterial } from 'baker-classi
 import type { BakeGroup } from './BakeController';
 import type { RenderModeOptions, SceneObj } from './types';
 
-/** Flip to true locally when debugging render-mode swaps. CLAUDE.md convention. */
 const DEBUG = false;
 
 export type LayerContext = { group: BakeGroup };
@@ -180,10 +179,12 @@ export class RenderModeRunner {
     const meshToGroup = this.deps.getMeshToGroup();
     const visualLight = this.deps.getVisualLight();
     const lightMarker = this.deps.getLightMarker();
-    const requestedLayer = LAYERS.find((l) => l.id === opts.layer) ?? LAYERS[0]!;
+    const fallbackLayer = LAYERS[0];
+    if (!fallbackLayer) return;
+    const requestedLayer = LAYERS.find((l) => l.id === opts.layer) ?? fallbackLayer;
     const probeActive =
       requestedLayer.id === 'probes' ? this.setProbeOnly(true) : (this.setProbeOnly(false), false);
-    const layer = requestedLayer.id === 'probes' && !probeActive ? LAYERS[0]! : requestedLayer;
+    const layer = requestedLayer.id === 'probes' && !probeActive ? fallbackLayer : requestedLayer;
 
     if (requestedLayer.id === 'probes' && probeActive) {
       this.restoreSwappedMaterials();

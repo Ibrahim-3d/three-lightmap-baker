@@ -146,6 +146,7 @@ export class LightmapBaker {
       rawOptions.rendererAdapter ??
       (rawOptions.renderer ? createRendererAdapter(rawOptions.renderer) : null);
 
+    const lightPosition = rawOptions.light?.position;
     this.opts = {
       samples: rawOptions.samples ?? 96,
       castsPerFrame: rawOptions.castsPerFrame ?? 5,
@@ -157,9 +158,9 @@ export class LightmapBaker {
       texelsPerMeter: rawOptions.texelsPerMeter ?? 0,
       perMesh: rawOptions.perMesh ?? {},
       light: {
-        position: Array.isArray(rawOptions.light?.position)
-          ? new Vector3(...(rawOptions.light!.position as unknown as [number, number, number]))
-          : (rawOptions.light?.position ?? new Vector3(0, 10, 0)),
+        position: Array.isArray(lightPosition)
+          ? new Vector3(...(lightPosition as unknown as [number, number, number]))
+          : (lightPosition ?? new Vector3(0, 10, 0)),
         color: rawOptions.light?.color ?? 0xffffff,
         intensity: rawOptions.light?.intensity ?? 2.0,
         size: rawOptions.light?.size ?? 1.0,

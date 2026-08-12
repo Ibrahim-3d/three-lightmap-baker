@@ -208,8 +208,9 @@ export function binPackMeshes(meshes: Mesh[], opts: BinPackOptions): BinAssignme
 
     let placedBin = -1;
     for (let i = 0; i < binFills.length; i++) {
-      if (binFills[i]! + frac <= fillRatio) {
-        binFills[i] = binFills[i]! + frac;
+      const currentFill = binFills[i] ?? 0;
+      if (currentFill + frac <= fillRatio) {
+        binFills[i] = currentFill + frac;
         placedBin = i;
         break;
       }

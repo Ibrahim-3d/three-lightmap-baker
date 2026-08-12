@@ -26,8 +26,6 @@ import { buildBVHScene, disposeBVHSceneData } from 'pt-renderer';
 import { ptSettings } from 'shared';
 import bvhFrag from 'pt-renderer/shaders/bvh-scene.frag.glsl?raw';
 
-// ── Setup ─────────────────────────────────────────────────────────────────────
-
 const renderer = new WebGLRenderer({ antialias: true, powerPreference: 'low-power' });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -48,8 +46,6 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
 });
 
-// ── Scene (Cornell box) ───────────────────────────────────────────────────────
-
 const scene = new Scene();
 scene.background = new Color(0x0a0a0a);
 
@@ -60,7 +56,8 @@ const ROOM = 10;
 const HALF = ROOM / 2;
 const T = 0.2;
 
-const mat = (c: number) => new MeshStandardMaterial({ color: c, roughness: 0.95 });
+const mat = (c: number): MeshStandardMaterial =>
+  new MeshStandardMaterial({ color: c, roughness: 0.95 });
 
 const addBox = (
   w: number,
@@ -70,20 +67,20 @@ const addBox = (
   x: number,
   y: number,
   z: number,
-) => {
+): Mesh => {
   const mesh = new Mesh(new BoxGeometry(w, h, d), m);
   mesh.position.set(x, y, z);
   root.add(mesh);
   return mesh;
 };
 
-addBox(ROOM, T, ROOM, mat(0xf0f0f0), 0, -T / 2, 0); // floor
-addBox(ROOM, T, ROOM, mat(0xf0f0f0), 0, ROOM + T / 2, 0); // ceiling
-addBox(ROOM, ROOM, T, mat(0xf0f0f0), 0, HALF, -HALF - T / 2); // back
-addBox(T, ROOM, ROOM, mat(0xd62728), -HALF - T / 2, HALF, 0); // left red
-addBox(T, ROOM, ROOM, mat(0x2ca02c), HALF + T / 2, HALF, 0); // right green
-addBox(3, 6, 3, mat(0xe8e8e8), -1.8, 3, -1.5); // tall block
-addBox(3, 3, 3, mat(0xe8e8e8), 1.8, 1.5, 1.5); // short block
+addBox(ROOM, T, ROOM, mat(0xf0f0f0), 0, -T / 2, 0);
+addBox(ROOM, T, ROOM, mat(0xf0f0f0), 0, ROOM + T / 2, 0);
+addBox(ROOM, ROOM, T, mat(0xf0f0f0), 0, HALF, -HALF - T / 2);
+addBox(T, ROOM, ROOM, mat(0xd62728), -HALF - T / 2, HALF, 0);
+addBox(T, ROOM, ROOM, mat(0x2ca02c), HALF + T / 2, HALF, 0);
+addBox(3, 6, 3, mat(0xe8e8e8), -1.8, 3, -1.5);
+addBox(3, 3, 3, mat(0xe8e8e8), 1.8, 1.5, 1.5);
 
 const sphere = new Mesh(new SphereGeometry(1.0, 48, 32), mat(0xf5f5f5));
 sphere.position.set(2.4, 1.0, 3.0);
@@ -95,8 +92,6 @@ light.position.set(0, ROOM - 0.5, 0);
 scene.add(light);
 
 scene.updateMatrixWorld(true);
-
-// ── PT renderer ───────────────────────────────────────────────────────────────
 
 const pt = new PTRenderer({
   fragmentShader: bvhFrag,
@@ -128,7 +123,7 @@ void (async () => {
   controls.addEventListener('change', () => pt.notifyCameraMoving());
 
   let last = performance.now();
-  const tick = () => {
+  const tick = (): void => {
     requestAnimationFrame(tick);
     const now = performance.now();
     pt.render(renderer, camera, now - last);
