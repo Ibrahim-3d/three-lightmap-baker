@@ -199,15 +199,22 @@ function makeAtlasMesh(mesh: Mesh, meshIndex: number): Mesh {
       ? (mesh.material[materialIndex] ?? mesh.material[0])
       : mesh.material;
     const surface = candidate as { color?: Color; map?: Texture | null } | undefined;
-    surfaceAlbedoMaterial.uniforms.baseColor!.value.copy(surface?.color ?? whiteColor);
+    const baseColor = surfaceAlbedoMaterial.uniforms.baseColor;
+    const baseColorMap = surfaceAlbedoMaterial.uniforms.baseColorMap;
+    const baseColorUvChannel = surfaceAlbedoMaterial.uniforms.baseColorUvChannel;
+    const baseColorMapTransform = surfaceAlbedoMaterial.uniforms.baseColorMapTransform;
+    if (!baseColor || !baseColorMap || !baseColorUvChannel || !baseColorMapTransform) {
+      throw new Error('[baker] surface-albedo material uniforms are incomplete');
+    }
+    baseColor.value.copy(surface?.color ?? whiteColor);
     const requestedMap = surface?.map ?? null;
     const mapChannel = requestedMap?.channel === 1 ? 1 : 0;
     const sourceUvName = mapChannel === 1 ? 'uv1' : 'uv';
     const map = requestedMap && mesh.geometry.hasAttribute(sourceUvName) ? requestedMap : whiteMap;
     if (map.matrixAutoUpdate) map.updateMatrix();
-    surfaceAlbedoMaterial.uniforms.baseColorMap!.value = map;
-    surfaceAlbedoMaterial.uniforms.baseColorUvChannel!.value = mapChannel;
-    surfaceAlbedoMaterial.uniforms.baseColorMapTransform!.value.copy(map.matrix);
+    baseColorMap.value = map;
+    baseColorUvChannel.value = mapChannel;
+    baseColorMapTransform.value.copy(map.matrix);
   };
   return clone;
 }
