@@ -31,35 +31,21 @@ import {
 import { buildBVHScene, disposeBVHSceneData, type BVHSceneData } from 'pt-renderer';
 import { PTBakeMaterial } from './PTBakeMaterial';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
 export interface PTBakeOptions {
-  /** Lightmap resolution in texels. Default 1024. */
   size?: number;
-  /** Total samples to accumulate. More → less noise. Default 128. */
   samples?: number;
-  /** Ambient sky intensity (0–4). Default 1. */
   skyIntensity?: number;
-  /** Light DataTexture from PTController (packed with current scene lights). */
   lightTex?: DataTexture;
-  /** Num lights currently packed in lightTex. Default 0. */
   numLights?: number;
-  /** Called each sample with progress 0..1. */
   onProgress?: (pct: number) => void;
-  /** Yield interval in samples (yield to browser each N samples). Default 4. */
   yieldEvery?: number;
 }
 
 export interface PTBakeResult {
-  /** Accumulated radiance / sampleCount - ready to use as lightMap. */
   texture: WebGLRenderTarget;
-  /** Number of samples accumulated. */
   samples: number;
-  /** Dispose all GPU resources owned by this result. */
   dispose(): void;
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function makeEmptyLightTex(): DataTexture {
   const data = new Float32Array(64 * 4);
@@ -85,7 +71,6 @@ function makeRT(size: number): WebGLRenderTarget {
   return rt;
 }
 
-/** Divide pass: normalizes the accumulated buffer by sampleCount. */
 const _divideVert = `
 void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }
 `;
@@ -104,18 +89,15 @@ function yield_(): Promise<void> {
   return new Promise((r) => setTimeout(r, 0));
 }
 
-// ── PTBaker ───────────────────────────────────────────────────────────────────
+function uniform(material: ShaderMaterial, name: string): { value: unknown } {
+  const entry = material.uniforms[name];
+  if (!entry) throw new Error(`[pt-baker] missing ${name} uniform`);
+  return entry;
+}
 
 export class PTBaker {
   private ownedLightTex: DataTexture | null = null;
 
-  /**
-   * Bake a lightmap for the given meshes.
-   *
-   * Meshes must have UV2 coordinates (xatlas or manual).  Scene lights should
-   * already be packed into `options.lightTex` by the caller (typically from an
-   * active PTController).
-   */
   async bake(
     renderer: WebGLRenderer,
     meshes: Mesh[],
@@ -132,14 +114,10 @@ export class PTBaker {
     const rtB = makeRT(size);
     const rtOut = makeRT(size);
 
-    // Bake material - one instance, shared across all meshes in the scene.
-    // The albedo array texture (with layer-0 white fallback) lives inside
-    // sceneData; PTBakeMaterial wires it up automatically.
     const mat = new PTBakeMaterial(sceneData, lightTex);
-    mat.uniforms['uNumPTLights']!.value = numLights;
-    mat.uniforms['uSkyLightIntensity']!.value = options.skyIntensity ?? 1.0;
+    uniform(mat, 'uNumPTLights').value = numLights;
+    uniform(mat, 'uSkyLightIntensity').value = options.skyIntensity ?? 1.0;
 
-    // Divide material - renders accumulated RT → normalised output.
     const divideMat = new ShaderMaterial({
       vertexShader: _divideVert,
       fragmentShader: _divideFrag,
@@ -150,12 +128,8 @@ export class PTBaker {
       glslVersion: '300 es' as unknown as undefined,
     });
 
-    // UV-space pass: render every mesh into the ping-pong RT.
-    // We swap the mesh's material for PTBakeMaterial, render to RT, restore.
     const originalMaterials = new Map<Mesh, Mesh['material']>();
-    for (const m of meshes) {
-      originalMaterials.set(m, m.material);
-    }
+    for (const m of meshes) originalMaterials.set(m, m.material);
 
     const orthoCam = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
     const passScene = new Scene();
@@ -167,47 +141,34 @@ export class PTBaker {
 
     try {
       for (let i = 0; i < samples; i++) {
-        // Update per-sample uniforms
-        mat.uniforms['uSampleCounter']!.value = i + 1;
-        mat.uniforms['uFrameCounter']!.value = i + 1;
-        mat.uniforms['uRandomVec2']!.value = { x: Math.random(), y: Math.random() };
+        uniform(mat, 'uSampleCounter').value = i + 1;
+        uniform(mat, 'uFrameCounter').value = i + 1;
+        uniform(mat, 'uRandomVec2').value = { x: Math.random(), y: Math.random() };
         mat.setPreviousTexture(currentSrc);
 
-        // Apply bake material to every mesh
-        for (const m of meshes) {
-          m.material = mat;
-        }
+        for (const m of meshes) m.material = mat;
 
-        // Render into destination RT
         renderer.setRenderTarget(currentDst);
         renderer.clear();
-        // Each mesh renders in its own UV2 space; the bake vertex shader sets
-        // gl_Position from uv2 directly, so any camera will do.
         for (const m of meshes) {
           const tmpScene = new Scene();
           tmpScene.add(m);
           renderer.render(tmpScene, orthoCam);
-          // Restore parent
           if ((m as Object3D).parent === tmpScene) tmpScene.remove(m);
         }
 
-        // Swap ping-pong
         [currentSrc, currentDst] = [currentDst, currentSrc];
-
         options.onProgress?.((i + 1) / samples);
-
         if ((i + 1) % yieldEvery === 0) await yield_();
       }
 
-      // Restore original materials
       for (const m of meshes) {
         const orig = originalMaterials.get(m);
         if (orig) m.material = orig;
       }
 
-      // Divide pass: accumulated radiance / sample count → rtOut
-      divideMat.uniforms['tAccum']!.value = currentSrc.texture;
-      divideMat.uniforms['uSampleCount']!.value = samples;
+      uniform(divideMat, 'tAccum').value = currentSrc.texture;
+      uniform(divideMat, 'uSampleCount').value = samples;
       renderer.setRenderTarget(rtOut);
       renderer.clear();
       renderer.render(passScene, orthoCam);
@@ -234,10 +195,6 @@ export class PTBaker {
   }
 }
 
-/**
- * Convenience: build BVH + bake in one call.
- * Caller is responsible for disposing the returned result and the BVHSceneData.
- */
 export async function bakePTLightmap(
   renderer: WebGLRenderer,
   scene: Scene,
