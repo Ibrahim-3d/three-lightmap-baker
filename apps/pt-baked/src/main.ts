@@ -25,6 +25,12 @@ import { PTBaker } from 'pt-baker';
 import { generateAtlases, loadXAtlasThree } from 'baker-classic';
 import bvhFrag from 'pt-renderer/shaders/bvh-scene.frag.glsl?raw';
 
+function requireElement(id: string): HTMLElement {
+  const element = document.getElementById(id);
+  if (!element) throw new Error(`[pt-baked] missing #${id} element`);
+  return element;
+}
+
 const renderer = new WebGLRenderer({ antialias: true, powerPreference: 'low-power' });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -126,8 +132,7 @@ async function initPT(): Promise<void> {
   controls.addEventListener('change', () => pt?.notifyCameraMoving());
 }
 
-const statusEl = document.getElementById('status');
-if (!statusEl) throw new Error('[pt-baked] missing #status element');
+const statusEl = requireElement('status');
 
 let baking = false;
 
@@ -170,8 +175,7 @@ async function runBake(): Promise<void> {
   statusEl.textContent = `Done - ${SAMPLES} samples, 1024² px`;
 }
 
-const bakeButton = document.getElementById('btn-bake');
-if (!bakeButton) throw new Error('[pt-baked] missing #btn-bake element');
+const bakeButton = requireElement('btn-bake');
 bakeButton.addEventListener('click', () => {
   void runBake();
 });
