@@ -208,6 +208,8 @@ function buildAlbedoMapAtlas(
     depthTest: false,
     depthWrite: false,
   });
+  const sourceMapUniform = material.uniforms.sourceMap;
+  if (!sourceMapUniform) throw new Error('[baker] material atlas is missing sourceMap uniform');
   const quad = new Mesh(new PlaneGeometry(2, 2), material);
   const camera = new OrthographicCamera();
   const previousTarget = renderer.getRenderTarget();
@@ -226,12 +228,13 @@ function buildAlbedoMapAtlas(
     renderer.setScissorTest(false);
     renderer.clear();
     for (let index = 0; index < uniqueMaps.length; index++) {
-      const map = uniqueMaps[index]!;
+      const map = uniqueMaps[index];
+      if (!map) continue;
       const column = index % grid;
       const row = Math.floor(index / grid);
       const x = column * stride + MAP_GUTTER;
       const y = row * stride + MAP_GUTTER;
-      material.uniforms.sourceMap!.value = map;
+      sourceMapUniform.value = map;
       renderer.setViewport(x, y, cellSize, cellSize);
       renderer.setScissor(x, y, cellSize, cellSize);
       renderer.setScissorTest(true);
