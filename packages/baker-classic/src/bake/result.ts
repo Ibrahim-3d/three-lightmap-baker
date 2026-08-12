@@ -148,7 +148,8 @@ export class LightmapBakeResult {
         .pop() || 'lightmap';
     const groups = this.internals.groups;
     for (let i = 0; i < groups.length; i++) {
-      const g = groups[i]!;
+      const g = groups[i];
+      if (!g) throw new Error(`[baker] missing bake group ${i}`);
       // When superSample > 1, export the downscaled (target-res) texture, not
       // the internal-res source - exportLightmap reads pixels at the supplied
       // resolution and would otherwise read past the end of the buffer.
@@ -203,7 +204,8 @@ export class LightmapBakeResult {
   ): Promise<void> {
     const groups = this.internals.groups;
     for (let gi = 0; gi < groups.length; gi++) {
-      const g = groups[gi]!;
+      const g = groups[gi];
+      if (!g) throw new Error(`[baker] missing bake group ${gi}`);
       const aoOpts: AORaycastOptions = {
         resolution: g.internalResolution,
         aoSamples: opts.samples,
