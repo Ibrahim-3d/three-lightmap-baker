@@ -1,3 +1,4 @@
+import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { AlertTriangle } from './icons';
 
@@ -7,11 +8,11 @@ import { AlertTriangle } from './icons';
  * full-screen splash that swallows pointer events below 1024px wide OR on
  * coarse-pointer devices (phones, tablets without a stylus).
  */
-export function MobileSplash() {
+export function MobileSplash(): JSX.Element | null {
   const [block, setBlock] = useState(() => computeBlock());
 
   useEffect(() => {
-    const handler = () => setBlock(computeBlock());
+    const handler = (): void => setBlock(computeBlock());
     window.addEventListener('resize', handler);
     const mm = window.matchMedia('(pointer: coarse)');
     mm.addEventListener?.('change', handler);
