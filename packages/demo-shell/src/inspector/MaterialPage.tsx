@@ -1,3 +1,4 @@
+import type { JSX } from 'preact';
 import {
   BoolField,
   bumpObject,
@@ -20,8 +21,8 @@ import {
  * changes are view-time only (don't invalidate the bake). Emissive changes
  * DO change baked irradiance - flag stale.
  */
-export function MaterialPage() {
-  void objectTick.value; // re-render on color/material writes
+export function MaterialPage(): JSX.Element {
+  void objectTick.value;
   const obj = lookupSelected(selectedId.value);
   if (!isMesh(obj)) {
     return <Empty msg="Material editor needs a mesh selected." />;
@@ -112,6 +113,6 @@ export function MaterialPage() {
   );
 }
 
-function Empty(props: { msg: string }) {
+function Empty(props: { msg: string }): JSX.Element {
   return <div class="p-2 italic text-text-2 text-[12px]">{props.msg}</div>;
 }
