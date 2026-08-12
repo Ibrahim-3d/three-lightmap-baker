@@ -1,3 +1,4 @@
+import type { JSX } from 'preact';
 import { inspectorTab, layout, panelRegistry, panelTick, type PanelDescriptor } from 'shared';
 import { MaterialPage } from '../inspector/MaterialPage';
 import { ObjectPage } from '../inspector/ObjectPage';
@@ -12,8 +13,8 @@ const BUILTIN_TABS: ReadonlyArray<PanelDescriptor> = [
   { id: 'material', label: 'Material', component: MaterialPage },
 ];
 
-export function Inspector() {
-  void panelTick.value; // re-render when packages register/unregister panels
+export function Inspector(): JSX.Element {
+  void panelTick.value;
   const active = inspectorTab.value;
   const registered = panelRegistry.all().filter((p) => p.when?.() ?? true);
   const tabs: PanelDescriptor[] = [...BUILTIN_TABS, ...registered];
