@@ -167,8 +167,10 @@ function validateDescriptor(
   }
   const min = validateVector(descriptor.bounds.min, 'bounds.min');
   const max = validateVector(descriptor.bounds.max, 'bounds.max');
-  if (min.some((value, axis) => value >= max[axis]!)) {
-    throw new Error('[baker:probes] native probe bounds must have positive finite extents');
+  for (const axis of [0, 1, 2] as const) {
+    if (min[axis] >= max[axis]) {
+      throw new Error('[baker:probes] native probe bounds must have positive finite extents');
+    }
   }
   const counts = validateNativeCounts(descriptor.counts);
   probeCountFor(counts, maxProbes);
