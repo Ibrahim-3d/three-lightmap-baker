@@ -1,3 +1,4 @@
+import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { flyActive, flySpeed, cameraFOV } from 'shared';
 import { ChevronDown } from './icons';
@@ -25,7 +26,7 @@ const FOV_STEP = 1;
  *
  * Lives inline in the viewport overlay row - positioning handled by parent.
  */
-export function ViewportCameraSettings() {
+export function ViewportCameraSettings(): JSX.Element {
   const speed = flySpeed.value;
   const fov = cameraFOV.value;
   const active = flyActive.value;
@@ -35,11 +36,11 @@ export function ViewportCameraSettings() {
 
   useEffect(() => {
     if (!open) return;
-    const onDown = (e: MouseEvent) => {
+    const onDown = (e: MouseEvent): void => {
       const a = anchorRef.current;
       if (a && !a.contains(e.target as Node)) setOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => {
+    const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') setOpen(false);
     };
     window.addEventListener('mousedown', onDown);
@@ -75,7 +76,6 @@ export function ViewportCameraSettings() {
           role="menu"
           class="absolute top-full right-0 mt-1 w-64 bg-bg-1 border border-border rounded-md shadow-xl p-4 flex flex-col gap-4"
         >
-          {/* Speed Section */}
           <div>
             <div class="flex items-center justify-between mb-2">
               <span class="text-[10px] uppercase tracking-wider font-semibold text-text-2">
@@ -101,7 +101,6 @@ export function ViewportCameraSettings() {
             </div>
           </div>
 
-          {/* FOV Section */}
           <div>
             <div class="flex items-center justify-between mb-2">
               <span class="text-[10px] uppercase tracking-wider font-semibold text-text-2">
