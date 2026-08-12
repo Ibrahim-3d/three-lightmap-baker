@@ -1,22 +1,32 @@
-# API Status (2026-08-11)
+# API Status — v1.0.0 Release Candidate
 
-The API is under active development and is not approved for public npm
-publication. Package-local validation does not change that status.
+`three-lightmap-baker` is at the v1 npm release-candidate stage.
 
-## Current public API
+The public package is separated from the demo/editor code and produces ESM, CommonJS and TypeScript declaration outputs. The tested Three.js baseline is r185 and the peer dependency is intentionally constrained to:
 
-```ts
-new LightmapBaker(renderer, options?)
-new LightmapBaker({ renderer, ...options })
-new LightmapBaker({ rendererAdapter, ...options })
-await baker.bake(scene, hooks?)
+```text
+three >=0.185.1 <0.186.0
 ```
 
-The first bake automatically initializes the packaged xatlas JavaScript/WASM
-assets. `loadXAtlasThree(options?)` remains public only for eager preload or
-custom asset URLs; normal consumers do not need to call it.
+## Primary public API
 
-`LightmapBakeResult` currently provides:
+```ts
+import { LightmapBaker } from 'three-lightmap-baker';
+
+const baker = new LightmapBaker(renderer, options);
+// or
+const baker = new LightmapBaker({ renderer, ...options });
+// or
+const baker = new LightmapBaker({ rendererAdapter, ...options });
+
+const result = await baker.bake(scene, hooks);
+```
+
+The first bake initializes the packaged xatlas JavaScript/WASM assets automatically. `loadXAtlasThree()` remains public for eager preload or custom asset URLs.
+
+## `LightmapBakeResult`
+
+A successful bake returns a `LightmapBakeResult` with:
 
 - `lightmaps`
 - `groups`
@@ -28,7 +38,46 @@ custom asset URLs; normal consumers do not need to call it.
 - `rebakeAO(...)`
 - `dispose()`
 
-Probe APIs are exported separately so the core lightmap bake remains minimal:
+The result owns its GPU resources. `dispose()` should be called when the bake result is no longer required.
+
+Persistent application of lightmaps is safe for shared material instances: baked meshes receive package-owned variants when necessary, unbound meshes keep their original material objects, repeated identical `apply()` calls are idempotent, and disposal restores the original ownership layer.
+
+## Native probe API
+
+Preferred dynamic-object lighting API:
+
+```ts
+captureLightmappedProbeGrid(renderer, scene, lightmapBakeResult, options?)
+captureLightmappedProbeGridFromJSON(
+  renderer,
+  scene,
+  lightmapBakeResult,
+  descriptor,
+  options?,
+)
+```
+
+`captureLightmappedProbeGrid()` owns the baked-scene capture policy:
+
+- mounts final/refined lightmaps;
+- isolates completed static renderables;
+- hides live lights and non-static renderables;
+- disables environment/background and display transforms;
+- captures Three.js' native GPU L2 SH `LightProbeGrid`;
+- restores every temporary scene/material/renderer mutation in `finally`.
+
+The lower-level native capture API remains public for integrations that intentionally own capture-state policy:
+
+```ts
+captureNativeLightProbeGrid(renderer, scene, source, options?)
+captureNativeLightProbeGridFromJSON(renderer, scene, descriptor, options?)
+```
+
+Native capture should normally use `bounces: 0` when sampling a scene whose static lightmaps already contain GI.
+
+## Legacy probe API
+
+The earlier RGB probe-volume runtime remains available as an explicit fallback:
 
 ```ts
 generateProbeGrid(source, options?)
@@ -39,128 +88,146 @@ bindProbeLighting(mesh, volume, options?)
 ProbeVolume.fromJSON(json)
 volume.sample(worldPosition)
 volume.toJSON()
-
-captureLightmappedProbeGrid(renderer, scene, lightmapBakeResult, options?)
-captureLightmappedProbeGridFromJSON(renderer, scene, lightmapBakeResult, descriptor, options?)
 ```
 
-The `captureLightmappedProbeGrid` pair is the preferred native API. It mounts
-completed lightmaps, isolates baked static renderables, disables live and
-environment lighting plus display transforms, captures, and restores every
-scene/renderer/material mutation in `finally`. The lower-level native capture
-API remains available when callers intentionally own capture-state policy.
+Native Three.js probes are preferred for v1 because they preserve directional L2 spherical-harmonic information and use Three.js' standard-material runtime integration.
 
-## Intended API direction
+## Implemented v1 capabilities
 
-- Keep the browser-first API minimal and stable.
-- Keep explicit renderer-injected paths for advanced and automation use.
-- Expand the optional renderer/context adapter boundary into real offscreen-browser and future headless implementations.
-- Preserve the current result lifecycle (`apply/export/dispose`) while expanding non-destructive utilities.
-- Keep probe generation outside the core `bake()` call so consumers can choose whether dynamic-object lighting is needed.
-- Keep real-time companion passes optional. They should enhance baked lighting, not replace it.
+### Baking
 
-## Claim audit
+- Browser/WebGL lightmap baking.
+- Path-traced direct and indirect GI.
+- 1–4 configurable bounce depth.
+- BVH acceleration through `three-mesh-bvh`.
+- Automatic lightmap UV generation through packaged xatlas JS/WASM.
+- Multiple atlas/resolution groups.
+- Supersampling/downscale workflow.
+- Progressive accumulation hooks and cancellation.
+- Context-loss guard and timeout protection.
 
-### Fully implemented in code
+### Material transport
 
-- Path-traced lightmap baking with configurable bounces.
-- BVH-accelerated ray tracing (`three-mesh-bvh`).
-- Auto UV2 generation (`xatlas-three`).
-- Direct and indirect GI accumulation.
-- Base-color texture transport at secondary hits using `material.color * material.map`.
-- Geometry-group material-slot lookup retaining mesh, slot, UV, and post-BVH triangle identity.
-- AO pass, dilation, denoise, and progressive accumulation hooks.
-- Browser demo in `apps/playground`.
-- Supersample/downscale workflow.
-- Package build output for ESM, CJS, and TypeScript declarations.
-- Optional `LightmapRendererAdapter` boundary with `createRendererAdapter()` and `setRendererAdapter()`.
-- Runtime capability matrix through `getLightmapRuntimeCapabilities()`.
-- Demo/editor bake cancellation using `BakeHooks.signal`.
-- Project JSON save/load for built-in presets, imported GLB/glTF payloads, editor options, baked lightmaps, and asset additions.
-- Outliner selection, framing, transform controls, camera objects, undo/redo, and asset-library workflows.
-- Direct, indirect, AO, raw lightmap, albedo, unlit albedo, position, normal, texel-density, and atlas inspection views.
-- Regular RGB light-probe volume generation from the completed lightmap bake.
-- Preferred native Three.js `LightProbeGrid` capture from the completed baked static scene.
-- GPU-resident L2 SH atlas interpolation through the stock `WebGLRenderer` standard-material path.
-- Native `LightProbeGridHelper`, editor runtime selector, capture-size controls, animated dynamic-object demo, and recapture descriptors in Project JSON / `.3dl` version 1.
-- Legacy RGB generation, CPU interpolation, custom material binding, diagnostics, and project loading remain supported as an explicit fallback.
-- Trilinear probe sampling and JSON serialization.
-- Lightmap-atlas-derived probe irradiance with progress, abort handling, and empty-probe diffusion.
-- Textured, material-group-aware source diffuse projection using the same
-  rasterized `material.color * material.map` convention as bounce transport.
-- Probe bake diagnostics for source and projected ranges, contribution validity,
-  empty/fill counts, final percentiles, black-probe classification, bounds, and
-  grid dimensions.
-- Target/maximum probe spacing with endpoint-fit actual spacing exposed in
-  diagnostics. Actual per-axis spacing never exceeds the target, and layouts
-  exceeding `maxProbes` fail instead of silently reducing density.
-- A separate cyan positions-only layout preview that is never persisted or used
-  as generated lighting.
-- Fixed, display-only `c / (1 + c)` debug tone mapping. It maps zero exactly to
-  zero and never changes stored, interpolated, serialized, or runtime values.
-- Public probe generation, evaluation, debug-view, and dynamic-object binding APIs.
-- Package-owned baked-scene native capture policy; the playground owns only
-  runtime selection, visualization, persistence integration, and cleanup.
-- Application-owned probe animation updates; no independent probe RAF loop.
-- Dedicated Probes inspector page with generation and runtime controls.
-- Moving dynamic white-sphere demonstration excluded from static lightmap baking.
-- Light Probes render layer that isolates the debug field and restores previous object visibility afterward.
-- Optional probe volume and probe settings in Project JSON / `.3dl` version 1.
-- Probe restoration on project load.
-- Automatic probe invalidation on scene replacement and before a new classic lightmap bake.
-- PBR `MeshStandardMaterial` integration that adds probe irradiance to `reflectedLight.indirectDiffuse` rather than emissive.
-- Diffuse BRDF and metallic-energy handling through `material.diffuseColor * RECIPROCAL_PI`.
-- Focused probe tests covering the pure volume, shader hook, project restoration, demo creation, probe-only visibility, and irradiance generated by a real bake.
-- Self-contained xatlas JavaScript/WASM assets with an offline browser smoke that rejects third-party CDN requests.
-- Deterministic single-GPU-worker browser regression suite, including focused
-  textured/material-group transport and native/legacy probe coverage.
+- `MeshStandardMaterial.color`.
+- Base-color `material.map` transport.
+- UV0 (`map.channel = 0`).
+- UV1 (`map.channel = 1`).
+- Standard sRGB base-color decoding in the validated path.
+- Geometry groups and material arrays.
+- Per-triangle mesh/material-slot identity retained after BVH reordering.
+- Shared-material-safe lightmap application.
+- Solid emissive color.
 
-### Locally validated on 2026-08-11
+The diffuse GI convention is:
 
-- TypeScript source and examples compile.
-- The 18-test browser-smoke gate, focused material GI checks, and native probe
-  regression checks pass sequentially without retries.
-- A Draft bake generates a dense 5,832-probe Cornell field with measurable red
-  and green bounce, truthful debug colors, and an animated PBR demo object whose
-  sampled irradiance changes with position.
-- Five back-to-back Draft bakes complete without WebGL context loss.
-- ESM, CommonJS, TypeScript declarations, installed tarball imports, and embedded xatlas assets pass local checks. No package was published.
-- The production dependency audit reports no known vulnerabilities.
+```text
+surface albedo = material.color × sampled material.map
+```
 
-### Partially implemented
+### AO and refinement
 
-- Automation/runtime work remains WebGL/browser-bound for actual baking.
-- README launch proof has Cornell screenshots and measurements, but a stronger custom architectural showcase remains desirable.
-- Debug tooling is functional, but committed presentation captures for every channel and probes are still incomplete.
-- Probe color quality, performance, and persistence size still need measurement on larger scenes and denser volumes.
+- Standalone AO ray pass.
+- View-time AO intensity/exponent/enabled updates.
+- AO-only rebake without rerunning GI.
+- Chart dilation.
+- Bilateral denoising.
+- Final composite/refinement textures.
 
-### Optional post-v1 work
+### Export and inspection
 
-- Optional SSGI companion pass for small real-time screen-space bounce.
-- GTAO-style stronger contact-occlusion pass or integration story.
-- Temporal accumulation and denoise experiments for noisy real-time companion passes.
-- WebGPU capability probe and experimental WebGPU bake/probe path.
-- Custom-room/larger-scene visual regression automation after the custom room exists.
-- True Node.js headless baking adapter/runtime.
-- True non-browser runtime once a Node-compatible renderer strategy is selected.
-- Live per-PR preview deployment URLs.
-- Equivalent native `LightProbeGrid` support in `WebGPURenderer` (upstream Three.js does not provide it yet).
-- Probe visibility/occlusion, relocation, validity classification, and reflection probes.
+- PNG export.
+- EXR export.
+- Raw Float32 export utility.
+- Direct, indirect, AO, composite, position, normal and surface-albedo group textures.
+- Shared bake BVH exposed for advanced integrations.
 
-## Known limitations
+### Dynamic lighting
 
-- Requires a WebGL2 renderer and `EXT_color_buffer_float`.
-- Three 0.185.1 is the tested baseline and peer range is constrained to r185.
-- `export()` uses browser download behavior rather than direct filesystem writes.
-- E2E Playwright tests require installed Chromium binaries.
-- Package management is pnpm through Corepack.
-- Project JSON v1 is an editor convenience format, not the npm package API.
-- Probe generation uses GPU texture readback.
-- Native probe textures are GPU-owned and are recaptured from the persisted baked scene on project load; they are not serialized byte-for-byte.
-- Base-color maps are resampled into a bounded GPU atlas with tiles capped at
-  512 px; this is not lossless preservation of arbitrarily large textures.
-- Emissive color is supported; `emissiveMap` transport is not yet implemented.
-- Normal, roughness, metalness, alpha, vertex-color, and custom-shader material
-  parity are outside the diffuse GI material model.
-- Dynamic-object sampling currently uses the object origin plus an optional offset.
-- High probe counts produce large JSON arrays until compact binary persistence is added.
+- Preferred native Three.js `LightProbeGrid` capture.
+- GPU L2 SH probe atlas/interpolation through Three's WebGL material pipeline.
+- Native helper/debug integration in the demo.
+- Native capture descriptors and recapture on project restoration.
+- Legacy RGB volume fallback with CPU trilinear interpolation and custom binding.
+
+### Packaging
+
+- Public library barrel under `packages/baker-classic`.
+- Demo/editor UI kept outside the published library package.
+- ESM output.
+- CommonJS output.
+- TypeScript declarations.
+- `three` as a peer dependency.
+- `@types/three`, `three-mesh-bvh` and `xatlas-three` as published dependencies.
+- Self-contained xatlas JavaScript/WASM assets.
+- Clean isolated tarball import/type smoke coverage.
+
+## Current defaults
+
+High-level `LightmapBaker` defaults:
+
+| Option | Default |
+| --- | ---: |
+| `samples` | `96` |
+| `castsPerFrame` | `5` |
+| `bounces` | `1` |
+| `resolution` | `1024` |
+| `superSample` | `1` |
+| `denoise` | `true` |
+| GI enabled | `true` |
+| AO enabled | `true` |
+
+The demo/editor's intended native-probe capture intensity default is `3.2`.
+
+## Validation model
+
+The repository separates hardware-dependent GPU output assertions from software/headless CI checks.
+
+GitHub CI validates the checks that are reliable on its headless renderer, including:
+
+- TypeScript source/examples;
+- lint and formatting;
+- package/demo builds;
+- bundle budgets;
+- package dependency contract;
+- ESM/CJS/declaration/tarball imports;
+- scene preset asset loading;
+- deterministic non-hardware material/probe/browser workflows.
+
+Hardware-sensitive GI output tests remain part of the full local/release suite and are run on a real supported GPU before publication. The v1 release candidate has been manually/local validated on an NVIDIA RTX-class hardware path for:
+
+- textured secondary-bounce transport;
+- UV0 / UV1 / standard sRGB base-color transport;
+- Cornell red/green GI output after preset switching;
+- Gym / Desert / Backrooms scene loading.
+
+## Known v1 limitations
+
+- Requires WebGL 2 and `EXT_color_buffer_float`.
+- Three.js r185 is the supported v1 line.
+- Actual baking requires a browser/WebGL renderer; Node/headless baking is not shipped.
+- `export()` triggers browser downloads instead of direct arbitrary filesystem writes.
+- Base-color maps are resampled into a bounded GPU atlas with individual source tiles capped at 512 px.
+- `emissiveMap` transport is not implemented.
+- Normal, roughness, metalness, alpha, vertex-color and custom-shader inputs are outside the current diffuse GI transport model.
+- Native probes require `WebGLRenderer`; equivalent upstream Three.js `WebGPURenderer` `LightProbeGrid` support is not available in the path used by this package.
+- Native probe capture is synchronous.
+- Native probe GPU textures are recaptured from persisted baked lightmaps/descriptors rather than serialized byte-for-byte.
+- Legacy probe persistence can become large at high probe counts.
+
+## Post-v1 direction
+
+Potential later work, not release blockers:
+
+- Node/headless renderer strategy.
+- WebGPU bake/probe path when the required renderer/runtime capabilities are practical.
+- `emissiveMap` and broader PBR transport parity.
+- Visibility-aware/relocated probes and reflection probes.
+- Optional real-time companion effects such as SSGI/GTAO, without replacing the baked-lighting core.
+- Larger architectural showcase and additional launch-quality visual regression scenes.
+
+See also:
+
+- [Getting Started](./GETTING_STARTED.md)
+- [Light Probes](./LIGHT_PROBES.md)
+- [Roadmap](./ROADMAP.md)
+- [Changelog](../CHANGELOG.md)

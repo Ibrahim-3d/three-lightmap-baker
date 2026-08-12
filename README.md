@@ -1,646 +1,355 @@
 <p align="center">
-  <img src="screenshots/after-production-baked-combined.png" alt="Cornell advanced scene with path-traced global illumination baked in-browser" width="720" />
+  <img src="https://raw.githubusercontent.com/Ibrahim-3d/three-lightmap-baker/master/screenshots/after-production-baked-combined.png" alt="Three Lightmap Baker production lightmap bake" width="760" />
 </p>
 
-| Solid viewport before bake                                                                                          | Preview bake                                                                                                                    | Production bake                                                                                                                       |
-| ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| <img src="screenshots/before-solid-viewport.png" alt="Cornell advanced scene before lightmap baking" width="260" /> | <img src="screenshots/after-preview-baked-combined.png" alt="Cornell advanced scene after Preview lightmap bake" width="260" /> | <img src="screenshots/after-production-baked-combined.png" alt="Cornell advanced scene after Production lightmap bake" width="260" /> |
-
-> Important GPU note: this baker is GPU-bound. Chrome and Edge must have **Use graphics acceleration when available** enabled, and `chrome://gpu` should report WebGL/WebGL2 as hardware accelerated. Launch capture uses installed Chrome and, on Windows, prefers ANGLE D3D11 because that is the backend that selected the NVIDIA RTX GPU in testing. The app reports the renderer it actually received, and launch automation can reject captures from the wrong GPU with `BAKER_EXPECT_GPU="RTX 3050" pnpm run capture:launch`.
-
-<h1 align="center">🔆 Three Lightmap Baker</h1>
+<h1 align="center">Three Lightmap Baker</h1>
 
 <p align="center">
-  <strong>Path-traced lightmap baking with global illumination. In the browser. No Blender. No Unity. No round-trips.</strong>
+  <strong>Browser-first path-traced lightmap baking for Three.js.</strong><br />
+  Global illumination, automatic lightmap UVs, textured and multi-material bounce transport, AO, denoising, and native L2 SH light probes for dynamic objects.
 </p>
 
 <p align="center">
-  <a href="https://Ibrahim-3d.github.io/three-lightmap-baker/"><strong>Live Demo 🚀</strong></a>
+  <a href="https://Ibrahim-3d.github.io/three-lightmap-baker/"><strong>Live Demo</strong></a> ·
+  <a href="https://github.com/Ibrahim-3d/three-lightmap-baker/blob/master/docs/GETTING_STARTED.md">Getting Started</a> ·
+  <a href="https://github.com/Ibrahim-3d/three-lightmap-baker/blob/master/docs/LIGHT_PROBES.md">Light Probes</a> ·
+  <a href="https://github.com/Ibrahim-3d/three-lightmap-baker/issues">Issues</a>
 </p>
 
 <p align="center">
-  <a href="#quick-start">Quick Start</a> •
-  <a href="#why-this-exists">Why This Exists</a> •
-  <a href="#features">Features</a> •
-  <a href="#examples">Examples</a> •
-  <a href="#benchmarks">Benchmarks</a> •
-  <a href="#how-it-works">How It Works</a> •
-  <a href="#known-limitations">Limitations</a> •
-  <a href="#api">API</a> •
-  <a href="#roadmap">Roadmap</a>
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/Three.js-r185-black?logo=threedotjs" alt="Three.js" />
-  <img src="https://img.shields.io/badge/TypeScript-strict-blue?logo=typescript" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Three.js-r185-black?logo=threedotjs" alt="Three.js r185" />
+  <img src="https://img.shields.io/badge/WebGL-2-990000?logo=webgl" alt="WebGL 2" />
+  <img src="https://img.shields.io/badge/TypeScript-typed-3178c6?logo=typescript" alt="TypeScript" />
   <img src="https://img.shields.io/badge/License-MIT-green" alt="MIT License" />
-  <img src="https://img.shields.io/badge/GI_Bounces-1--4-orange" alt="GI Bounces" />
-  <img src="https://img.shields.io/badge/Status-Active_Development-brightgreen" alt="Status" />
 </p>
 
-> **Development status:** this repository is not approved for a public npm
-> release. Use a source checkout or locally built artifacts for development and
-> testing. Public publication remains explicitly gated on Ibrahim's approval.
-
----
-
-## The Problem
-
-Three.js developers looking for real lightmap baking run into the same gaps:
-
-- **`@react-three/lightmap`** - built around an older hemicube workflow and no longer tracks modern R3F releases.
-- **`mem1b/lightbaking`** - targets pre-BufferGeometry-era Three.js APIs, so it is not a drop-in option for current projects.
-- **`three-gpu-pathtracer`** - excellent screen-space path tracing, but it does not publish baked lightmap atlases. Its lightmap-baking request has been open since **2021**.
-- **Stack Overflow answers** - "just bake in Blender and export." Which is fine until your scene is procedural, user-generated, or assembled at runtime. Then you're stuck.
-
-The result: in 2026, Three.js still lacks a maintained, browser-first lightmap baker focused on path-traced global illumination.
-
-This repo fixes that.
-
-## Why This Exists
-
-The Three.js ecosystem needs lightmap baking that runs in the browser. Not "export to Blender, bake for 40 minutes, re-import" - actual in-app baking where the user clicks a button and sees the result in seconds.
-
-I looked for a library. There wasn't one. The most complete option ([lucas-jones/three-lightmap-baker](https://github.com/lucas-jones/three-lightmap-baker)) had the right architecture but stopped before bounce lighting - no color bleeding, no indirect illumination, no GI.
-
-So I'm building it. This fork keeps the proven two-pass architecture, adds multi-bounce path-traced GI, and focuses on a maintained, documented library.
-
-### The Agentic AI Angle
-
-Every AI coding agent (Claude Code, Cursor, Devin, Copilot Workspace) can build and manipulate 3D scenes programmatically. What they can't do is bake lighting without spawning Blender and writing a Python script to drive it.
-
-A JavaScript-native lightmap baker that runs in the browser today, with a planned headless/Node path, is infrastructure for the agentic wave. An AI agent that assembles a room from a furniture catalog needs to light that room without opening a DCC tool.
-
-If you're building anything where 3D scenes are constructed programmatically - architectural configurators, AI interior design, procedural environments, digital twins - and you need those scenes to look lit, you're the target user.
-
----
-
-## Familiar Workflow (Unity & Unreal Style)
-
-If you've used Unity's **Progressive Lightmapper** or Unreal's **Lightmass**, you'll feel at home. This baker implements the same industry-standard concepts directly in the browser:
-
-- **Direct & Indirect (GI):** Separate accumulation of direct light and multi-bounce global illumination.
-- **Bake Presets:** Toggle between high-speed Draft bakes and high-fidelity Production bakes.
-- **Dilation & Padding:** Automatic edge-bleeding prevention to eliminate black seams at UV island borders.
-- **Denoising:** Integrated bilateral noise reduction for clean soft shadows and smooth gradients.
-- **Texel Density:** Visualized via checkerboard overlays to ensure consistent lightmap resolution across the scene.
-
----
-
-## Features
-
-### Shipping Now
-
-- **Path-traced global illumination** - real bounce lighting, not screen-space hacks. Red walls bleed red light onto white surfaces. The Cornell Box test passes.
-- **Auto UV2 unwrapping** - drop in any geometry, xatlas generates non-overlapping lightmap UVs automatically. Its loader and WASM ship inside the package, so baking does not depend on a third-party CDN.
-- **GPU-accelerated BVH ray tracing** - powered by [three-mesh-bvh](https://github.com/gkjohnson/three-mesh-bvh). Millions of rays per second in WebGL.
-- **Multi-bounce** - 1-4 configurable bounce depth. Each bounce adds indirect illumination. Energy-conserving (albedo < 1 guarantees convergence).
-- **Per-triangle material data** - albedo and emissive packed into DataTextures, indexed by BVH triangle. Materials are respected during bounces - a red wall reflects red light because the bounce ray reads the wall's albedo.
-- **Progressive rendering** - watch the lightmap converge in real-time. Stop early if quality is acceptable.
-- **Bake presets** - measured on the Cornell advanced scene from Draft through Final, with RTX 3050 Ti numbers listed below.
-- **Gap flood / edge dilation** - prevents black seams at UV island borders.
-- **Bilateral denoiser** - smooths noise while preserving shadow edges, guided by world-position and normal textures.
-- **Dynamic-object light probes** - capture the baked static scene into Three.js' native GPU `LightProbeGrid` (L2 SH) for moving standard-material objects. The earlier RGB volume remains available as an explicit legacy fallback.
-- **Textured and multi-material GI** - secondary hits resolve the post-BVH
-  triangle's geometry-group material slot and sample `material.color × material.map`
-  at barycentrically interpolated UV0 coordinates.
-- **3D Camera Objects** - add cameras from the Asset Library, select them in the viewport, and snap your view to match any scene camera's perspective.
-- **TypeScript** - strict mode, fully typed API.
-
-### Coming Next
-
-Planned work is tracked in the [Roadmap](#roadmap).
-
----
-
-## Quick Start
+## Install
 
 ```bash
-# Clone
-git clone https://github.com/Ibrahim-3d/three-lightmap-baker.git
-cd three-lightmap-baker
-
-# Install
-corepack enable
-pnpm install
-
-# Run the Cornell Box demo
-pnpm run start # opens http://localhost:5173
+npm install three-lightmap-baker three
 ```
-
-This repo uses pnpm via Corepack. The checked-in `pnpm-lock.yaml` is the
-authoritative dependency lockfile.
-
-Click **Bake** and watch the lightmap converge. Color bleeding should be visible on the sphere within seconds.
-
-### Use as a Library
-
-Until public npm publication is explicitly approved, build and test the library
-from this source checkout:
 
 ```bash
-corepack pnpm run test:api-import
+pnpm add three-lightmap-baker three
 ```
 
-For ordinary local engineering validation, run the non-publishing checks:
+### Compatibility
 
-```bash
-pnpm run typecheck
-pnpm run typecheck:examples
-pnpm run lint
-pnpm run test:release
-pnpm run test:api-import
-```
+- **Three.js:** `>=0.185.1 <0.186.0`
+- **Renderer:** `WebGLRenderer`
+- **Browser:** WebGL 2 with `EXT_color_buffer_float`
+- **TypeScript:** declarations are included
+- **Node/headless baking:** not supported yet; baking currently requires a browser WebGL context
 
-These commands validate source types, lint, the sequential browser/WebGL suite,
-package builds, and local tarball ESM/CJS/TypeScript imports. Existing publishing
-scripts and workflows are dormant infrastructure; do not trigger or modify them
-without Ibrahim's explicit approval.
+The package ships its xatlas JavaScript/WASM assets, so normal UV generation does not depend on a third-party CDN.
 
-If you're working in this repo, the classic baker lives in `packages/baker-classic/`.
+---
 
-```typescript
-import { LightmapBaker } from 'three-lightmap-baker';
+## Minimal bake
+
+```ts
 import * as THREE from 'three';
+import { LightmapBaker } from 'three-lightmap-baker';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(512, 512);
-document.body.appendChild(renderer.domElement);
-
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x20262f);
-
-const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
-camera.position.set(2.5, 2, 3);
-camera.lookAt(0, 0.5, 0);
 
 const mesh = new THREE.Mesh(
   new THREE.BoxGeometry(1, 1, 1),
-  new THREE.MeshStandardMaterial({ color: 0xced4da, roughness: 0.6 }),
+  new THREE.MeshStandardMaterial({ color: 0xffffff }),
 );
-mesh.position.y = 0.5;
 scene.add(mesh);
 
-const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(4, 4),
-  new THREE.MeshStandardMaterial({ color: 0x5c677d, roughness: 0.9 }),
-);
-ground.rotation.x = -Math.PI / 2;
-scene.add(ground);
-
-const light = new THREE.DirectionalLight(0xffffff, 2.5);
-light.position.set(2, 4, 1);
+const light = new THREE.DirectionalLight(0xffffff, 3);
+light.position.set(3, 5, 2);
 scene.add(light);
 
-// Bake (clean constructor style)
 const baker = new LightmapBaker({
   renderer,
+  resolution: 512,
   samples: 64,
   bounces: 2,
-  resolution: 512,
   denoise: true,
 });
 
 const result = await baker.bake(scene, {
-  onProgress: (phase, percent) => {
-    console.log(`[baker] ${phase}: ${(percent * 100).toFixed(0)}%`);
+  onProgress: (phase, progress) => {
+    console.log(`${phase}: ${Math.round(progress * 100)}%`);
   },
 });
 
-// Apply baked lightmaps to scene materials
 result.apply();
-renderer.render(scene, camera);
 
-// Export lightmaps as PNG files
-await result.export('lightmaps/', { format: 'png' });
-
-// Clean up GPU resources when done
+// Later, when the bake is no longer needed:
 result.dispose();
 ```
 
-Renderer-explicit style is also supported:
+`result.apply()` mounts the baked atlas textures on the baked meshes while preserving shared-material ownership safely.
 
-```typescript
-const baker = new LightmapBaker(renderer, { samples: 64, bounces: 2, resolution: 512 });
+---
+
+## What it supports
+
+- **Path-traced baked GI** with 1–4 configurable bounce depth.
+- **Automatic lightmap UV generation** with packaged xatlas JS/WASM.
+- **GPU BVH traversal** through `three-mesh-bvh`.
+- **Textured diffuse transport** using `material.color × material.map`.
+- **UV0 and UV1 base-color maps** (`map.channel` 0 and 1).
+- **Multi-material geometry** with correct per-triangle geometry-group material lookup after BVH reordering.
+- **Shared material instances** without leaking one mesh's baked lightmap onto another mesh.
+- **Multiple lightmap groups / resolutions** and supersampling.
+- **Direct, indirect and AO layers** with post-bake compositing.
+- **Standalone AO rebake** without rerunning GI.
+- **Chart dilation and bilateral denoising**.
+- **PNG / EXR / raw lightmap export utilities**.
+- **Native Three.js `LightProbeGrid` capture** for dynamic standard-material objects.
+- **Legacy RGB probe volumes** as an explicit fallback.
+- **ESM, CommonJS and TypeScript declarations**.
+
+---
+
+## Textured and multi-material GI
+
+The baker's diffuse GI transport resolves the hit triangle after BVH construction, selects the correct material slot from geometry groups, interpolates the source UV barycentrically, and evaluates:
+
+```text
+surface albedo = material.color × sampled material.map
+```
+
+Supported for GI transport:
+
+| Material input | Status |
+| --- | --- |
+| `MeshStandardMaterial.color` | Supported |
+| `MeshStandardMaterial.map` | Supported |
+| `map.channel = 0` / UV0 | Supported |
+| `map.channel = 1` / UV1 | Supported |
+| Material arrays / geometry groups | Supported |
+| Solid emissive color | Supported |
+| `emissiveMap` | Not yet |
+| Normal / roughness / metalness maps in GI transport | Not yet |
+| Vertex colors / alpha transport / custom shaders | Not yet |
+
+Base-color maps are resampled into a bounded GPU atlas for ray-hit lookup. Individual source tiles are currently capped at **512 px**.
+
+---
+
+## Dynamic objects with native light probes
+
+Static lightmaps and dynamic lighting are separate on purpose. Bake the static scene first, then capture its finished appearance into Three.js' native GPU L2 spherical-harmonic probe grid:
+
+```ts
+import {
+  LightmapBaker,
+  captureLightmappedProbeGrid,
+} from 'three-lightmap-baker';
+
+const baker = new LightmapBaker({ renderer, resolution: 512, bounces: 2 });
+const result = await baker.bake(scene);
+result.apply();
+
+const probes = captureLightmappedProbeGrid(renderer, scene, result, {
+  spacing: 1.25,
+  maxProbes: 1024,
+  cubemapSize: 8,
+  bounces: 0,
+  lightMapIntensity: 3.2,
+});
+
+// captureLightmappedProbeGrid adds probes.grid to the scene.
+// Standard Three.js materials can then receive the native probe lighting.
+```
+
+The high-level capture helper temporarily mounts the completed lightmaps, hides live lights and non-static renderables, disables environment/background and display transforms, performs the capture, and restores scene/material/renderer state even if capture fails.
+
+Use `captureLightmappedProbeGridFromJSON()` to recapture a saved native-grid descriptor from restored baked lightmaps.
+
+See [docs/LIGHT_PROBES.md](https://github.com/Ibrahim-3d/three-lightmap-baker/blob/master/docs/LIGHT_PROBES.md) for the full native and legacy probe APIs.
+
+---
+
+## `LightmapBakeResult`
+
+A successful `bake()` returns a `LightmapBakeResult` that owns the bake's GPU resources.
+
+```ts
 const result = await baker.bake(scene);
 ```
 
-Advanced automation can pass a renderer adapter when renderer/context setup is
-owned outside the baker:
+Important members:
 
-```typescript
-import { LightmapBaker, createRendererAdapter } from 'three-lightmap-baker';
+| API | Purpose |
+| --- | --- |
+| `result.lightmaps` | `Map<Mesh, Texture>` of final per-mesh lightmaps |
+| `result.groups` | Direct / indirect / AO / composite / position / normal / albedo textures per atlas group |
+| `result.bvh` | Shared bake BVH for advanced integrations |
+| `result.stats` | Bake statistics and timing |
+| `result.apply()` | Mount final lightmaps on baked meshes |
+| `result.export(name, { format })` | Browser download of PNG / EXR / raw output |
+| `result.refreshAO(...)` | Change AO look without tracing again |
+| `result.rebakeAO(...)` | Recompute AO without rerunning GI |
+| `result.dispose()` | Restore package-owned material clones and dispose GPU resources |
 
-const adapter = createRendererAdapter(renderer, { label: 'playwright-chrome' });
-const baker = new LightmapBaker({ rendererAdapter: adapter, samples: 64 });
+### Export
+
+```ts
+await result.export('room-lightmap', { format: 'png' });
+await result.export('room-lightmap', { format: 'exr' });
 ```
+
+Browser builds trigger downloads; `export()` does not write directly to arbitrary filesystem paths.
 
 ---
 
-## Examples
-
-### Minimal Browser
-
-See [`examples/minimal-browser.ts`](./examples/minimal-browser.ts) for a copy-pasteable browser scene with a renderer, camera, `MeshStandardMaterial` geometry, direct light, and both supported constructor styles.
-
-### Offscreen Browser / Automation
-
-See [`examples/offscreen-browser.ts`](./examples/offscreen-browser.ts) for a
-compiled automation harness that creates a renderer for `OffscreenCanvas` when
-available, falls back to a detached browser canvas, and passes the baker a
-`LightmapRendererAdapter`. The same non-UI path is covered by
-`tests/e2e/adapter-runtime.spec.ts`.
-
-```bash
-pnpm run test:adapter-runtime
-```
-
-### Runtime Capability Probe
-
-See [`examples/node-headless-status.ts`](./examples/node-headless-status.ts) for
-a Node-safe capability check. It does not bake in Node yet; it reports the
-current runtime, whether the current environment can bake, and the limitations
-blocking true Node headless baking.
-
-```typescript
-import { getLightmapRuntimeCapabilities } from 'three-lightmap-baker';
-
-const capabilities = getLightmapRuntimeCapabilities();
-console.log(capabilities.runtime, capabilities.canBake);
-```
-
-### React Three Fiber
-
-The baker needs access to the underlying Three.js renderer and scene. In R3F, get them from `useThree()` and run the bake from a user action:
-
-```tsx
-import { useState } from 'react';
-import { useThree } from '@react-three/fiber';
-import { LightmapBaker } from 'three-lightmap-baker';
-
-export function BakeButton() {
-  const { gl, scene } = useThree();
-  const [busy, setBusy] = useState(false);
-
-  async function bake() {
-    setBusy(true);
-    try {
-      const baker = new LightmapBaker({
-        renderer: gl,
-        resolution: 512,
-        samples: 64,
-        bounces: 2,
-        denoise: true,
-      });
-
-      const result = await baker.bake(scene, {
-        onProgress: (phase, progress) => {
-          console.info(`[lightmap] ${phase}: ${Math.round(progress * 100)}%`);
-        },
-      });
-
-      result.apply();
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <button type="button" onClick={bake} disabled={busy}>
-      {busy ? 'Baking...' : 'Bake'}
-    </button>
-  );
-}
-```
-
-Keep the button outside the `<Canvas>` if you prefer native DOM controls; the important part is that the bake runs after the scene contains real `MeshStandardMaterial` meshes and a renderer-backed WebGL context.
-
-### Interior / Architectural Demo
-
-The current launch proof uses the committed `cornell.advanced` before/after
-captures above plus the measured benchmark table below. A dedicated
-interior/architectural scene is still useful as a stronger showcase, but it is
-postponed until the custom room is designed. It is not the source of the current
-README screenshots, benchmark numbers, or CI visual gate.
-
-Target flow for that future showcase: start with a flat Three.js
-room/configurator scene, click **Bake**, show progressive convergence, show
-the generated atlas, and apply the baked result back onto the same scene.
-
----
-
-## Benchmarks
-
-Measured on Windows with installed Chrome, ANGLE D3D11, and an NVIDIA GeForce RTX 3050 Ti Laptop GPU. Treat these as a reproducible baseline for the `cornell.advanced` scene, not a universal promise for every model or driver.
-
-Run the local capture and benchmark helper with:
-
-```bash
-pnpm run capture:launch
-```
-
-It writes `launch-artifacts/before-solid-viewport.png`, `launch-artifacts/after-preview-baked-combined.png`, `launch-artifacts/after-production-baked-combined.png`, `launch-artifacts/benchmark.json`, and `launch-artifacts/benchmark.md`. The output directory is ignored by git so you can rerun it on the real launch machine and copy only the numbers/assets you want to publish.
-
-After capture, validate the measured launch benchmark against runtime budgets:
-
-```bash
-pnpm run budget:runtime
-```
-
-Defaults are conservative for the RTX 3050 Ti launch baseline. Tighten a preset
-on a known target machine with `BAKER_RUNTIME_BUDGET_DRAFT_MS`,
-`BAKER_RUNTIME_BUDGET_PREVIEW_MS`, `BAKER_RUNTIME_BUDGET_PRODUCTION_MS`, or
-`BAKER_RUNTIME_BUDGET_FINAL_MS`.
-
-For launch numbers, enforce the expected renderer so a dual-GPU laptop cannot accidentally publish integrated-GPU results:
-
-```bash
-BAKER_EXPECT_GPU="RTX 3050" pnpm run capture:launch
-```
-
-On Windows PowerShell:
-
-```powershell
-$env:BAKER_EXPECT_GPU="RTX 3050"; pnpm run capture:launch
-```
-
-The capture helper uses installed Chrome by default. To intentionally use Playwright's bundled Chromium instead, set `BAKER_CAPTURE_BROWSER_CHANNEL=bundled`.
-
-On Windows the helper tries ANGLE backends in this order when `BAKER_EXPECT_GPU` is set: `d3d11`, `d3d11on12`, then `gl`. Override that list when debugging:
-
-```powershell
-$env:BAKER_CAPTURE_ANGLE="d3d11,d3d11on12,gl"; $env:BAKER_EXPECT_GPU="RTX 3050"; pnpm run capture:launch
-```
-
-| Device                 |            Scene |     Preset | Resolution |                   Samples | Bounces | Denoise | Bake Time |
-| ---------------------- | ---------------: | ---------: | ---------: | ------------------------: | ------: | ------: | --------: |
-| RTX 3050 Ti Laptop GPU | cornell.advanced |      Draft |      256px |   4 x 32 frames (128 spp) |       2 |     Off |     4.63s |
-| RTX 3050 Ti Laptop GPU | cornell.advanced |    Preview |      512px |   5 x 96 frames (480 spp) |       2 |     Off |     5.05s |
-| RTX 3050 Ti Laptop GPU | cornell.advanced | Production |     1024px | 6 x 256 frames (1536 spp) |       2 |     Off |    36.48s |
-| RTX 3050 Ti Laptop GPU | cornell.advanced |      Final |     2048px | 8 x 512 frames (4096 spp) |       2 |     Off |    408.7s |
-
-The script captures one solid 3D before image, then Preview and Production baked images. Use the Production image as the main after asset and keep the Preview image for visual preset comparison.
-
----
-
-## Why Not Just Bake In Blender?
-
-Blender is still the right tool when your scene is authored offline, your assets are stable, and you can afford a DCC round-trip. This project targets the cases where that workflow breaks down:
-
-- Procedural scenes assembled at runtime.
-- Product configurators where users change layouts, finishes, or lights in the browser.
-- AI-generated or agent-authored 3D spaces.
-- Web architectural visualization that needs an in-app “Bake” button.
-- Pipelines where the source of truth is Three.js, not a `.blend` file.
-
-The goal is not to replace offline production renderers. The goal is browser-native baked lighting for dynamic Three.js workflows.
-
----
-
-## How It Works
-
-Two-pass architecture. No vertex shader hacks. No fighting the Three.js renderer.
-
-### Pass 1 - UV-Space Rasterization
-
-Each mesh's geometry is rendered with `gl_Position = uv2 * 2.0 - 1.0`, projecting triangles into their lightmap UV layout. Two textures are generated:
-
-| Texture          | Contents                                    | Purpose                   |
-| ---------------- | ------------------------------------------- | ------------------------- |
-| **Position map** | World-space XYZ per texel (RGB = position)  | Ray origins for Pass 2    |
-| **Normal map**   | World-space normal per texel (RGB = normal) | Ray directions for Pass 2 |
-
-These textures are a 2D lookup table: for any texel coordinate, you can read the corresponding world position and surface normal.
-
-<p align="center">
-  <em>Position map (left) and normal map (right) for a Cornell Box - each texel encodes a world-space coordinate.</em>
-</p>
-
-### Pass 2 - Path-Traced Ray Tracing
-
-For each texel in the position/normal maps:
-
-```
-Read worldPos and worldNormal from textures
-For each sample:
-    Generate cosine-weighted hemisphere direction around worldNormal
-    Trace ray from worldPos into scene BVH
-
-    If ray hits a surface:
-        Read hit surface's emissive color → add to radiance (direct)
-        Read hit surface's albedo color
-
-        // Bounce: trace again from hit point
-        Generate new direction around hit normal
-        Trace bounce ray into BVH
-        If bounce hits emissive surface:
-            radiance += hitAlbedo × bounceEmissive (indirect GI)
-
-        // More bounces if configured (2, 3, 4...)
-
-    Accumulate radiance into lightmap texel
-
-Divide accumulated radiance by sample count → final lightmap
-```
-
-The BVH acceleration structure (from [three-mesh-bvh](https://github.com/gkjohnson/three-mesh-bvh)) makes this fast - millions of ray queries per second on a mid-range GPU.
-
-### Why Two Passes?
-
-The naive approach (what I tried first and burned 4 hours debugging) is to do everything in a single shader: override `gl_Position` to UV space AND trace rays in the same fragment shader. This fights Three.js at every level - `modelMatrix` propagation breaks, render target state leaks between frames, `matrixWorldNeedsUpdate` doesn't fire. 12 integration bugs later, it still didn't work.
-
-The two-pass approach treats the renderer normally. Pass 1 uses the GPU for what it's good at (rasterization). Pass 2 uses the BVH for what it's good at (ray queries). No renderer hacks. No matrix bugs. It just works.
-
----
-
-## The Landscape
-
-| Project                                                                                 | Last Updated          | GI Bounces             | Status                                    |
-| --------------------------------------------------------------------------------------- | --------------------- | ---------------------- | ----------------------------------------- |
-| **This repo**                                                                           | **Active**            | **✅ 1-4 bounces**     | **✅ Maintained**                         |
-| [lucas-jones/three-lightmap-baker](https://github.com/lucas-jones/three-lightmap-baker) | 2023                  | ❌ Direct only         | Archived (this fork continues it)         |
-| [@react-three/lightmap](https://github.com/pmndrs/react-three-lightmap)                 | 2022-era package      | ❌ Hemicube workflow   | Not current with modern R3F               |
-| [mem1b/lightbaking](https://github.com/mem1b/lightbaking)                               | Older Three.js era    | ✅ Has bounces         | Uses legacy Three.js APIs                 |
-| [three-gpu-pathtracer #5](https://github.com/gkjohnson/three-gpu-pathtracer/issues/5)   | Issue open since 2021 | n/a                    | Renderer, not a lightmap exporter         |
-| PlayCanvas lightmapper                                                                  | Active                | ❌ Direct + AO focused | Engine-integrated, not a Three.js package |
-
----
-
-## Bake Presets
-
-Measured on the `cornell.advanced` scene only:
-
-| Preset         | Samples                   | Bounces | Resolution | Measured Time (RTX 3050 Ti) |
-| -------------- | ------------------------- | ------- | ---------- | --------------------------- |
-| **Draft**      | 4 x 32 frames (128 spp)   | 2       | 256px      | 4.63s                       |
-| **Preview**    | 5 x 96 frames (480 spp)   | 2       | 512px      | 5.05s                       |
-| **Production** | 6 x 256 frames (1536 spp) | 2       | 1024px     | 36.48s                      |
-| **Final**      | 8 x 512 frames (4096 spp) | 2       | 2048px     | 408.7s                      |
-
----
-
-## Demo Project Files
-
-The playground File menu can save and load a versioned Project JSON file. The
-current v1 format round-trips the active built-in scene preset or imported
-GLB/glTF payload, bake/editor options, and asset-library additions with
-transforms and basic material values. It also persists baked final lightmaps as
-raw Float32 RGBA atlas payloads, so a saved project can restore baked lighting
-without forcing an immediate re-bake. Export a finished scene as GLB when you
-need to carry baked geometry/materials out of the demo.
-
----
-
-## API Reference
-
-### `LightmapBaker`
-
-```typescript
-const baker = new LightmapBaker(renderer, options?: BakeOptions);
-// or:
-const baker = new LightmapBaker({ renderer, ...options });
-```
-
-| Option        | Type      | Default | Description                                               |
-| ------------- | --------- | ------- | --------------------------------------------------------- |
-| `samples`     | `number`  | `64`    | Rays per texel. More = less noise, longer bake.           |
-| `bounces`     | `number`  | `2`     | Indirect light bounces. 1 = direct + one bounce. 4 = max. |
-| `resolution`  | `number`  | `512`   | Lightmap texture size (square).                           |
-| `denoise`     | `boolean` | `true`  | Apply bilateral denoiser after bake.                      |
-| `dilatePx`    | `number`  | `4`     | Edge dilation passes to prevent UV seam artifacts.        |
-| `superSample` | `number`  | `1`     | Bake at resolution × superSample, then downscale.         |
-
-### `baker.bake(scene, callbacks?)`
-
-```typescript
-const result = await baker.bake(scene, {
-  onProgress: (phase: string, percent: number) => void,
+## Constructor styles
+
+```ts
+const baker = new LightmapBaker(renderer, {
+  resolution: 512,
+  samples: 64,
+  bounces: 2,
 });
 ```
 
-Returns a `BakeResult`:
+or:
 
-| Property    | Type                 | Description                                                        |
-| ----------- | -------------------- | ------------------------------------------------------------------ |
-| `lightmaps` | `Map<Mesh, Texture>` | Per-mesh lightmap textures                                         |
-| `groups`    | `BakeGroupView[]`    | Per-atlas internals (direct/indirect/ao/composite/position/normal) |
-| `bvh`       | `MeshBVH`            | Shared BVH built for the bake                                      |
-| `stats`     | `object`             | Mesh count, texel count, rays traced, and per-phase durations      |
+```ts
+const baker = new LightmapBaker({
+  renderer,
+  resolution: 512,
+  samples: 64,
+  bounces: 2,
+});
+```
 
-### `result.apply()`
+Advanced browser/offscreen integrations can inject a renderer adapter:
 
-Sets `mesh.material.lightMap` for each baked mesh. Three.js samples lightMap from UV2 automatically.
+```ts
+import { createRendererAdapter, LightmapBaker } from 'three-lightmap-baker';
 
-### `result.export(path, options?)`
-
-Exports lightmap textures as PNG (LDR) or EXR (HDR).
-
-### `result.dispose()`
-
-Releases all GPU resources (textures, render targets).
-
-### `result.refreshAO()` and `result.rebakeAO()`
-
-- `refreshAO({ intensity, exponent, enabled })` applies AO look changes instantly.
-- `rebakeAO({ samples, distance, targetSamples })` recomputes AO rays without re-running the full GI bake.
+const adapter = createRendererAdapter(renderer, { label: 'my-renderer' });
+const baker = new LightmapBaker({ rendererAdapter: adapter });
+```
 
 ---
 
-## Known Limitations
+## Defaults
 
-- Verified against the current codebase: these are real current limits, not marketing disclaimers.
-- Browser/WebGL renderer required. True Node.js headless baking is planned but not shipped.
-- Requires WebGL 2 and `EXT_color_buffer_float` for HDR accumulation targets.
-- `result.export()` triggers browser downloads; it does not write directly to arbitrary filesystem paths.
-- Large atlases, high sample counts, and many bounces can still hit browser/GPU timeout behavior on weaker hardware.
-- Light/material coverage is focused on `MeshStandardMaterial`-style surfaces, emissive contribution, direct light collection, AO, and GI bounces. Advanced production lighting such as IES profiles, textured area lights, and full material parity remain roadmap items.
-- Auto UV2 unwrapping is designed to remove the Blender unwrap step, but pathological geometry can still need cleanup or manual UVs.
-- Playwright or other automated browser captures must record the actual WebGL renderer and should enforce the expected device with `BAKER_EXPECT_GPU`. Chromium GPU flags improve the odds of hardware acceleration, but they do not override OS/driver GPU assignment on every machine.
-- Native probes require `WebGLRenderer`; Three.js does not yet provide the equivalent `LightProbeGrid` runtime for `WebGPURenderer`. Native GPU textures are recaptured from persisted baked lightmaps when a project is loaded rather than serialized as large CPU arrays.
+Current high-level baker defaults:
 
----
+| Option | Default |
+| --- | ---: |
+| `samples` | `96` |
+| `castsPerFrame` | `5` |
+| `bounces` | `1` |
+| `resolution` | `1024` |
+| `superSample` | `1` |
+| `denoise` | `true` |
+| GI enabled | `true` |
+| AO enabled | `true` |
 
-## Headless / Automation Status
-
-- **Browser + injected renderer:** implemented now.
-- **Renderer adapter boundary:** implemented for browser/offscreen-browser test
-  harness ownership of renderer setup and context-loss wiring.
-- **Offscreen-browser example:** implemented in `examples/offscreen-browser.ts`
-  and covered by `pnpm run typecheck:examples`.
-- **Runtime capability probe:** implemented as
-  `getLightmapRuntimeCapabilities()` with a Node-safe example in
-  `examples/node-headless-status.ts`. Node currently reports `canBake: false`.
-- **Browser regression suite:** implemented as `pnpm run test:release`. It runs
-  all WebGL tests with one GPU worker,
-  including real lightmap/probe bakes, back-to-back bake stress, render modes,
-  cancellation, Project JSON save/load, offline startup, selection, history,
-  asset-library, and editor controls. Targeted scripts such as
-  `pnpm run test:adapter-runtime`, `pnpm run test:visual-cornell`, and
-  `pnpm run test:bake-cancel` remain available for focused runs.
-- **PR preview artifact:** pull requests build the demo and upload a static
-  `dist/` artifact for review without changing the production Pages deploy.
-- **npm publication:** not approved. Existing workflow infrastructure must remain
-  untriggered unless Ibrahim explicitly authorizes a future release.
-- **Custom-room visual regression:** postponed until the custom room/showcase
-  scene exists.
-- **Node.js true headless baking:** not implemented yet.
-- Current pipeline depends on WebGL renderer/context, RAF-driven progressive passes, and browser-side texture export/download paths.
-- Planned direction: keep renderer-injected API stable and prototype a
-  Node-compatible runtime path.
+For interactive tools, start lower and increase quality after the workflow is stable.
 
 ---
 
-## Requirements
+## React Three Fiber
 
-- **Three.js** 0.185.1 / r185 tested baseline (see `package.json`)
-- **WebGL 2** with `EXT_color_buffer_float` (required for HDR lightmap accumulation)
-- **Browser/renderer context required** - the current development build is WebGL-first (Node headless adapter is planned, not shipped)
-- **GPU**: any discrete GPU from the last 5 years. Intel/AMD integrated GPUs work but bake slower - the library auto-detects and warns.
+The baker is renderer-agnostic at the framework level; it needs the underlying Three.js `WebGLRenderer` and scene. In R3F, obtain them from `useThree()` and run the bake from a user action.
 
----
+```tsx
+const { gl, scene } = useThree();
 
-## Acknowledgments
+const baker = new LightmapBaker({
+  renderer: gl,
+  resolution: 512,
+  samples: 64,
+  bounces: 2,
+});
 
-This repo is a fork of [lucas-jones/three-lightmap-baker](https://github.com/lucas-jones/three-lightmap-baker), which established the two-pass architecture and proved it works. The bounce lighting, material system, denoiser, and API are new.
-
-Built on top of:
-
-- [three-mesh-bvh](https://github.com/gkjohnson/three-mesh-bvh) by Garrett Johnson - GPU-accelerated BVH that makes browser ray tracing possible
-- [three-gpu-pathtracer](https://github.com/gkjohnson/three-gpu-pathtracer) by Garrett Johnson - reference implementation for path tracing in Three.js
-- [xatlas-three](https://github.com/repalash/xatlas-three/) and [xatlasjs](https://github.com/repalash/xatlas.js) - browser-native UV unwrapping via packaged xatlas WASM
-- The original [iq/Jaume Sanchez hemicube GI demo](http://www.iquilezles.org/www/articles/simplegi/simplegi.htm) - proof that browser GI is possible, even on a phone
+const result = await baker.bake(scene);
+result.apply();
+```
 
 ---
 
-## Contributing
+## Runtime requirements and limitations
 
-This is actively developed. Contributions welcome - especially:
+- Requires **WebGL 2** and `EXT_color_buffer_float`.
+- Three.js support is intentionally constrained to **r185** for v1.
+- Hardware-accelerated Chrome/Edge is strongly recommended for production baking.
+- Very large atlases, high sample counts and high bounce counts can trigger browser/GPU timeout behavior on weaker devices.
+- The diffuse GI material model does not yet transport `emissiveMap`, normal, roughness, metalness, alpha, vertex-color or custom-shader effects.
+- Native probes currently require `WebGLRenderer`; equivalent `WebGPURenderer` support is not available in the upstream Three.js `LightProbeGrid` path used here.
+- Native probe capture is synchronous.
+- Node.js/headless baking and WebGPU baking are not part of v1.
 
-- **Test scenes** - complex interiors, outdoor scenes, and edge cases beyond
-  the current Cornell advanced launch proof
-- **Performance benchmarks** - bake times across additional GPU generations
-- **Bug reports** - screenshots + GPU info + sample count + resolution
-- **Lighting coverage** - IES profiles, textured area lights, directional probe
-  upgrades, and material edge cases
+For runtime capability checks:
 
-Open an issue before starting a PR so we can coordinate. All contributions
-require signing the [CLA](./CLA.md) via CLA Assistant.
+```ts
+import { getLightmapRuntimeCapabilities } from 'three-lightmap-baker';
+
+console.log(getLightmapRuntimeCapabilities());
+```
+
+---
+
+## Performance baseline
+
+Measured on the committed `cornell.advanced` scene using installed Chrome + ANGLE D3D11 on an RTX 3050 Ti Laptop GPU:
+
+| Preset | Resolution | Effective samples | Bounces | Bake time |
+| --- | ---: | ---: | ---: | ---: |
+| Draft | 256 | 128 spp | 2 | 4.63 s |
+| Preview | 512 | 480 spp | 2 | 5.05 s |
+| Production | 1024 | 1536 spp | 2 | 36.48 s |
+| Final | 2048 | 4096 spp | 2 | 408.7 s |
+
+These are reference measurements, not universal performance guarantees.
 
 ---
 
-## Roadmap
+## Development
 
-See [`docs/ROADMAP.md`](./docs/ROADMAP.md) for current milestones and
-priorities.
+```bash
+git clone https://github.com/Ibrahim-3d/three-lightmap-baker.git
+cd three-lightmap-baker
+corepack enable
+pnpm install
+pnpm dev
+```
+
+Useful checks:
+
+```bash
+pnpm run typecheck
+pnpm run test:material-gi
+pnpm run test:probes
+pnpm run test:api-import
+pnpm run release:check
+```
+
+`release:check` includes hardware-sensitive WebGL tests and should be run on a real supported GPU before publishing. GitHub's headless CI separately runs the browser checks that are reliable on its software renderer.
 
 ---
+
+## Documentation
+
+- [Getting Started](https://github.com/Ibrahim-3d/three-lightmap-baker/blob/master/docs/GETTING_STARTED.md)
+- [Light Probes](https://github.com/Ibrahim-3d/three-lightmap-baker/blob/master/docs/LIGHT_PROBES.md)
+- [API Status & support matrix](https://github.com/Ibrahim-3d/three-lightmap-baker/blob/master/docs/API_STATUS.md)
+- [Roadmap](https://github.com/Ibrahim-3d/three-lightmap-baker/blob/master/docs/ROADMAP.md)
+- [Changelog](https://github.com/Ibrahim-3d/three-lightmap-baker/blob/master/CHANGELOG.md)
+
+---
+
+## Why this project exists
+
+Three.js scenes are increasingly procedural, configurable and generated at runtime. For those workflows, "open Blender and rebake" is not always a viable pipeline.
+
+Three Lightmap Baker keeps the lighting workflow inside the Three.js application: generate lightmap UVs, bake static GI in the browser, apply/export the atlases, and optionally capture native probes for moving objects.
+
+It is intended for configurators, architectural visualization, procedural scenes, digital twins, AI-authored 3D environments and other applications where Three.js is the source of truth.
 
 ## License
 
-MIT - same as the original lucas-jones repo.
-
----
-
-<p align="center">
-  <em>Built by a designer who got tired of exporting to Blender at 2am.</em>
-</p>
+MIT. See [LICENSE](https://github.com/Ibrahim-3d/three-lightmap-baker/blob/master/LICENSE) and [THIRD_PARTY_LICENSES.md](https://github.com/Ibrahim-3d/three-lightmap-baker/blob/master/THIRD_PARTY_LICENSES.md).

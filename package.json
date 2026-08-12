@@ -1,7 +1,7 @@
 {
   "name": "three-lightmap-baker",
   "version": "1.0.0",
-  "description": "Browser-based Three.js lightmap baker with path-traced global illumination, auto UV2, BVH ray tracing, AO, denoising, and progressive preview",
+  "description": "Browser-first Three.js lightmap baker with path-traced GI, automatic lightmap UVs, textured and multi-material transport, AO, denoising, and native LightProbeGrid support",
   "type": "module",
   "packageManager": "pnpm@11.5.3",
   "license": "MIT",
@@ -14,14 +14,22 @@
   "bugs": {
     "url": "https://github.com/Ibrahim-3d/three-lightmap-baker/issues"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "keywords": [
     "threejs",
     "three",
     "webgl",
+    "webgl2",
     "lightmap",
     "lightmapping",
+    "baked-lighting",
     "global-illumination",
     "path-tracing",
+    "light-probes",
+    "light-probe-grid",
+    "spherical-harmonics",
     "bvh",
     "three-mesh-bvh",
     "xatlas",
@@ -48,9 +56,12 @@
   "files": [
     "dist/package",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE",
     "THIRD_PARTY_LICENSES.md",
+    "docs/GETTING_STARTED.md",
     "docs/API_STATUS.md",
+    "docs/LIGHT_PROBES.md",
     "docs/ROADMAP.md"
   ],
   "scripts": {
