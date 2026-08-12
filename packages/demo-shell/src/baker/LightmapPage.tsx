@@ -1,3 +1,4 @@
+import type { JSX } from 'preact';
 import {
   BoolField,
   bumpOptions,
@@ -16,7 +17,7 @@ import { getBakerOrchestrator } from './orchestrator';
  * Lightmap tab. Always shows view-time Layer Intensities (global composite
  * uniforms). Per-mesh sections render only when a mesh is selected.
  */
-export function LightmapPage() {
+export function LightmapPage(): JSX.Element | null {
   void optionsTick.value;
   const app = getBakerOrchestrator();
   if (!app) return null;
@@ -27,7 +28,7 @@ export function LightmapPage() {
   if (meshSelected && !options.perMesh[obj.uuid]) {
     options.perMesh[obj.uuid] = { scaleInLightmap: 1.0, exclude: false };
   }
-  const entry = meshSelected ? options.perMesh[obj.uuid]! : null;
+  const entry = meshSelected ? (options.perMesh[obj.uuid] ?? null) : null;
 
   return (
     <div class="text-[12px]">
