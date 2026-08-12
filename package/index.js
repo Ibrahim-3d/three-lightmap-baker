@@ -45,9 +45,12 @@ function oe(e, t) {
 			console.warn(`[baker] mesh "${i}" wants ${(r * 100).toFixed(0)}% of one ${t.atlasResolution}² atlas at ${t.texelsPerMeter} texels/m - clamping to ${(n * 100).toFixed(0)}% (effective density reduced)`), r = n;
 		}
 		let i = -1;
-		for (let e = 0; e < o.length; e++) if (o[e] + r <= n) {
-			o[e] = o[e] + r, i = e;
-			break;
+		for (let e = 0; e < o.length; e++) {
+			let t = o[e] ?? 0;
+			if (t + r <= n) {
+				o[e] = t + r, i = e;
+				break;
+			}
 		}
 		i < 0 && (i = o.length, o.push(r)), s[e.inputIdx] = {
 			atlasIdx: i,
@@ -135,8 +138,8 @@ var he = async (e = {}) => le || (le = K.loadLibrary((e, t) => {}, me(e.wasmUrl 
 		let o = r ? ce : 1, s = r ? n.map(de) : [];
 		for (let t = 0; t < o; t++) {
 			if (t > 0) for (let e = 0; e < n.length; e++) {
-				let t = s[e];
-				t && fe(n[e], t);
+				let t = s[e], r = n[e];
+				t && r && fe(r, t);
 			}
 			pe(r, a);
 			let c = await K.packAtlas(n, "uv2", "uv"), l = ue(e);
@@ -301,10 +304,11 @@ function we(e, t) {
 	return n.matrixAutoUpdate = !1, n.matrixWorldAutoUpdate = !1, n.matrix.copy(e.matrixWorld), n.matrixWorld.copy(e.matrixWorld), n.normalMatrix.getNormalMatrix(e.matrixWorld), n.frustumCulled = !1, n.onBeforeRender = (n, r, i, a, o, s) => {
 		let c = s?.materialIndex ?? 0, l = ve.uniforms.meshId;
 		l && (l.value = t + 1);
-		let u = Array.isArray(e.material) ? e.material[c] ?? e.material[0] : e.material;
-		q.uniforms.baseColor.value.copy(u?.color ?? xe);
-		let d = u?.map ?? null, f = +(d?.channel === 1), p = f === 1 ? "uv1" : "uv", m = d && e.geometry.hasAttribute(p) ? d : be;
-		m.matrixAutoUpdate && m.updateMatrix(), q.uniforms.baseColorMap.value = m, q.uniforms.baseColorUvChannel.value = f, q.uniforms.baseColorMapTransform.value.copy(m.matrix);
+		let u = Array.isArray(e.material) ? e.material[c] ?? e.material[0] : e.material, d = q.uniforms.baseColor, f = q.uniforms.baseColorMap, p = q.uniforms.baseColorUvChannel, m = q.uniforms.baseColorMapTransform;
+		if (!d || !f || !p || !m) throw Error("[baker] surface-albedo material uniforms are incomplete");
+		d.value.copy(u?.color ?? xe);
+		let h = u?.map ?? null, g = +(h?.channel === 1), _ = g === 1 ? "uv1" : "uv", v = h && e.geometry.hasAttribute(_) ? h : be;
+		v.matrixAutoUpdate && v.updateMatrix(), f.value = v, p.value = g, m.value.copy(v.matrix);
 	}, n;
 }
 function Te(e, t, n) {
@@ -849,7 +853,9 @@ function ke(e) {
 function Ae(e) {
 	let t = Math.max(1, e.length), r = new Float32Array(4 * t * 4);
 	for (let t = 0; t < e.length; t++) {
-		let n = e[t], i = t * 4 * 4;
+		let n = e[t];
+		if (!n) continue;
+		let i = t * 4 * 4;
 		r[i + 0] = n.position.x, r[i + 1] = n.position.y, r[i + 2] = n.position.z, r[i + 3] = Oe[n.type], r[i + 4] = n.direction.x, r[i + 5] = n.direction.y, r[i + 6] = n.direction.z, r[i + 7] = n.params[0], r[i + 8] = n.color.r, r[i + 9] = n.color.g, r[i + 10] = n.color.b, r[i + 11] = n.params[1], r[i + 12] = n.params[2], r[i + 13] = n.params[3], r[i + 14] = 0, r[i + 15] = 0;
 	}
 	let a = new i(r, 4, t, C, s);
@@ -1434,7 +1440,21 @@ function Qe(e, t, n) {
 	if (!("color" in r) || !r.color) return Je;
 	let i = "emissive" in r && r.emissive ? r.emissive.clone().multiplyScalar(r.emissiveIntensity ?? 1) : null, a = "map" in r ? r.map ?? null : null, o = +(a?.channel === 1), s = (o === 1 ? n : t) ? a : null;
 	s?.matrixAutoUpdate && s.updateMatrix();
-	let c = s?.matrix.elements;
+	let c = s?.matrix.elements, l = c ? [
+		c[0] ?? 1,
+		c[1] ?? 0,
+		c[3] ?? 0,
+		c[4] ?? 1,
+		c[6] ?? 0,
+		c[7] ?? 0
+	] : [
+		1,
+		0,
+		0,
+		1,
+		0,
+		0
+	];
 	return {
 		albedo: [
 			r.color.r,
@@ -1452,21 +1472,7 @@ function Qe(e, t, n) {
 		],
 		map: s,
 		mapChannel: o,
-		transform: c ? [
-			c[0],
-			c[1],
-			c[3],
-			c[4],
-			c[6],
-			c[7]
-		] : [
-			1,
-			0,
-			0,
-			1,
-			0,
-			0
-		],
+		transform: l,
 		wrapS: s?.wrapS ?? 1001,
 		wrapT: s?.wrapT ?? 1001
 	};
@@ -1609,12 +1615,16 @@ function it(e, t) {
 		fragmentShader: "precision highp float; uniform sampler2D sourceMap; varying vec2 vUv; void main(){ gl_FragColor=texture2D(sourceMap,vUv); }",
 		depthTest: !1,
 		depthWrite: !1
-	}), m = new g(new x(2, 2), f), h = new b(), _ = e.getRenderTarget(), v = e.getViewport(new N()), y = e.getScissor(new N()), S = e.getScissorTest(), w = e.autoClear, T = e.getClearColor(new r()).clone(), D = e.getClearAlpha(), O = /* @__PURE__ */ new Map();
+	}), m = f.uniforms.sourceMap;
+	if (!m) throw Error("[baker] material atlas is missing sourceMap uniform");
+	let h = new g(new x(2, 2), f), _ = new b(), v = e.getRenderTarget(), y = e.getViewport(new N()), S = e.getScissor(new N()), w = e.getScissorTest(), T = e.autoClear, D = e.getClearColor(new r()).clone(), O = e.getClearAlpha(), k = /* @__PURE__ */ new Map();
 	try {
 		e.autoClear = !1, e.setRenderTarget(d), e.setClearColor(16777215, 1), e.setScissorTest(!1), e.clear();
 		for (let t = 0; t < n.length; t++) {
-			let r = n[t], a = t % i, o = Math.floor(t / i), s = a * l + tt, d = o * l + tt;
-			f.uniforms.sourceMap.value = r, e.setViewport(s, d, c, c), e.setScissor(s, d, c, c), e.setScissorTest(!0), e.render(m, h), O.set(r, [
+			let r = n[t];
+			if (!r) continue;
+			let a = t % i, o = Math.floor(t / i), s = a * l + tt, d = o * l + tt;
+			m.value = r, e.setViewport(s, d, c, c), e.setScissor(s, d, c, c), e.setScissorTest(!0), e.render(h, _), k.set(r, [
 				(s + .5) / u,
 				(d + .5) / u,
 				(c - 1) / u,
@@ -1622,11 +1632,11 @@ function it(e, t) {
 			]);
 		}
 	} finally {
-		e.setRenderTarget(_), e.setViewport(v), e.setScissor(y), e.setScissorTest(S), e.autoClear = w, e.setClearColor(T, D), m.geometry.dispose(), f.dispose();
+		e.setRenderTarget(v), e.setViewport(y), e.setScissor(S), e.setScissorTest(w), e.autoClear = T, e.setClearColor(D, O), h.geometry.dispose(), f.dispose();
 	}
 	return {
 		texture: d.texture,
-		rects: O,
+		rects: k,
 		dispose: () => d.dispose()
 	};
 }
@@ -2088,7 +2098,11 @@ function Ft(t, n) {
 	if (t.version !== 1 || t.runtime !== "three-light-probe-grid") throw Error("[baker:probes] unsupported native light probe grid descriptor");
 	if (!Ht(t.bounds)) throw Error("[baker:probes] native probe bounds must contain min and max vectors");
 	let r = Vt(t.bounds.min, "bounds.min"), i = Vt(t.bounds.max, "bounds.max");
-	if (r.some((e, t) => e >= i[t])) throw Error("[baker:probes] native probe bounds must have positive finite extents");
+	for (let e of [
+		0,
+		1,
+		2
+	]) if (r[e] >= i[e]) throw Error("[baker:probes] native probe bounds must have positive finite extents");
 	let a = Lt(t.counts);
 	if (Rt(a, n), !Ht(t.capture)) throw Error("[baker:probes] native probe capture settings must be an object");
 	for (let e of [
@@ -2344,7 +2358,9 @@ async function on(e, t, n, i = {}, a = {}) {
 	xn(a.signal);
 	let T = t.groups;
 	for (let t = 0; t < T.length; t++) {
-		let r = T[t], i = r.internalResolution, o = an(e, r.textures.position, i), l = an(e, r.textures.normal, i), u = an(e, r.textures.refinement ?? r.textures.composite, i), d = an(e, r.textures.surfaceAlbedo, i);
+		let r = T[t];
+		if (!r) throw Error(`[baker:probes] missing bake group ${t}`);
+		let i = r.internalResolution, o = an(e, r.textures.position, i), l = an(e, r.textures.normal, i), u = an(e, r.textures.refinement ?? r.textures.composite, i), d = an(e, r.textures.surfaceAlbedo, i);
 		for (let e = 0; e < i; e += s) {
 			for (let t = 0; t < i; t += s) {
 				let r = (e * i + t) * 4;
@@ -2994,8 +3010,8 @@ function Un(e, t, n) {
 			r.push(a);
 			continue;
 		}
-		let o = e.resolution ?? n;
-		i.has(o) || i.set(o, []), i.get(o).push(a);
+		let o = e.resolution ?? n, s = i.get(o);
+		s ? s.push(a) : i.set(o, [a]);
 	}
 	return i.size === 0 && r.length < e.length && i.set(n, e.filter((e) => !t[e.uuid]?.exclude)), {
 		excluded: r,
@@ -3024,7 +3040,9 @@ function Wn(e, t, n, r) {
 	});
 	for (let e = 0; e < a.length; e++) {
 		let t = c[e];
-		s.has(t.atlasIdx) || s.set(t.atlasIdx, []), s.get(t.atlasIdx).push(t.mesh);
+		if (!t) throw Error(`[baker] missing atlas assignment for mesh ${e}`);
+		let n = s.get(t.atlasIdx);
+		n ? n.push(t.mesh) : s.set(t.atlasIdx, [t.mesh]);
 	}
 	return {
 		excluded: i,
@@ -3104,7 +3122,9 @@ var Gn = class {
 	async export(e = "lightmap", t = {}) {
 		let n = t.format ?? "png", r = e.replace(/[\/\\]+$/, "").split(/[\/\\]/).pop() || "lightmap", i = this.internals.groups;
 		for (let e = 0; e < i.length; e++) {
-			let t = i[e], a = t.downscale?.texture ?? t.refinement?.texture ?? t.composite.texture, o = i.length > 1 ? `${r}_group${e}` : r;
+			let t = i[e];
+			if (!t) throw Error(`[baker] missing bake group ${e}`);
+			let a = t.downscale?.texture ?? t.refinement?.texture ?? t.composite.texture, o = i.length > 1 ? `${r}_group${e}` : r;
 			await mt(this.renderer, a, t.resolution, o, n);
 		}
 	}
@@ -3123,7 +3143,9 @@ var Gn = class {
 	async rebakeAO(e, t = {}) {
 		let n = this.internals.groups;
 		for (let r = 0; r < n.length; r++) {
-			let i = n[r], a = {
+			let i = n[r];
+			if (!i) throw Error(`[baker] missing bake group ${r}`);
+			let a = {
 				resolution: i.internalResolution,
 				aoSamples: e.samples,
 				ambientDistance: e.distance,
@@ -3340,7 +3362,11 @@ async function tr(e) {
 		ctxState: c
 	};
 	for (let e = 0; e < O.length; e++) {
-		let t = O[e], r = g(t), i = r * n.superSample, o = h.get(t), { group: s, finalTex: c } = await Zn(M, e, O.length, o, r, i, a, l);
+		let t = O[e];
+		if (t === void 0) throw Error("[baker] bake group key is missing");
+		let r = g(t), i = r * n.superSample, o = h.get(t);
+		if (!o) throw Error(`[baker] bake group ${t} is missing`);
+		let { group: s, finalTex: c } = await Zn(M, e, O.length, o, r, i, a, l);
 		k.push(s);
 		for (let e of o) A.set(e, c), j.set(e, r);
 	}
@@ -3427,7 +3453,9 @@ var or = class {
 			...e,
 			...t
 		};
-		Rn(n), this._rendererAdapter = n.rendererAdapter ?? (n.renderer ? nr(n.renderer) : null), this.opts = {
+		Rn(n), this._rendererAdapter = n.rendererAdapter ?? (n.renderer ? nr(n.renderer) : null);
+		let r = n.light?.position;
+		this.opts = {
 			samples: n.samples ?? 96,
 			castsPerFrame: n.castsPerFrame ?? 5,
 			bounces: Math.min(4, Math.max(1, n.bounces ?? 1)),
@@ -3438,7 +3466,7 @@ var or = class {
 			texelsPerMeter: n.texelsPerMeter ?? 0,
 			perMesh: n.perMesh ?? {},
 			light: {
-				position: Array.isArray(n.light?.position) ? new M(...n.light.position) : n.light?.position ?? new M(0, 10, 0),
+				position: Array.isArray(r) ? new M(...r) : r ?? new M(0, 10, 0),
 				color: n.light?.color ?? 16777215,
 				intensity: n.light?.intensity ?? 2,
 				size: n.light?.size ?? 1,
