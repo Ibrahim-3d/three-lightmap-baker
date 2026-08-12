@@ -21,8 +21,6 @@
 
 const INF = Infinity;
 
-// ── BVH node ────────────────────────────────────────────────────────────────
-
 interface BVHNode {
   minX: number;
   minY: number;
@@ -46,8 +44,6 @@ function makeNode(): BVHNode {
     leftFirst: 0,
   };
 }
-
-// ── Bin ─────────────────────────────────────────────────────────────────────
 
 interface Bin {
   minX: number;
@@ -73,7 +69,29 @@ function binReset(b: Bin): void {
   b.triCount = 0;
 }
 
-// ── Surface area of an AABB ──────────────────────────────────────────────────
+function nodeAt(nodes: BVHNode[], index: number): BVHNode {
+  const node = nodes[index];
+  if (!node) throw new Error(`[pt-bvh] missing node ${index}`);
+  return node;
+}
+
+function binAt(bins: Bin[], index: number): Bin {
+  const bin = bins[index];
+  if (!bin) throw new Error(`[pt-bvh] missing SAH bin ${index}`);
+  return bin;
+}
+
+function triAt(indices: Uint32Array, index: number): number {
+  const value = indices[index];
+  if (value === undefined) throw new Error(`[pt-bvh] triangle index ${index} is out of range`);
+  return value;
+}
+
+function scalarAt(values: Float32Array | Uint32Array, index: number, label: string): number {
+  const value = values[index];
+  if (value === undefined) throw new Error(`[pt-bvh] ${label} index ${index} is out of range`);
+  return value;
+}
 
 function halfArea(
   mnX: number,
@@ -83,13 +101,11 @@ function halfArea(
   mxY: number,
   mxZ: number,
 ): number {
-  const ex = mxX - mnX,
-    ey = mxY - mnY,
-    ez = mxZ - mnZ;
+  const ex = mxX - mnX;
+  const ey = mxY - mnY;
+  const ez = mxZ - mnZ;
   return ex * ey + ey * ez + ez * ex;
 }
-
-// ── UpdateNodeBounds ─────────────────────────────────────────────────────────
 
 function updateNodeBounds(node: BVHNode, triIdx: Uint32Array, aabbCopy: Float32Array): void {
   node.minX = INF;
@@ -100,13 +116,13 @@ function updateNodeBounds(node: BVHNode, triIdx: Uint32Array, aabbCopy: Float32A
   node.maxZ = -INF;
   const first = node.leftFirst;
   for (let i = 0; i < node.triCount; i++) {
-    const k9 = 9 * triIdx[first + i]!;
-    const a0 = aabbCopy[k9]!,
-      a1 = aabbCopy[k9 + 1]!,
-      a2 = aabbCopy[k9 + 2]!,
-      a3 = aabbCopy[k9 + 3]!,
-      a4 = aabbCopy[k9 + 4]!,
-      a5 = aabbCopy[k9 + 5]!;
+    const k9 = 9 * triAt(triIdx, first + i);
+    const a0 = scalarAt(aabbCopy, k9, 'aabb');
+    const a1 = scalarAt(aabbCopy, k9 + 1, 'aabb');
+    const a2 = scalarAt(aabbCopy, k9 + 2, 'aabb');
+    const a3 = scalarAt(aabbCopy, k9 + 3, 'aabb');
+    const a4 = scalarAt(aabbCopy, k9 + 4, 'aabb');
+    const a5 = scalarAt(aabbCopy, k9 + 5, 'aabb');
     if (a0 < node.minX) node.minX = a0;
     if (a1 < node.minY) node.minY = a1;
     if (a2 < node.minZ) node.minZ = a2;
@@ -115,8 +131,6 @@ function updateNodeBounds(node: BVHNode, triIdx: Uint32Array, aabbCopy: Float32A
     if (a5 > node.maxZ) node.maxZ = a5;
   }
 }
-
-// ── Subdivide (recursive SAH binning split) ──────────────────────────────────
 
 function subdivide(
   nodeIdx: number,
@@ -131,46 +145,44 @@ function subdivide(
   nodesUsed: { value: number },
   N_BINS: number,
 ): void {
-  const node = bvhNode[nodeIdx]!;
+  const node = nodeAt(bvhNode, nodeIdx);
 
-  // Leaf: single triangle (can't split further)
   if (node.triCount < 2) {
-    node.leftFirst = triIdx[node.leftFirst]!;
+    node.leftFirst = triAt(triIdx, node.leftFirst);
     return;
   }
 
-  // ── SAH binning over 3 axes ──────────────────────────────────────────────
-  let bestCost = INF,
-    bestAxis = 0,
-    bestSplitPos = INF;
+  let bestCost = INF;
+  let bestAxis = 0;
+  let bestSplitPos = INF;
 
   for (let ax = 0; ax < 3; ax++) {
-    let boundsMin = INF,
-      boundsMax = -INF;
+    let boundsMin = INF;
+    let boundsMax = -INF;
     const first = node.leftFirst;
     for (let i = 0; i < node.triCount; i++) {
-      const c = aabbCopy[9 * triIdx[first + i]! + 6 + ax]!;
+      const c = scalarAt(aabbCopy, 9 * triAt(triIdx, first + i) + 6 + ax, 'centroid');
       if (c < boundsMin) boundsMin = c;
       if (c > boundsMax) boundsMax = c;
     }
     if (boundsMin === boundsMax) continue;
 
-    for (let i = 0; i < N_BINS; i++) binReset(bins[i]!);
+    for (let i = 0; i < N_BINS; i++) binReset(binAt(bins, i));
 
     const scale = N_BINS / (boundsMax - boundsMin);
     for (let i = 0; i < node.triCount; i++) {
-      const k = triIdx[first + i]!;
+      const k = triAt(triIdx, first + i);
       const k9 = 9 * k;
-      const centroid = aabbCopy[k9 + 6 + ax]!;
+      const centroid = scalarAt(aabbCopy, k9 + 6 + ax, 'centroid');
       const bi = Math.min(N_BINS - 1, Math.floor((centroid - boundsMin) * scale));
-      const bin = bins[bi]!;
+      const bin = binAt(bins, bi);
       bin.triCount++;
-      const b0 = aabbCopy[k9]!,
-        b1 = aabbCopy[k9 + 1]!,
-        b2 = aabbCopy[k9 + 2]!,
-        b3 = aabbCopy[k9 + 3]!,
-        b4 = aabbCopy[k9 + 4]!,
-        b5 = aabbCopy[k9 + 5]!;
+      const b0 = scalarAt(aabbCopy, k9, 'aabb');
+      const b1 = scalarAt(aabbCopy, k9 + 1, 'aabb');
+      const b2 = scalarAt(aabbCopy, k9 + 2, 'aabb');
+      const b3 = scalarAt(aabbCopy, k9 + 3, 'aabb');
+      const b4 = scalarAt(aabbCopy, k9 + 4, 'aabb');
+      const b5 = scalarAt(aabbCopy, k9 + 5, 'aabb');
       if (b0 < bin.minX) bin.minX = b0;
       if (b1 < bin.minY) bin.minY = b1;
       if (b2 < bin.minZ) bin.minZ = b2;
@@ -179,24 +191,23 @@ function subdivide(
       if (b5 > bin.maxZ) bin.maxZ = b5;
     }
 
-    // Prefix scan: left areas and counts
     let lSum = 0;
-    let lMnX = INF,
-      lMnY = INF,
-      lMnZ = INF,
-      lMxX = -INF,
-      lMxY = -INF,
-      lMxZ = -INF;
+    let lMnX = INF;
+    let lMnY = INF;
+    let lMnZ = INF;
+    let lMxX = -INF;
+    let lMxY = -INF;
+    let lMxZ = -INF;
     let rSum = 0;
-    let rMnX = INF,
-      rMnY = INF,
-      rMnZ = INF,
-      rMxX = -INF,
-      rMxY = -INF,
-      rMxZ = -INF;
+    let rMnX = INF;
+    let rMnY = INF;
+    let rMnZ = INF;
+    let rMxX = -INF;
+    let rMxY = -INF;
+    let rMxZ = -INF;
 
     for (let i = 0; i < N_BINS - 1; i++) {
-      const lb = bins[i]!;
+      const lb = binAt(bins, i);
       lSum += lb.triCount;
       leftCountSum[i] = lSum;
       if (lb.minX < lMnX) lMnX = lb.minX;
@@ -207,7 +218,8 @@ function subdivide(
       if (lb.maxZ > lMxZ) lMxZ = lb.maxZ;
       leftArea[i] = halfArea(lMnX, lMnY, lMnZ, lMxX, lMxY, lMxZ);
 
-      const rb = bins[N_BINS - 1 - i]!;
+      const rightIndex = N_BINS - 1 - i;
+      const rb = binAt(bins, rightIndex);
       rSum += rb.triCount;
       rightCountSum[N_BINS - 2 - i] = rSum;
       if (rb.minX < rMnX) rMnX = rb.minX;
@@ -221,7 +233,11 @@ function subdivide(
 
     const binScale = (boundsMax - boundsMin) / N_BINS;
     for (let i = 0; i < N_BINS - 1; i++) {
-      const cost = leftCountSum[i]! * leftArea[i]! + rightCountSum[i]! * rightArea[i]!;
+      const leftCount = scalarAt(leftCountSum, i, 'left count');
+      const left = scalarAt(leftArea, i, 'left area');
+      const rightCount = scalarAt(rightCountSum, i, 'right count');
+      const right = scalarAt(rightArea, i, 'right area');
+      const cost = leftCount * left + rightCount * right;
       if (cost < bestCost) {
         bestCost = cost;
         bestAxis = ax;
@@ -230,18 +246,15 @@ function subdivide(
     }
   }
 
-  // Reject split if it doesn't beat parent cost
   const parentArea = halfArea(node.minX, node.minY, node.minZ, node.maxX, node.maxY, node.maxZ);
   if (bestCost >= node.triCount * parentArea) bestSplitPos = INF;
 
-  // ── Partition in-place ───────────────────────────────────────────────────
   let leftCount = doPartition(node, triIdx, aabbCopy, bestAxis, bestSplitPos);
 
-  // Fallback 1: spatial median on longest axis
   if (leftCount === 0 || leftCount === node.triCount) {
-    const ex = node.maxX - node.minX,
-      ey = node.maxY - node.minY,
-      ez = node.maxZ - node.minZ;
+    const ex = node.maxX - node.minX;
+    const ey = node.maxY - node.minY;
+    const ez = node.maxZ - node.minZ;
     let ax = 0;
     if (ey > ex) ax = 1;
     if (ez > (ax === 0 ? ex : ey)) ax = 2;
@@ -250,36 +263,36 @@ function subdivide(
     leftCount = doPartition(node, triIdx, aabbCopy, ax, mn + (mx - mn) * 0.5);
   }
 
-  // Fallback 2: object median splits across all 3 axes
   for (let axTry = 0; (leftCount === 0 || leftCount === node.triCount) && axTry < 3; axTry++) {
     let sum = 0;
     const first = node.leftFirst;
-    for (let i = 0; i < node.triCount; i++) sum += aabbCopy[9 * triIdx[first + i]! + 6 + axTry]!;
+    for (let i = 0; i < node.triCount; i++) {
+      sum += scalarAt(aabbCopy, 9 * triAt(triIdx, first + i) + 6 + axTry, 'centroid');
+    }
     leftCount = doPartition(node, triIdx, aabbCopy, axTry, sum / node.triCount);
   }
 
   if (leftCount === 0 || leftCount === node.triCount) {
-    // All fallbacks failed - force leaf
-    node.leftFirst = triIdx[node.leftFirst]!;
+    node.leftFirst = triAt(triIdx, node.leftFirst);
     return;
   }
 
-  // ── Create child nodes ───────────────────────────────────────────────────
   const leftIdx = nodesUsed.value++;
   const rightIdx = nodesUsed.value++;
-
   while (bvhNode.length <= rightIdx) bvhNode.push(makeNode());
 
-  bvhNode[leftIdx]!.leftFirst = node.leftFirst;
-  bvhNode[leftIdx]!.triCount = leftCount;
-  bvhNode[rightIdx]!.leftFirst = node.leftFirst + leftCount;
-  bvhNode[rightIdx]!.triCount = node.triCount - leftCount;
+  const leftNode = nodeAt(bvhNode, leftIdx);
+  const rightNode = nodeAt(bvhNode, rightIdx);
+  leftNode.leftFirst = node.leftFirst;
+  leftNode.triCount = leftCount;
+  rightNode.leftFirst = node.leftFirst + leftCount;
+  rightNode.triCount = node.triCount - leftCount;
 
   node.leftFirst = leftIdx;
-  node.triCount = 0; // inner node
+  node.triCount = 0;
 
-  updateNodeBounds(bvhNode[leftIdx]!, triIdx, aabbCopy);
-  updateNodeBounds(bvhNode[rightIdx]!, triIdx, aabbCopy);
+  updateNodeBounds(leftNode, triIdx, aabbCopy);
+  updateNodeBounds(rightNode, triIdx, aabbCopy);
 
   subdivide(
     leftIdx,
@@ -309,7 +322,6 @@ function subdivide(
   );
 }
 
-/** In-place partition: returns leftCount. */
 function doPartition(
   node: BVHNode,
   triIdx: Uint32Array,
@@ -320,19 +332,18 @@ function doPartition(
   let i = node.leftFirst;
   let j = i + node.triCount - 1;
   while (i <= j) {
-    if (aabbCopy[9 * triIdx[i]! + 6 + axisNum]! < splitPos) {
+    const iTri = triAt(triIdx, i);
+    if (scalarAt(aabbCopy, 9 * iTri + 6 + axisNum, 'centroid') < splitPos) {
       i++;
     } else {
-      const tmp = triIdx[i]!;
-      triIdx[i] = triIdx[j]!;
-      triIdx[j] = tmp;
+      const jTri = triAt(triIdx, j);
+      triIdx[i] = jTri;
+      triIdx[j] = iTri;
       j--;
     }
   }
   return i - node.leftFirst;
 }
-
-// ── Public API ───────────────────────────────────────────────────────────────
 
 /**
  * Build a BVH over N triangles and write the node data back into aabb_array.
@@ -351,17 +362,15 @@ export function buildBVH(aabb_array: Float32Array, N: number, N_BINS = 32): void
   for (let i = 0; i < N; i++) triIdx[i] = i;
 
   const bins: Bin[] = Array.from({ length: N_BINS }, makeBin);
-  const leftArea: Float32Array = new Float32Array(N_BINS - 1);
-  const rightArea: Float32Array = new Float32Array(N_BINS - 1);
-  const leftCountSum: Uint32Array = new Uint32Array(N_BINS - 1);
-  const rightCountSum: Uint32Array = new Uint32Array(N_BINS - 1);
+  const leftArea = new Float32Array(N_BINS - 1);
+  const rightArea = new Float32Array(N_BINS - 1);
+  const leftCountSum = new Uint32Array(N_BINS - 1);
+  const rightCountSum = new Uint32Array(N_BINS - 1);
 
-  // Pre-allocate node pool (2*N is the upper bound for a binary tree over N leaves)
   const bvhNode: BVHNode[] = Array.from({ length: Math.max(4, N * 2) }, makeNode);
-  const nodesUsed = { value: 2 }; // 0=root, 1=unused (keeps children at even/odd pairs)
+  const nodesUsed = { value: 2 };
 
-  // Root: all triangles
-  const root = bvhNode[0]!;
+  const root = nodeAt(bvhNode, 0);
   root.leftFirst = 0;
   root.triCount = N;
   updateNodeBounds(root, triIdx, aabbCopy);
@@ -380,10 +389,9 @@ export function buildBVH(aabb_array: Float32Array, N: number, N_BINS = 32): void
     N_BINS,
   );
 
-  // Write BVH node data into aabb_array (8 floats per node)
   const nodeCount = bvhNode.length;
   for (let i = 0; i < nodeCount; i++) {
-    const n = bvhNode[i]!;
+    const n = nodeAt(bvhNode, i);
     const base = 8 * i;
     aabb_array[base + 0] = n.minX;
     aabb_array[base + 1] = n.minY;
