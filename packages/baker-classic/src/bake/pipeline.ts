@@ -180,10 +180,12 @@ export async function runBakePipeline(args: BakePipelineArgs): Promise<LightmapB
     ctxState,
   };
   for (let gi = 0; gi < groupKeys.length; gi++) {
-    const key = groupKeys[gi]!;
+    const key = groupKeys[gi];
+    if (key === undefined) throw new Error('[baker] bake group key is missing');
     const res = groupResolution(key);
     const internalRes = res * opts.superSample;
-    const groupMeshes = groups.get(key)!;
+    const groupMeshes = groups.get(key);
+    if (!groupMeshes) throw new Error(`[baker] bake group ${key} is missing`);
 
     const { group, finalTex } = await runGroupBake(
       ctx,
@@ -221,7 +223,6 @@ export async function runBakePipeline(args: BakePipelineArgs): Promise<LightmapB
   renderer.getContext().finish();
   const tDrain1 = performance.now();
   if (import.meta.env.DEV) {
-    // eslint-disable-next-line no-console
     console.info(`[baker] GPU queue drain: ${(tDrain1 - tDrain0).toFixed(1)}ms`);
   }
 
