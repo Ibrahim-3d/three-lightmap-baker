@@ -1,25 +1,14 @@
+import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { renderMode, viewLayers, type ViewLayerDescriptor } from 'shared';
 import { ChevronDown } from './icons';
 
-/**
- * Top-right viewport overlay. Blender-style view-layer picker.
- *
- * Reads the `viewLayers` signal (populated by the app from its modes.LAYERS
- * table) and the active layer id from `renderMode`. Click → dropdown grouped
- * by `group` ('output' / 'debug'). The shell stays renderer-agnostic - it
- * never imports app-side enums.
- *
- * The app wires the `renderMode` signal back into the orchestrator via an
- * effect (see `apps/playground/src/main.tsx`) so picking a layer here calls
- * `orchestrator.setLayer(id)`.
- */
 const GROUP_LABEL: Record<ViewLayerDescriptor['group'], string> = {
   output: 'Output',
   debug: 'Debug',
 };
 
-export function ViewportToggle() {
+export function ViewportToggle(): JSX.Element | null {
   const layers = viewLayers.value;
   const active = renderMode.value;
   const [open, setOpen] = useState(false);
@@ -27,11 +16,11 @@ export function ViewportToggle() {
 
   useEffect(() => {
     if (!open) return;
-    const onDown = (e: MouseEvent) => {
+    const onDown = (e: MouseEvent): void => {
       const a = anchorRef.current;
       if (a && !a.contains(e.target as Node)) setOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => {
+    const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') setOpen(false);
     };
     window.addEventListener('mousedown', onDown);
@@ -44,7 +33,8 @@ export function ViewportToggle() {
 
   if (layers.length === 0) return null;
 
-  const activeLayer = layers.find((l) => l.id === active) ?? layers[0]!;
+  const activeLayer = layers.find((l) => l.id === active) ?? layers[0];
+  if (!activeLayer) return null;
   const grouped = new Map<ViewLayerDescriptor['group'], ViewLayerDescriptor[]>();
   for (const l of layers) {
     const arr = grouped.get(l.group) ?? [];
