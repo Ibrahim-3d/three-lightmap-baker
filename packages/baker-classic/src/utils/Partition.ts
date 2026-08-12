@@ -55,8 +55,9 @@ export function partitionByResolution(
       continue;
     }
     const res = override.resolution ?? globalRes;
-    if (!groups.has(res)) groups.set(res, []);
-    groups.get(res)!.push(m);
+    const group = groups.get(res);
+    if (group) group.push(m);
+    else groups.set(res, [m]);
   }
   if (groups.size === 0 && excluded.length < meshes.length) {
     groups.set(
@@ -109,9 +110,11 @@ export function partitionByDensity(
 
   // Group meshes by atlas index - preserves input order within each group.
   for (let i = 0; i < eligible.length; i++) {
-    const a = assignments[i]!;
-    if (!groups.has(a.atlasIdx)) groups.set(a.atlasIdx, []);
-    groups.get(a.atlasIdx)!.push(a.mesh);
+    const assignment = assignments[i];
+    if (!assignment) throw new Error(`[baker] missing atlas assignment for mesh ${i}`);
+    const group = groups.get(assignment.atlasIdx);
+    if (group) group.push(assignment.mesh);
+    else groups.set(assignment.atlasIdx, [assignment.mesh]);
   }
 
   return { excluded, groups, resolution: atlasResolution };
