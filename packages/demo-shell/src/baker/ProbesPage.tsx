@@ -1,3 +1,4 @@
+import type { JSX } from 'preact';
 import {
   BoolField,
   bumpOptions,
@@ -15,7 +16,7 @@ const RUNTIME_DEFAULTS = {
   legacy: { spacing: 0.65, maxProbes: 8192 },
 } as const;
 
-export function ProbesPage() {
+export function ProbesPage(): JSX.Element | null {
   void optionsTick.value;
   const app = getBakerOrchestrator();
   if (!app) return null;
