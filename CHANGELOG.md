@@ -2,9 +2,9 @@
 
 All notable public changes to `lightmap-baker` are documented here.
 
-## lightmap-baker v1.0.0 — 2026-08-12
+## lightmap-baker v1.0.0 — 2026-08-13
 
-First public npm release candidate.
+First public npm release.
 
 ### Added
 
