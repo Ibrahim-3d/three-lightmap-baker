@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { LightmapBaker } from 'three-lightmap-baker';
+import { LightmapBaker } from 'lightmap-baker';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(512, 512);

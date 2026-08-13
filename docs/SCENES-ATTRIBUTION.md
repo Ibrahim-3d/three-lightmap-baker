@@ -7,14 +7,14 @@ demo assets from `apps/playground/public/`.
 
 | Preset id                | Source                                          | URL                                                                  | License | Author               |
 | ------------------------ | ----------------------------------------------- | -------------------------------------------------------------------- | ------- | -------------------- |
-| `cornell.classic`        | three-lightmap-baker (built-in)                 | -                                                                    | CC0     | three-lightmap-baker |
-| `cornell.advanced`       | three-lightmap-baker (built-in)                 | -                                                                    | CC0     | three-lightmap-baker |
-| `cornell.glass-mirror`   | three-lightmap-baker (built-in)                 | -                                                                    | CC0     | three-lightmap-baker |
-| `cornell.emissive-strip` | three-lightmap-baker (built-in)                 | -                                                                    | CC0     | three-lightmap-baker |
+| `cornell.classic`        | Lightmap Baker (built-in)                       | -                                                                    | CC0     | Lightmap Baker |
+| `cornell.advanced`       | Lightmap Baker (built-in)                       | -                                                                    | CC0     | Lightmap Baker |
+| `cornell.glass-mirror`   | Lightmap Baker (built-in)                       | -                                                                    | CC0     | Lightmap Baker |
+| `cornell.emissive-strip` | Lightmap Baker (built-in)                       | -                                                                    | CC0     | Lightmap Baker |
 | `threejs.pointlights`    | three.js / `webgl_lights_pointlights`           | https://threejs.org/examples/?q=pointlights#webgl_lights_pointlights | MIT     | three.js authors     |
 | `threejs.shadowmap`      | three.js / `webgl_shadowmap`                    | https://threejs.org/examples/?q=shadowmap#webgl_shadowmap            | MIT     | three.js authors     |
 | `threejs.decals`         | three.js / `webgl_decals` (lighting setup only) | https://threejs.org/examples/?q=decals#webgl_decals                  | MIT     | three.js authors     |
-| `isometric.room`         | three-lightmap-baker (built-in)                 | -                                                                    | CC0     | three-lightmap-baker |
+| `isometric.room`         | Lightmap Baker (built-in)                       | -                                                                    | CC0     | Lightmap Baker |
 
 ## Notes
 

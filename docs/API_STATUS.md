@@ -1,6 +1,6 @@
 # API Status — v1.0.0 Release Candidate
 
-`three-lightmap-baker` is at the v1 npm release-candidate stage.
+`lightmap-baker` is at the v1 npm release-candidate stage.
 
 The public package is separated from the demo/editor code and produces ESM, CommonJS and TypeScript declaration outputs. The tested Three.js baseline is r185 and the peer dependency is intentionally constrained to:
 
@@ -11,7 +11,7 @@ three >=0.185.1 <0.186.0
 ## Primary public API
 
 ```ts
-import { LightmapBaker } from 'three-lightmap-baker';
+import { LightmapBaker } from 'lightmap-baker';
 
 const baker = new LightmapBaker(renderer, options);
 // or

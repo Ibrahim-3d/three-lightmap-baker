@@ -1,5 +1,12 @@
 import { expect, test } from '@playwright/test';
-import { bakeDraft, TEST_URL, trackConsoleErrors, waitBakeDone, waitReady } from './helpers';
+import {
+  bakeDraft,
+  getGpuDiagnostic,
+  TEST_URL,
+  trackConsoleErrors,
+  waitBakeDone,
+  waitReady,
+} from './helpers';
 
 /**
  * Catches S12-style regressions (NVIDIA D3D11 post-bake context loss, lost
@@ -7,30 +14,33 @@ import { bakeDraft, TEST_URL, trackConsoleErrors, waitBakeDone, waitReady } from
  * bakes; assert no context loss + bakeGroups rebuild each cycle.
  */
 test.describe('bake cycle stress', () => {
-    test('5x back-to-back Draft bakes complete without context loss', async ({ page }) => {
-        const { errors } = trackConsoleErrors(page);
-        await page.goto(TEST_URL);
-        await waitReady(page);
+  test('5x back-to-back Draft bakes complete without context loss', async ({ page }) => {
+    const { errors } = trackConsoleErrors(page);
+    await page.goto(TEST_URL);
+    await waitReady(page);
+    const gpu = await getGpuDiagnostic(page);
+    test.info().annotations.push({ type: 'gpu', description: JSON.stringify(gpu) });
+    console.log(`[baker:e2e:gpu] ${JSON.stringify(gpu)}`);
 
-        for (let i = 0; i < 5; i++) {
-            await bakeDraft(page);
-            await waitBakeDone(page);
+    for (let i = 0; i < 5; i++) {
+      await bakeDraft(page);
+      await waitBakeDone(page);
 
-            const status = await page.evaluate(() => {
-                const w = window as unknown as {
-                    __baker: { getBakeStatus(): string; getBakeGroupCount(): number };
-                };
-                return { status: w.__baker.getBakeStatus(), groups: w.__baker.getBakeGroupCount() };
-            });
-            expect(status.status, `cycle ${i + 1}: expected status 'done'`).toBe('done');
-            expect(status.groups, `cycle ${i + 1}: expected groups > 0`).toBeGreaterThan(0);
+      const status = await page.evaluate(() => {
+        const w = window as unknown as {
+          __baker: { getBakeStatus(): string; getBakeGroupCount(): number };
+        };
+        return { status: w.__baker.getBakeStatus(), groups: w.__baker.getBakeGroupCount() };
+      });
+      expect(status.status, `cycle ${i + 1}: expected status 'done'`).toBe('done');
+      expect(status.groups, `cycle ${i + 1}: expected groups > 0`).toBeGreaterThan(0);
 
-            // Catch CONTEXT_LOST diagnostic line.
-            const lost = errors.some((e) => e.includes('CONTEXT LOST'));
-            expect(lost, `cycle ${i + 1}: webgl context lost - see ${errors.join('; ')}`).toBe(false);
+      // Catch CONTEXT_LOST diagnostic line.
+      const lost = errors.some((e) => e.includes('CONTEXT LOST'));
+      expect(lost, `cycle ${i + 1}: webgl context lost - see ${errors.join('; ')}`).toBe(false);
 
-            // Brief pause between cycles to mimic real user flow.
-            await page.waitForTimeout(100);
-        }
-    });
+      // Brief pause between cycles to mimic real user flow.
+      await page.waitForTimeout(100);
+    }
+  });
 });

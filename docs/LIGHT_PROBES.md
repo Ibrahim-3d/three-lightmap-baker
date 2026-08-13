@@ -26,7 +26,7 @@ The baker deliberately keeps probe generation separate from `LightmapBaker.bake(
 import {
   LightmapBaker,
   captureLightmappedProbeGrid,
-} from 'three-lightmap-baker';
+} from 'lightmap-baker';
 
 const baker = new LightmapBaker({
   renderer,
@@ -111,7 +111,7 @@ const { descriptor } = captureLightmappedProbeGrid(renderer, scene, result, opti
 After restoring the baked static lightmaps, recapture with:
 
 ```ts
-import { captureLightmappedProbeGridFromJSON } from 'three-lightmap-baker';
+import { captureLightmappedProbeGridFromJSON } from 'lightmap-baker';
 
 const restored = captureLightmappedProbeGridFromJSON(
   renderer,
@@ -167,7 +167,7 @@ import {
   generateProbeVolume,
   createProbeDebugView,
   bindProbeLighting,
-} from 'three-lightmap-baker';
+} from 'lightmap-baker';
 
 const { volume, stats } = await generateProbeVolume(
   renderer,

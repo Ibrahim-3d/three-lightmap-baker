@@ -11,7 +11,7 @@ import {
   type ProbeDebugView,
   type ProbeLightingBinding,
   type ProbeVolume,
-} from 'three-lightmap-baker';
+} from 'lightmap-baker';
 
 export type NativeLightProbeDemo = {
   grid: LightProbeGrid;

@@ -1,6 +1,6 @@
 # npm v1 Release Checklist
 
-This is the repository-side publication checklist for `three-lightmap-baker`.
+This is the repository-side publication checklist for `lightmap-baker`.
 
 Publishing is always explicit. Do not tag, release, version-bump or run the real `npm publish` command as a side effect of normal development.
 
@@ -28,9 +28,14 @@ Run hardware-sensitive rendering checks on a real supported GPU, not a software/
 At minimum validate:
 
 ```bash
-pnpm exec playwright test --headed --workers=1 tests/e2e/material-gi.spec.ts
-pnpm exec playwright test --headed --workers=1 tests/e2e/scene-presets.spec.ts -g "bake-cornell-draft survives a preset switch"
+pnpm run test:release:hardware -- --headed tests/e2e/material-gi.spec.ts
+pnpm run test:release:hardware -- --headed tests/e2e/scene-presets.spec.ts -g "bake-cornell-draft survives a preset switch"
 ```
+
+The local hardware command uses installed Google Chrome and lets ANGLE select
+the native backend (normally D3D11 on Windows). Set `BAKER_E2E_ANGLE` only for
+targeted backend diagnostics. CI continues to use its installed Playwright
+Chromium browser and is a browser smoke gate, not evidence of real-GPU GI.
 
 Also manually confirm:
 
@@ -87,7 +92,7 @@ Before the real publish command:
 
 ```bash
 npm whoami
-npm view three-lightmap-baker
+npm view lightmap-baker
 ```
 
 Verify:
@@ -111,9 +116,9 @@ Do not run the real publish command without Ibrahim's explicit release instructi
 After publication:
 
 ```bash
-npm view three-lightmap-baker version
-npm view three-lightmap-baker peerDependencies
-npm view three-lightmap-baker dist
+npm view lightmap-baker version
+npm view lightmap-baker peerDependencies
+npm view lightmap-baker dist
 ```
 
 Then test from a clean consumer project:
@@ -122,7 +127,7 @@ Then test from a clean consumer project:
 mkdir baker-consumer-smoke
 cd baker-consumer-smoke
 npm init -y
-npm install three three-lightmap-baker typescript
+npm install three lightmap-baker typescript
 ```
 
 Compile/import a minimal TypeScript consumer and run a browser integration smoke.

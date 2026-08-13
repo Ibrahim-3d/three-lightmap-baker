@@ -1,6 +1,6 @@
 # Getting Started
 
-This guide covers the public `three-lightmap-baker` package API for browser-based Three.js applications.
+This guide covers the public `lightmap-baker` package API for browser-based Three.js applications.
 
 ## Requirements
 
@@ -15,20 +15,20 @@ Node/headless and WebGPU baking are not part of v1.
 ## Install
 
 ```bash
-npm install three-lightmap-baker three
+npm install lightmap-baker three
 ```
 
 or:
 
 ```bash
-pnpm add three-lightmap-baker three
+pnpm add lightmap-baker three
 ```
 
 ## First bake
 
 ```ts
 import * as THREE from 'three';
-import { LightmapBaker } from 'three-lightmap-baker';
+import { LightmapBaker } from 'lightmap-baker';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 const scene = new THREE.Scene();
@@ -183,7 +183,7 @@ Use probes when moving objects need baked-environment lighting.
 import {
   LightmapBaker,
   captureLightmappedProbeGrid,
-} from 'three-lightmap-baker';
+} from 'lightmap-baker';
 
 const baker = new LightmapBaker({ renderer, resolution: 512, bounces: 2 });
 const result = await baker.bake(scene);
@@ -256,7 +256,7 @@ await promise;
 For browser automation or custom renderer ownership:
 
 ```ts
-import { createRendererAdapter, LightmapBaker } from 'three-lightmap-baker';
+import { createRendererAdapter, LightmapBaker } from 'lightmap-baker';
 
 const adapter = createRendererAdapter(renderer, { label: 'automation-renderer' });
 const baker = new LightmapBaker({ rendererAdapter: adapter });
@@ -267,7 +267,7 @@ The adapter boundary does not make Node/headless baking available by itself; it 
 ## Runtime capability check
 
 ```ts
-import { getLightmapRuntimeCapabilities } from 'three-lightmap-baker';
+import { getLightmapRuntimeCapabilities } from 'lightmap-baker';
 
 const capabilities = getLightmapRuntimeCapabilities();
 console.log(capabilities.runtime, capabilities.canBake);

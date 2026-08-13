@@ -110,11 +110,11 @@ for (const bundlePath of [esmBundlePath, cjsBundlePath]) {
   }
 }
 
-const esmLocal = await import('three-lightmap-baker');
+const esmLocal = await import('lightmap-baker');
 assertExports('local ESM', esmLocal);
 
 const requireLocal = createRequire(import.meta.url);
-const cjsLocal = requireLocal('three-lightmap-baker');
+const cjsLocal = requireLocal('lightmap-baker');
 assertExports('local CJS', cjsLocal);
 
 const packOutput = runNpm(['pack'], { cwd: repoRoot, encoding: 'utf8' });
@@ -137,11 +137,11 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tlb-pack-'));
 
 try {
   runNpm(['init', '-y'], { cwd: tempDir, stdio: 'ignore' });
-  runNpm(['install', tarballPath], { cwd: tempDir, stdio: 'ignore' });
+  runNpm(['install', 'three@0.185.1', tarballPath], { cwd: tempDir, stdio: 'ignore' });
 
   const installedManifest = JSON.parse(
     fs.readFileSync(
-      path.join(tempDir, 'node_modules', 'three-lightmap-baker', 'package.json'),
+      path.join(tempDir, 'node_modules', 'lightmap-baker', 'package.json'),
       'utf8',
     ),
   );
@@ -163,8 +163,11 @@ try {
   const tsconfig = path.join(tempDir, 'tsconfig.json');
   fs.writeFileSync(
     esmCheck,
-    "import { LightmapBaker, ProbeVolume, loadXAtlasThree, createRendererAdapter, generateProbeVolume, bindProbeLighting, getLightmapRuntimeCapabilities, classifyRenderer } from 'three-lightmap-baker';\n" +
+    "import { LightmapBaker, LightmapBakeResult, ProbeVolume, captureNativeLightProbeGrid, captureNativeLightProbeGridFromJSON, loadXAtlasThree, createRendererAdapter, generateProbeVolume, bindProbeLighting, getLightmapRuntimeCapabilities, classifyRenderer } from 'lightmap-baker';\n" +
       "if (typeof LightmapBaker !== 'function') throw new Error('missing LightmapBaker');\n" +
+      "if (typeof LightmapBakeResult !== 'function') throw new Error('missing LightmapBakeResult');\n" +
+      "if (typeof captureNativeLightProbeGrid !== 'function') throw new Error('missing captureNativeLightProbeGrid');\n" +
+      "if (typeof captureNativeLightProbeGridFromJSON !== 'function') throw new Error('missing captureNativeLightProbeGridFromJSON');\n" +
       "if (typeof ProbeVolume !== 'function') throw new Error('missing ProbeVolume');\n" +
       "if (typeof loadXAtlasThree !== 'function') throw new Error('missing loadXAtlasThree');\n" +
       "if (typeof createRendererAdapter !== 'function') throw new Error('missing createRendererAdapter');\n" +
@@ -175,8 +178,11 @@ try {
   );
   fs.writeFileSync(
     cjsCheck,
-    "const { LightmapBaker, ProbeVolume, loadXAtlasThree, createRendererAdapter, generateProbeVolume, bindProbeLighting, getLightmapRuntimeCapabilities, classifyRenderer } = require('three-lightmap-baker');\n" +
+    "const { LightmapBaker, LightmapBakeResult, ProbeVolume, captureNativeLightProbeGrid, captureNativeLightProbeGridFromJSON, loadXAtlasThree, createRendererAdapter, generateProbeVolume, bindProbeLighting, getLightmapRuntimeCapabilities, classifyRenderer } = require('lightmap-baker');\n" +
       "if (typeof LightmapBaker !== 'function') throw new Error('missing LightmapBaker');\n" +
+      "if (typeof LightmapBakeResult !== 'function') throw new Error('missing LightmapBakeResult');\n" +
+      "if (typeof captureNativeLightProbeGrid !== 'function') throw new Error('missing captureNativeLightProbeGrid');\n" +
+      "if (typeof captureNativeLightProbeGridFromJSON !== 'function') throw new Error('missing captureNativeLightProbeGridFromJSON');\n" +
       "if (typeof ProbeVolume !== 'function') throw new Error('missing ProbeVolume');\n" +
       "if (typeof loadXAtlasThree !== 'function') throw new Error('missing loadXAtlasThree');\n" +
       "if (typeof createRendererAdapter !== 'function') throw new Error('missing createRendererAdapter');\n" +
@@ -191,7 +197,7 @@ try {
 
   fs.writeFileSync(
     typesCheck,
-    "import { LightmapBaker, ProbeVolume, createRendererAdapter, generateProbeVolume, bindProbeLighting, getLightmapRuntimeCapabilities, classifyRenderer, type LightmapBakerOptions, type LightmapRendererAdapter, type LightmapRuntimeCapabilities, type GenerateProbeVolumeOptions, type ProbeLightingBindingOptions, type GPUTier } from 'three-lightmap-baker';\n" +
+    "import { LightmapBaker, ProbeVolume, createRendererAdapter, generateProbeVolume, bindProbeLighting, getLightmapRuntimeCapabilities, classifyRenderer, type LightmapBakerOptions, type LightmapRendererAdapter, type LightmapRuntimeCapabilities, type GenerateProbeVolumeOptions, type ProbeLightingBindingOptions, type GPUTier } from 'lightmap-baker';\n" +
       'const opts: LightmapBakerOptions = { samples: 4, bounces: 1, resolution: 64 };\n' +
       'const baker = new LightmapBaker(opts);\n' +
       'baker.setRenderer;\n' +

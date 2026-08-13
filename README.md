@@ -6,15 +6,16 @@
 | --- | --- | --- |
 | <img src="https://raw.githubusercontent.com/Ibrahim-3d/three-lightmap-baker/master/screenshots/before-solid-viewport.png" alt="Cornell advanced scene before lightmap baking" width="260" /> | <img src="https://raw.githubusercontent.com/Ibrahim-3d/three-lightmap-baker/master/screenshots/after-preview-baked-combined.png" alt="Cornell advanced scene after Preview lightmap bake" width="260" /> | <img src="https://raw.githubusercontent.com/Ibrahim-3d/three-lightmap-baker/master/screenshots/after-production-baked-combined.png" alt="Cornell advanced scene after Production lightmap bake" width="260" /> |
 
-<h1 align="center">🔆 Three Lightmap Baker</h1>
+<h1 align="center">🔆 Lightmap Baker</h1>
 
 <p align="center">
-  <strong>Path-traced lightmap baking with global illumination. In the browser. No Blender. No Unity. No round-trips.</strong>
+  <strong>Browser-native path-traced lightmap baking for Three.js.</strong><br />
+  Path-traced global illumination. In the browser. No Blender. No Unity. No round-trips.
 </p>
 
 <p align="center">
   <a href="https://Ibrahim-3d.github.io/three-lightmap-baker/"><strong>Live Demo 🚀</strong></a> ·
-  <a href="https://www.npmjs.com/package/three-lightmap-baker"><strong>npm</strong></a> ·
+  <a href="https://www.npmjs.com/package/lightmap-baker"><strong>npm</strong></a> ·
   <a href="https://github.com/Ibrahim-3d/three-lightmap-baker/blob/master/docs/GETTING_STARTED.md">Getting Started</a> ·
   <a href="https://github.com/Ibrahim-3d/three-lightmap-baker/blob/master/docs/LIGHT_PROBES.md">Light Probes</a>
 </p>
@@ -34,11 +35,11 @@
 ## Install
 
 ```bash
-npm install three-lightmap-baker three
+npm install lightmap-baker three
 ```
 
 ```bash
-pnpm add three-lightmap-baker three
+pnpm add lightmap-baker three
 ```
 
 ### Compatibility
@@ -138,7 +139,7 @@ The difference is that the whole pipeline runs in the browser and speaks Three.j
 
 ```ts
 import * as THREE from 'three';
-import { LightmapBaker } from 'three-lightmap-baker';
+import { LightmapBaker } from 'lightmap-baker';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 const scene = new THREE.Scene();
@@ -256,7 +257,7 @@ path-traced static lightmap bake
 import {
   LightmapBaker,
   captureLightmappedProbeGrid,
-} from 'three-lightmap-baker';
+} from 'lightmap-baker';
 
 const baker = new LightmapBaker({
   renderer,
@@ -418,7 +419,7 @@ const baker = new LightmapBaker({
 Advanced browser/offscreen integrations can inject a renderer adapter:
 
 ```ts
-import { createRendererAdapter, LightmapBaker } from 'three-lightmap-baker';
+import { createRendererAdapter, LightmapBaker } from 'lightmap-baker';
 
 const adapter = createRendererAdapter(renderer, { label: 'my-renderer' });
 const baker = new LightmapBaker({ rendererAdapter: adapter });
@@ -453,7 +454,7 @@ In R3F, get them from `useThree()`:
 
 ```tsx
 import { useThree } from '@react-three/fiber';
-import { LightmapBaker } from 'three-lightmap-baker';
+import { LightmapBaker } from 'lightmap-baker';
 
 const { gl, scene } = useThree();
 
@@ -507,7 +508,7 @@ These are current v1 limits, not vague roadmap disclaimers:
 For runtime capability checks:
 
 ```ts
-import { getLightmapRuntimeCapabilities } from 'three-lightmap-baker';
+import { getLightmapRuntimeCapabilities } from 'lightmap-baker';
 
 console.log(getLightmapRuntimeCapabilities());
 ```

@@ -308,7 +308,7 @@ function installProjectFileSurface(host: ProbeHost): void {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = 'three-lightmap-baker-project.3dl';
+    anchor.download = 'lightmap-baker-project.3dl';
     anchor.click();
     URL.revokeObjectURL(url);
   };

@@ -148,7 +148,7 @@ This is refinement and exposure work, not baseline implementation.
 
 ### 4.1 Not yet package-facing
 
-Most debug modes currently live inside the playground/editor layer. The public library does not yet expose a clean, supported debug API for applications that consume `three-lightmap-baker` without the demo shell.
+Most debug modes currently live inside the playground/editor layer. The public library does not yet expose a clean, supported debug API for applications that consume `lightmap-baker` without the demo shell.
 
 A later API could provide access to bake outputs and helper materials without coupling the npm package to the editor UI.
 

@@ -79,10 +79,10 @@ sceneRegistry.register({
   category: 'isometric',
   description: 'CC0 low-poly isometric room: floor + 2 walls + bed/table/stool. Locked iso camera.',
   source: {
-    name: 'three-lightmap-baker built-in',
+    name: 'Lightmap Baker built-in',
     url: 'https://github.com/lucas-jones/three-lightmap-baker',
     license: 'CC0',
-    author: 'three-lightmap-baker',
+    author: 'Lightmap Baker',
   },
   build,
   defaultBakeSettings: {

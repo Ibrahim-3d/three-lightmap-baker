@@ -1,4 +1,4 @@
-# Contributing - three-lightmap-baker
+# Contributing - Lightmap Baker
 
 ## Project State
 

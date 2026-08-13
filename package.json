@@ -1,5 +1,5 @@
 {
-  "name": "three-lightmap-baker",
+  "name": "lightmap-baker",
   "version": "1.0.0",
   "description": "Browser-first Three.js lightmap baker with path-traced GI, automatic lightmap UVs, textured and multi-material transport, AO, denoising, and native LightProbeGrid support",
   "type": "module",
@@ -80,7 +80,8 @@
     "typecheck:examples": "tsc -p tsconfig.examples.json",
     "check": "tsc --noEmit && tsc -p tsconfig.examples.json && eslint packages/ apps/ && prettier --check packages/ apps/ examples/",
     "test": "playwright test",
-    "test:release": "playwright test --workers=1",
+    "test:release": "playwright test --config playwright.release.config.ts --workers=1",
+    "test:release:hardware": "playwright test --config playwright.release.config.ts --workers=1",
     "test:headed": "playwright test --headed",
     "test:smoke": "playwright test smoke",
     "test:adapter-runtime": "playwright test tests/e2e/adapter-runtime.spec.ts",

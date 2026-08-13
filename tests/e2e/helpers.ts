@@ -15,6 +15,44 @@ export const BAKE_TIMEOUT_MS = Number(
   process.env.BAKER_E2E_BAKE_TIMEOUT_MS ?? (process.env.CI ? 150_000 : 60_000),
 );
 
+export type GpuDiagnostic = {
+  userAgent: string;
+  webglVersion: string;
+  renderer: string;
+  vendor: string;
+  unmaskedRenderer: string | null;
+  unmaskedVendor: string | null;
+  contextAttributes: WebGLContextAttributes | null;
+};
+
+/** Read the active Three.js WebGL context without creating another GPU context. */
+export async function getGpuDiagnostic(page: Page): Promise<GpuDiagnostic> {
+  return page.evaluate(() => {
+    const renderer = (
+      window as unknown as {
+        __baker: {
+          sceneController: {
+            renderer: { getContext(): WebGLRenderingContext | WebGL2RenderingContext };
+          };
+        };
+      }
+    ).__baker.sceneController.renderer;
+    const gl = renderer.getContext();
+    const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+    return {
+      userAgent: navigator.userAgent,
+      webglVersion: String(gl.getParameter(gl.VERSION)),
+      renderer: String(gl.getParameter(gl.RENDERER)),
+      vendor: String(gl.getParameter(gl.VENDOR)),
+      unmaskedRenderer: debugInfo
+        ? String(gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL))
+        : null,
+      unmaskedVendor: debugInfo ? String(gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL)) : null,
+      contextAttributes: gl.getContextAttributes(),
+    };
+  });
+}
+
 /** Wait for the app to mount: xatlas loaded, SceneController constructed, scene built. */
 export async function waitReady(page: Page, timeoutMs = 30_000): Promise<void> {
   await page.waitForSelector('body[data-baker-ready="1"]', { timeout: timeoutMs });

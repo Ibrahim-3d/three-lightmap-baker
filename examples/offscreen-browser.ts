@@ -3,7 +3,7 @@ import {
   LightmapBaker,
   createRendererAdapter,
   type LightmapContextLossTarget,
-} from 'three-lightmap-baker';
+} from 'lightmap-baker';
 
 type AutomationRenderer = {
   adapter: ReturnType<typeof createRendererAdapter>;

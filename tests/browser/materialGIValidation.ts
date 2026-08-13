@@ -148,7 +148,10 @@ function validateTexturedCase(
   ];
   const lightmapper = generateLightmapper(renderer, positions, normals, bvh, {
     resolution: 1,
-    casts: 64,
+    // One 1x1 sample is sufficient for the constant-albedo ratio assertions.
+    // Keep the ray batch below Windows' D3D11 TDR threshold: 64 rays in one
+    // synchronous draw can reset an otherwise healthy RTX context.
+    casts: 16,
     lights,
     skyColor: new Color(),
     skyIntensity: 0,

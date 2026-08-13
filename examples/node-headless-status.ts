@@ -1,4 +1,4 @@
-import { getLightmapRuntimeCapabilities } from 'three-lightmap-baker';
+import { getLightmapRuntimeCapabilities } from 'lightmap-baker';
 
 const capabilities = getLightmapRuntimeCapabilities();
 

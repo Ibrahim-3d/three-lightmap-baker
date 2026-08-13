@@ -1,8 +1,8 @@
 # Changelog
 
-All notable public changes to `three-lightmap-baker` are documented here.
+All notable public changes to `lightmap-baker` are documented here.
 
-## 1.0.0 — 2026-08-12
+## lightmap-baker v1.0.0 — 2026-08-12
 
 First public npm release candidate.
 

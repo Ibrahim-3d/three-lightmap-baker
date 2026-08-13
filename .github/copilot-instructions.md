@@ -1,4 +1,4 @@
-# Copilot instructions for three-lightmap-baker
+# Copilot instructions for Lightmap Baker
 
 ## Build, Test, Lint
 

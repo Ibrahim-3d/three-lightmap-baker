@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: npm
-      url: https://www.npmjs.com/package/three-lightmap-baker
+      url: https://www.npmjs.com/package/lightmap-baker
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -71,7 +71,7 @@ jobs:
           {
             echo "## npm Publish"
             echo ""
-            echo "Dry run completed for \`three-lightmap-baker@${{ inputs.version }}\`."
+            echo "Dry run completed for \`lightmap-baker@${{ inputs.version }}\`."
             echo "No package was published."
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -85,7 +85,7 @@ jobs:
           {
             echo "## npm Publish"
             echo ""
-            echo "Published \`three-lightmap-baker@${{ inputs.version }}\` to npm."
+            echo "Published \`lightmap-baker@${{ inputs.version }}\` to npm."
             echo ""
             echo "Update README install wording from pre-release/tarball guidance to normal registry install flow."
           } >> "$GITHUB_STEP_SUMMARY"

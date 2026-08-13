@@ -1294,7 +1294,7 @@ export class CornellBoxExample implements BakerOrchestrator {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'three-lightmap-baker-project.json';
+    a.download = 'lightmap-baker-project.json';
     a.click();
     URL.revokeObjectURL(url);
   }
