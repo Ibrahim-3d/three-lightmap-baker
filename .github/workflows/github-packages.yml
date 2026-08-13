@@ -1,0 +1,112 @@
+name: GitHub Packages
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/github-packages.yml'
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: github-packages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish GitHub Package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify release tag
+        if: github.event_name == 'release'
+        shell: bash
+        run: |
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          EXPECTED_TAG="v${PACKAGE_VERSION}"
+          if [ "${{ github.event.release.tag_name }}" != "$EXPECTED_TAG" ]; then
+            echo "::error::release tag '${{ github.event.release.tag_name }}' does not match package.json version '$PACKAGE_VERSION'"
+            exit 1
+          fi
+
+      - name: Build package
+        run: pnpm run build:package
+
+      - name: Prepare GitHub Packages metadata
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          pkg.name = '@ibrahim-3d/lightmap-baker';
+          pkg.publishConfig = {
+            ...(pkg.publishConfig ?? {}),
+            access: 'public',
+            registry: 'https://npm.pkg.github.com'
+          };
+          fs.writeFileSync('package.json', `${JSON.stringify(pkg, null, 2)}\n`);
+          NODE
+
+      - name: Setup GitHub Packages registry
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://npm.pkg.github.com
+          scope: '@ibrahim-3d'
+
+      - name: Check whether version already exists
+        id: package-check
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          if npm view "@ibrahim-3d/lightmap-baker@${PACKAGE_VERSION}" version --registry=https://npm.pkg.github.com >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "GitHub Package @ibrahim-3d/lightmap-baker@${PACKAGE_VERSION} already exists; skipping publish."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to GitHub Packages
+        if: steps.package-check.outputs.exists != 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm publish --registry=https://npm.pkg.github.com --access public
+
+      - name: Publish summary
+        shell: bash
+        run: |
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          {
+            echo "## GitHub Packages"
+            echo ""
+            if [ "${{ steps.package-check.outputs.exists }}" = "true" ]; then
+              echo "\`@ibrahim-3d/lightmap-baker@${PACKAGE_VERSION}\` was already published."
+            else
+              echo "Published \`@ibrahim-3d/lightmap-baker@${PACKAGE_VERSION}\` to GitHub Packages."
+            fi
+            echo ""
+            echo "The canonical npmjs.org package remains \`lightmap-baker\`."
+          } >> "$GITHUB_STEP_SUMMARY"
