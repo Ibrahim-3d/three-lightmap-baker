@@ -13,6 +13,13 @@ export type CompositeResult = {
     texture: Texture;
     /** Re-render the composite, optionally overriding any uniform / swapping aoTex. */
     refresh: (overrides?: CompositeOverrides) => void;
+    getOptions: () => {
+        directIntensity: number;
+        giIntensity: number;
+        aoEnabled: boolean;
+        aoIntensity: number;
+        aoExponent: number;
+    };
     dispose: () => void;
 };
 /**

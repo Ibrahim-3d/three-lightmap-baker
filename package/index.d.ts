@@ -46,4 +46,5 @@ export { detectGPUCapabilities, classifyRenderer } from './gpu/Capabilities';
 export type { GPUCapabilities, GPUTier } from './gpu/Capabilities';
 export { Diagnostics } from './utils/Diagnostics';
 export type { DiagSnapshot } from './utils/Diagnostics';
+export { preflightBakeScene, type BakeSceneIssue } from './bake/preflight';
 //# sourceMappingURL=index.d.ts.map

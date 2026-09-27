@@ -19,6 +19,7 @@ export type BakePipelineArgs = {
     t0: number;
     tp: Required<TimeoutProtectionOptions>;
     ctxState: ContextLossState;
+    sceneDispose?: () => void;
     checkAbort: (phase: BakeErrorPhase) => void;
 };
 /**

@@ -20,26 +20,6 @@ export type LightmapBakerInitOptions = LightmapBakerOptions & {
      */
     rendererAdapter?: LightmapRendererAdapter;
 };
-/**
- * One-call lightmap baker - wraps the lib primitives behind the Task 06 spec API.
- *
- * Spec deviations (intentional, documented in JSDoc per call site):
- *
- *  1. A WebGLRenderer is required before `bake()`, either via:
- *       - `new LightmapBaker(renderer, opts)`
- *       - `new LightmapBaker({ renderer, ...opts })`
- *       - `new LightmapBaker({ rendererAdapter, ...opts })`
- *       - `baker.setRenderer(renderer)`
- *       - `baker.setRendererAdapter(adapter)`
- *  2. `result.lightmaps` returns a `Map<Mesh, Texture>` where each mesh maps to its
- *     group's atlas texture. With `perMesh` grouping, meshes in different resolution
- *     groups get different textures. Without `perMesh`, all entries share one texture.
- *  3. `bounces` [1,4] controls GI path depth. Clamped on construction. Russian Roulette
- *     terminates low-throughput paths after bounce 2 for performance.
- *  4. `result.export(path, ...)` triggers a browser download. The `path` argument is
- *     interpreted as a filename hint (last path segment); browsers can't write to
- *     directories. With per-mesh grouping each group is exported as a separate file.
- */
 export declare class LightmapBaker {
     private _rendererAdapter;
     private opts;

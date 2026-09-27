@@ -11,6 +11,8 @@ export declare class LightmapBakeResult {
     private readonly meshResolutions;
     readonly stats: BakeStats;
     private readonly internals;
+    private disposed;
+    private aoJob;
     private persistentMaterialMount;
     constructor(renderer: WebGLRenderer, meshLightmaps: Map<Mesh, Texture>, meshResolutions: Map<Mesh, number>, stats: BakeStats, internals: {
         groups: GroupInternals[];
@@ -18,6 +20,7 @@ export declare class LightmapBakeResult {
         refinementOptions: PostProcessOptions;
         denoise: boolean;
         matTexDispose: () => void;
+        sceneDispose?: () => void;
     });
     /**
      * Returns the per-mesh lightmap textures. Meshes in the same resolution group

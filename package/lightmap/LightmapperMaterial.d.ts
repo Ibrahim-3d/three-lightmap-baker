@@ -19,7 +19,7 @@ export type LightmapperMaterialOptions = {
     materialTextureSize: number;
     casts: number;
     bounces: number;
-    /** Multi-light DataTexture: 4 texels wide × lightCount tall, RGBA float. */
+    /** Multi-light DataTexture: 6 texels wide × lightCount tall, RGBA float. */
     lightsTex: Texture;
     /** Number of active lights in lightsTex. 0 = no direct lighting. */
     lightCount: number;

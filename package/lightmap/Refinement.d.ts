@@ -1,4 +1,4 @@
-import { Texture, WebGLRenderer } from 'three';
+import { type Texture, type WebGLRenderer } from 'three';
 export type PostProcessOptions = {
     dilationIterations: number;
     denoiseEnabled: boolean;
@@ -7,17 +7,12 @@ export type PostProcessOptions = {
     denoiseKSigma: number;
 };
 export type PostProcessResult = {
-    /** Final post-processed lightmap texture (consume as MeshStandardMaterial.lightMap). */
     texture: Texture;
-    /** Call to release the ping-pong RTs when bake is replaced. */
     dispose: () => void;
 };
-/**
- * Run dilation N times, then optional bilateral denoise once. Returns the final RT's texture.
- *
- * Pipeline:  src --(dilate)x N --> A --(denoise?)--> B --> result
- *
- * Two RTs are allocated and ping-ponged. Caller owns disposal via the returned handle.
- */
-export declare const runPostProcess: (renderer: WebGLRenderer, src: Texture, positions: Texture, resolution: number, opts: PostProcessOptions, onProgress?: (percent: number) => void) => Promise<PostProcessResult>;
+/** Own all temporary render resources until the result is handed to the caller. */
+export declare const runPostProcess: (renderer: WebGLRenderer, src: Texture, positions: Texture, resolution: number, opts: PostProcessOptions, onProgress?: (percent: number) => void, controls?: {
+    signal?: AbortSignal;
+    normals?: Texture;
+}) => Promise<PostProcessResult>;
 //# sourceMappingURL=Refinement.d.ts.map
