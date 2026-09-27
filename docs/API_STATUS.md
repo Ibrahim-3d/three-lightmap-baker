@@ -36,6 +36,24 @@ const result = await baker.bake(scene, hooks);
 
 The first bake initializes the packaged xatlas JavaScript/WASM assets automatically. `loadXAtlasThree()` remains public for eager preload or custom asset URLs.
 
+## Runtime/backend capability API
+
+`getLightmapRuntimeCapabilities()` now distinguishes **runtime availability**
+from **currently supported baking**:
+
+- `backends.webgl` / `features.webgl2` report WebGL runtime availability;
+- `backends.webgpu` / `features.webgpu` report whether the runtime exposes WebGPU;
+- `selectedBackend` reports the backend the shipping baker would actually use;
+- `canBake` remains tied to the currently supported bake path.
+
+During the W1 backend-boundary stage, a browser can therefore report WebGPU as
+`available` while `selectedBackend` remains `webgl`. WebGPU availability is
+not yet a claim of WebGPU baking support.
+
+The renderer adapter also owns backend-specific bake validation, hardware
+identity/limits, loss monitoring and queue completion so those concerns no
+longer leak into the high-level bake orchestration.
+
 ## `LightmapBakeResult`
 
 A successful bake returns a `LightmapBakeResult` with:
