@@ -1,6 +1,6 @@
 # Architecture - Three Lightmap Baker
 
-Current as of 2026-06-12.
+Current as of 2026-09-27.
 
 ## Repository layout (relevant paths)
 
@@ -28,6 +28,8 @@ docs/                               Product docs, status, roadmap
 
 1. **Validation + capability detection**
    - Validate options and resolve timeout-protection defaults from GPU tier.
+   - Renderer/backend-specific support checks, hardware identity and lifecycle
+     handling are owned by `rendererAdapter.ts`, not the orchestration layer.
 2. **Mesh partitioning**
    - Resolution mode or density mode (`texelsPerMeter`) with per-mesh overrides.
 3. **UV unwrap**
@@ -56,11 +58,17 @@ docs/                               Product docs, status, roadmap
    - At scene init, install a shared 1×1 dummy `lightMap` on every `MeshStandardMaterial` with `lightMapIntensity = 0`.
    - This forces the `USE_LIGHTMAP` shader variant to compile **before** any heavy GPU work; post-bake swaps the texture without setting `needsUpdate`, avoiding an expensive recompile/TDR.
 3. **GPU queue drain**
-   - After the per-group loop, `LightmapBaker.bake()` must explicitly call `gl.finish()` (see D-014) to drain queued work.
-   - Skipping this causes the first post-bake scene render to trigger the drain and can TDR on NVIDIA D3D11.
-4. **WebGL context-loss handling**
-   - `LightmapBaker.bake()` installs a `webglcontextlost` listener before the pipeline starts and removes it in `finally`.
-   - Progressive passes must check the shared context-loss state before scheduling more GPU work so a lost context cancels the bake instead of leaking render targets or leaving callbacks alive.
+   - After the per-group loop, the pipeline must explicitly drain the active
+     backend through the renderer adapter (see D-014).
+   - The current WebGL adapter implements this with `gl.finish()`. Skipping the
+     drain causes the first post-bake scene render to absorb queued work and can
+     TDR on NVIDIA D3D11.
+4. **Renderer/device-loss handling**
+   - `LightmapBaker.bake()` installs the adapter's loss guard before the
+     pipeline starts and releases it in `finally`.
+   - The current WebGL adapter maps this to `webglcontextlost`. Progressive
+     passes check shared backend-loss state before scheduling more GPU work so a
+     lost backend cancels the bake instead of leaking resources.
 5. **Resource lifecycle ownership**
    - `LightmapBakeResult` owns generated textures, render targets, atlas internals, AO/composite outputs, and the shared BVH view returned from the bake.
    - Callers may apply the textures to scene materials, but cleanup still flows through `result.dispose()`. New passes must either attach disposable resources to the result/group views or dispose them before returning.
@@ -79,7 +87,8 @@ docs/                               Product docs, status, roadmap
 - `new LightmapBaker(renderer, options?)` (explicit renderer injection)
 - `new LightmapBaker({ renderer, ...options })` (clean config style)
 - `new LightmapBaker({ rendererAdapter, ...options })` (external renderer/context ownership)
-- `getLightmapRuntimeCapabilities()` (browser/offscreen/Node capability probe)
+- `getLightmapRuntimeCapabilities()` (browser/offscreen/Node capability probe,
+  including WebGL/WebGPU runtime availability and the currently selected bake backend)
 
 A renderer is required before calling `bake()`.
 
@@ -87,5 +96,12 @@ A renderer is required before calling `bake()`.
 
 - Current implementation is **WebGL browser-first**.
 - True Node.js headless baking is **not yet implemented**.
-- Existing architecture keeps renderer ownership explicit. `LightmapRendererAdapter` is the current offscreen/test-harness boundary for renderer setup and context-loss wiring, with Playwright runtime smoke coverage for the detached/offscreen browser path.
-- `getLightmapRuntimeCapabilities()` is the current staging API for automation. In Node it reports `canBake: false` and explains the missing true headless renderer/runtime path instead of attempting an unsupported bake.
+- Existing architecture keeps renderer ownership explicit. `LightmapRendererAdapter`
+  now also owns backend identity, support checks, GPU information, loss handling
+  and queue completion. The shipping implementation is still WebGL.
+- `getLightmapRuntimeCapabilities()` reports WebGPU runtime availability
+  separately from product support. A browser may report WebGPU as available
+  while `selectedBackend` remains `webgl` until the WebGPU bake path reaches
+  parity.
+- In Node it reports `canBake: false` and explains the missing true headless
+  renderer/runtime path instead of attempting an unsupported bake.
