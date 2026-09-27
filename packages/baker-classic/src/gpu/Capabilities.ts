@@ -1,4 +1,12 @@
 import type { WebGLRenderer } from 'three';
+import {
+  createRendererAdapter,
+  getRendererBackend,
+  getRendererHardwareInfo,
+  isLightmapRendererAdapter,
+  type LightmapRendererAdapter,
+  type LightmapRendererBackend,
+} from '../rendererAdapter';
 
 /**
  * GPU capability detection used by timeout protection to pick conservative
@@ -12,6 +20,7 @@ import type { WebGLRenderer } from 'three';
 export type GPUTier = 'discrete' | 'integrated' | 'unknown';
 
 export type GPUCapabilities = {
+  backend: LightmapRendererBackend;
   tier: GPUTier;
   /** Raw vendor string, or empty when WEBGL_debug_renderer_info is masked. */
   vendor: string;
@@ -66,11 +75,15 @@ export function classifyRenderer(renderer: string): GPUTier {
  * structure and never throws. If debug renderer info is unavailable, returns
  * tier 'unknown' with conservative defaults.
  */
-export function detectGPUCapabilities(renderer: WebGLRenderer): GPUCapabilities {
-  const gl = renderer.getContext();
-  const ext = gl.getExtension('WEBGL_debug_renderer_info');
-  const vendor = ext ? String(gl.getParameter(ext.UNMASKED_VENDOR_WEBGL) ?? '') : '';
-  const rendererStr = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) ?? '') : '';
+export function detectGPUCapabilities(
+  rendererOrAdapter: WebGLRenderer | LightmapRendererAdapter,
+): GPUCapabilities {
+  const adapter = isLightmapRendererAdapter(rendererOrAdapter)
+    ? rendererOrAdapter
+    : createRendererAdapter(rendererOrAdapter);
+  const info = getRendererHardwareInfo(adapter);
+  const vendor = info.vendor;
+  const rendererStr = info.renderer;
 
   const tier = classifyRenderer(rendererStr);
   const def = DEFAULTS[tier];
@@ -86,6 +99,7 @@ export function detectGPUCapabilities(renderer: WebGLRenderer): GPUCapabilities 
   }
 
   return {
+    backend: getRendererBackend(adapter),
     tier,
     vendor,
     renderer: rendererStr,
