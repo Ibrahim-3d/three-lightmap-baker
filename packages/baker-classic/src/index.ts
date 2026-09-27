@@ -119,6 +119,7 @@ export type {
   LightmapContextLossTarget,
   LightmapRendererAdapter,
   LightmapRendererAdapterOptions,
+  LightmapRendererBackend,
   LightOptions,
   GIOptions,
   AOOptions,
@@ -134,6 +135,7 @@ export type {
   LightmapRuntimeFeature,
   LightmapRuntimeFeatureStatus,
   LightmapRuntimeKind,
+  LightmapRuntimeBackend,
 } from './runtimeCapabilities';
 
 // --- GPU capability detection (Task 08) ---
