@@ -1,0 +1,41 @@
+name: Usage question
+description: Ask about integrating or using Lightmap Baker.
+labels: ["question"]
+body:
+  - type: input
+    id: summary
+    attributes:
+      label: Question
+      description: Ask one focused question.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What are you building, and what have you tried?
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Package version, Three.js version, browser, OS and GPU/WebGL renderer when relevant.
+      placeholder: |
+        lightmap-baker:
+        three:
+        Browser:
+        OS:
+        GPU / WebGL renderer:
+  - type: textarea
+    id: code
+    attributes:
+      label: Minimal code or reproduction
+      description: Add the smallest useful snippet, repository or demo steps.
+  - type: checkboxes
+    id: docs
+    attributes:
+      label: Documentation check
+      options:
+        - label: I checked Getting Started, API Status and the current Roadmap.
+          required: true
