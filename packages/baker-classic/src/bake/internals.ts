@@ -38,5 +38,5 @@ export type GroupInternals = {
   surfaceAlbedoTex: Texture;
 };
 
-/** Mutable state shared between the canvas listener and the mapper loop. */
-export type ContextLossState = { lost: boolean };
+/** Mutable backend-loss state shared between the adapter guard and mapper loop. */
+export type ContextLossState = { lost: boolean; message: string };
