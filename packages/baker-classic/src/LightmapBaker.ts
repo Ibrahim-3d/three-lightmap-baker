@@ -268,7 +268,7 @@ export class LightmapBaker {
       controller.abort(new BakeError(lossMessage, 'context-loss'));
       console.error(`[baker] ${lossMessage} during bake - cancelling`);
     };
-    const releaseContextGuard = installRendererLossGuard(rendererAdapter, onLost);
+    let releaseContextGuard = (): void => {};
 
     const checkAbort = (phase: BakeErrorPhase): void => {
       if (ctxState.lost || isRendererAdapterLost(rendererAdapter))
@@ -281,6 +281,7 @@ export class LightmapBaker {
     };
     try {
       userSignal?.addEventListener('abort', onAbort, { once: true });
+      releaseContextGuard = installRendererLossGuard(rendererAdapter, onLost);
       scene.updateMatrixWorld(true);
       return await runBakePipeline({
         renderer,
