@@ -25,7 +25,7 @@ export type LightmapRuntimeCapabilities = {
   selectedBackend: 'webgl' | null;
   /** Raw runtime availability, independent from current product support. */
   backends: Record<LightmapRuntimeBackend, LightmapRuntimeFeatureStatus>;
-  rendererStrategy: 'webgl-browser' | 'node-headless-unavailable' | 'browser-backend-unavailable';
+  rendererStrategy: 'webgl-browser' | 'node-headless-unavailable';
   features: Record<LightmapRuntimeFeature, LightmapRuntimeFeatureStatus>;
   limitations: string[];
 };
@@ -129,11 +129,7 @@ export function getLightmapRuntimeCapabilities(
       webgl: webgl2,
       webgpu,
     },
-    rendererStrategy: canBake
-      ? 'webgl-browser'
-      : runtime === 'node'
-        ? 'node-headless-unavailable'
-        : 'browser-backend-unavailable',
+    rendererStrategy: canBake ? 'webgl-browser' : 'node-headless-unavailable',
     features: {
       webgl2,
       webgpu,
