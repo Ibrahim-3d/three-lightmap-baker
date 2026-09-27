@@ -278,7 +278,7 @@ function adaptiveTileSize(
  * Drive bounce + AO mappers with timeout protection: each RAF runs
  * `renderTiled(maxFrameMs)` on both, optionally shrinks tile size when RAFs
  * stretch under load, and rejects with a `'context-loss'` BakeError if the
- * canvas reports webglcontextlost mid-bake.
+ * active renderer backend is lost mid-bake.
  */
 function runMappersWithTimeoutProtection(
   lightmapper: Lightmapper,
@@ -297,7 +297,7 @@ function runMappersWithTimeoutProtection(
   let tileSize = tp.initialTileSize;
 
   return runAnimationTask(() => {
-    if (ctxState.lost) throw new BakeError('webgl context lost during bake', 'context-loss');
+    if (ctxState.lost) throw new BakeError(ctxState.message, 'context-loss');
     const now = performance.now();
     intervals.push(now - lastRaf);
     if (intervals.length > 8) intervals.shift();
