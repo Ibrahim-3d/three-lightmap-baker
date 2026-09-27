@@ -241,9 +241,7 @@ export class LightmapBakeResult {
     const lossMessage = rendererLossMessage(this.rendererAdapter);
     const lost = (): void =>
       controller.abort(new BakeError(`${lossMessage} during AO rebake`, 'context-loss'));
-    const releaseLossGuard = installRendererLossGuard(this.rendererAdapter, lost);
-    signal?.addEventListener('abort', cancel, { once: true });
-    if (signal?.aborted) cancel();
+    let releaseLossGuard = (): void => {};
     const staged: Array<{
       group: GroupInternals;
       ao: ReturnType<typeof generateAOMapper>;
@@ -253,6 +251,9 @@ export class LightmapBakeResult {
     }> = [];
     let committed = false;
     try {
+      signal?.addEventListener('abort', cancel, { once: true });
+      releaseLossGuard = installRendererLossGuard(this.rendererAdapter, lost);
+      if (signal?.aborted) cancel();
       const groups = this.internals.groups;
       for (let gi = 0; gi < groups.length; gi++) {
         if (controller.signal.aborted) throw controller.signal.reason;
