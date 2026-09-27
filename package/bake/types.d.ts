@@ -66,7 +66,7 @@ export type LightmapBakerOptions = {
     samples?: number;
     /** Rays per texel per frame. Default 5. */
     castsPerFrame?: number;
-    /** GI bounce depth [1,4]. Default 1 (single-bounce NEE, same as pre-Task-07). */
+    /** GI surface bounce depth [0,4]. Default 1. Zero still evaluates configured sky on miss. */
     bounces?: number;
     /** Atlas resolution. Default 1024. */
     resolution?: number;
