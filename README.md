@@ -564,6 +564,8 @@ That command includes the hardware-sensitive browser suite, package builds/impor
 - [API Status & support matrix](https://github.com/Ibrahim-3d/three-lightmap-baker/blob/master/docs/API_STATUS.md)
 - [Roadmap](https://github.com/Ibrahim-3d/three-lightmap-baker/blob/master/docs/ROADMAP.md)
 - [Changelog](https://github.com/Ibrahim-3d/three-lightmap-baker/blob/master/CHANGELOG.md)
+- [Support](https://github.com/Ibrahim-3d/three-lightmap-baker/blob/master/SUPPORT.md)
+- [Security](https://github.com/Ibrahim-3d/three-lightmap-baker/blob/master/SECURITY.md)
 
 ---
 
