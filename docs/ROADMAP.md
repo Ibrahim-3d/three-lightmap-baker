@@ -21,11 +21,14 @@ Lightmap Baker is a browser-native static-lighting pipeline for Three.js:
    `LightProbeGrid`.
 5. Make the package dependable enough for configurators, procedural scenes,
    digital twins, architectural visualization and agent-authored 3D workflows.
-6. Add WebGPU or headless execution only when those paths can meet the same
-   correctness and lifecycle bar as the shipping WebGL path.
+6. Decouple the baking core from a single renderer backend so WebGPU can become
+   a first-class path without splitting the project into separate WebGL/WebGPU bakers.
+7. Add WebGPU or headless execution only when those paths can meet the same
+   correctness, output-quality and lifecycle bar as the shipping WebGL path.
 
-The core product remains baked lighting. Experimental path tracing, screen-space
-effects and future WebGPU work must complement rather than obscure that product.
+The core product remains baked lighting. Renderer modernization, experimental path
+tracing, screen-space effects and future WebGPU acceleration must complement rather
+than obscure that product.
 
 ## Shipped — v1.0.0
 
@@ -133,10 +136,38 @@ three >=0.185.1 <0.186.0
 Broaden that range only with explicit compatibility testing rather than assuming
 renderer-internal stability across releases.
 
+### Renderer independence and WebGPU
+
+WebGPU is now an explicit post-v1 product track rather than an unscoped research
+item. The goal is one baker with multiple GPU backends, not separate WebGL and
+WebGPU implementations.
+
+Current architecture already has a renderer-adapter boundary, but important GPU
+stages still depend directly on `WebGLRenderer`, `WebGLRenderTarget`, GLSL
+`ShaderMaterial` code and selected `onBeforeCompile` hooks.
+
+Stage the work in this order:
+
+1. Audit and isolate every WebGL-specific dependency in the baking path.
+2. Expand renderer/runtime capability reporting so backend support is explicit.
+3. Move portable GPU passes behind backend-neutral interfaces, using Three.js
+   TSL/node materials where that gives reliable WebGL/WebGPU parity.
+4. Abstract render-target creation, texture readback and GPU resource lifecycle
+   away from direct WebGL-only assumptions.
+5. Prototype one isolated WebGPU bake/refinement pass behind an experimental flag.
+6. Establish parity tests: the same scenes must produce equivalent supported
+   output and pass the same cancellation, cleanup and lifecycle requirements.
+7. Only after parity, use WebGPU-specific compute paths where they produce a
+   measured speed, scale or workflow advantage.
+
+WebGL remains the supported fallback until the WebGPU path passes the same release
+gate. WebGPU work must not delay the v1.1 release or the flagship architectural
+showcase.
+
 ## Later / research
 
 - A true Node/headless baking backend.
-- A WebGPU-native bake path.
+- WebGPU-specific compute acceleration beyond the backend-parity milestone.
 - Optional SSGI/GTAO/reflection companions where they materially improve the
   baked-lighting workflow.
 - Additional persistence and automation formats driven by real integrations.
