@@ -1,6 +1,6 @@
-# API Status — v1.0.0 Release Candidate
+# API Status — v1.0.0
 
-`lightmap-baker` is at the v1 npm release-candidate stage.
+`lightmap-baker@1.0.0` is the current stable public npm release. `master` may contain unreleased post-v1 changes; see `CHANGELOG.md#Unreleased` for that development line.
 
 The public package is separated from the demo/editor code and produces ESM, CommonJS and TypeScript declaration outputs. The tested Three.js baseline is r185 and the peer dependency is intentionally constrained to:
 
@@ -193,7 +193,7 @@ GitHub CI validates the checks that are reliable on its headless renderer, inclu
 - scene preset asset loading;
 - deterministic non-hardware material/probe/browser workflows.
 
-Hardware-sensitive GI output tests remain part of the full local/release suite and are run on a real supported GPU before publication. The v1 release candidate has been manually/local validated on an NVIDIA RTX-class hardware path for:
+Hardware-sensitive GI output tests remain part of the full local/release suite and are run on a real supported GPU before release. The v1.0.0 line was manually/local validated on an NVIDIA RTX-class hardware path for:
 
 - textured secondary-bounce transport;
 - UV0 / UV1 / standard sRGB base-color transport;

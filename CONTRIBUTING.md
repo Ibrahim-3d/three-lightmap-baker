@@ -2,12 +2,37 @@
 
 ## Project State
 
-This repo is currently a browser/WebGL-first Three.js lightmap baker. The
-classic baker is package-ready and the first npm publish is still pending.
-Launch screenshots and RTX 3050 Ti benchmark numbers are already committed in
-the README. Demo Project JSON save/load currently covers built-in presets,
-imported GLB/glTF payloads, bake/editor options, and asset-library additions;
-baked final lightmaps are persisted as raw Float32 atlas payloads.
+`lightmap-baker@1.0.0` is the current stable public npm release. The project is
+browser/WebGL-first; `master` can contain unreleased post-v1 correctness,
+compatibility and lifecycle work documented under `CHANGELOG.md#Unreleased`.
+
+The classic baker is the published product. The playground/editor and
+experimental path-tracing packages exist to exercise, validate and demonstrate
+the lighting pipeline without becoming runtime dependencies of the npm package.
+
+## Where to file things
+
+- **Reproducible bug:** use the Bug report issue form.
+- **Usage/integration question:** use the Usage question issue form.
+- **Feature request:** use the Feature request issue form.
+- **Roadmap proposal:** use the Roadmap proposal issue form.
+- **Security vulnerability:** follow [SECURITY.md](./SECURITY.md); do not open a
+  public vulnerability issue.
+
+See [SUPPORT.md](./SUPPORT.md) for the public support boundary.
+
+## Local setup
+
+```bash
+corepack enable
+pnpm install --frozen-lockfile
+pnpm run check
+pnpm run build
+```
+
+Run the focused browser/GPU suites relevant to the subsystem you change. A
+hardware-sensitive lighting change should include renderer information and the
+appropriate hardware validation rather than relying only on software WebGL.
 
 ## Current Layout
 
