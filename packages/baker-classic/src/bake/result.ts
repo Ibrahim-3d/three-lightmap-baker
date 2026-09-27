@@ -1,7 +1,7 @@
 import { runAnimationTask, abortError } from './animationTask';
 import { createDownscale } from '../lightmap/Downscale';
 import { runComposite } from '../lightmap/Composite';
-import { Mesh, Texture, WebGLRenderer } from 'three';
+import { Mesh, Texture, type WebGLRenderer } from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
 import { generateAOMapper, runPostProcess, type PostProcessOptions } from '../lightmap';
 import { exportLightmap, type ExportFormat } from '../utils/exportLightmap';
@@ -9,6 +9,12 @@ import { mountMeshLightmaps } from '../utils/LightmapMaterials';
 import { BakeError } from '../errors';
 import type { BakeHooks, BakeStats, BakeGroupView } from './types';
 import type { GroupInternals } from './internals';
+import {
+  installRendererLossGuard,
+  isRendererAdapterLost,
+  rendererLossMessage,
+  type LightmapRendererAdapter,
+} from '../rendererAdapter';
 
 /** Result of a successful bake. Owns the GPU resources - call `dispose()` to release. */
 export class LightmapBakeResult {
@@ -20,7 +26,7 @@ export class LightmapBakeResult {
   } | null = null;
 
   constructor(
-    private readonly renderer: WebGLRenderer,
+    private readonly rendererAdapter: LightmapRendererAdapter,
     private readonly meshLightmaps: Map<Mesh, Texture>,
     private readonly meshResolutions: Map<Mesh, number>,
     public readonly stats: BakeStats,
@@ -33,6 +39,10 @@ export class LightmapBakeResult {
       sceneDispose?: () => void;
     },
   ) {}
+
+  private get renderer(): WebGLRenderer {
+    return this.rendererAdapter.renderer;
+  }
 
   /**
    * Returns the per-mesh lightmap textures. Meshes in the same resolution group
@@ -228,11 +238,10 @@ export class LightmapBakeResult {
     this.aoJob = controller;
     const signal = hooks.signal;
     const cancel = (): void => controller.abort(signal?.reason ?? abortError());
+    const lossMessage = rendererLossMessage(this.rendererAdapter);
     const lost = (): void =>
-      controller.abort(new BakeError('webgl context lost during AO rebake', 'context-loss'));
-    signal?.addEventListener('abort', cancel, { once: true });
-    this.renderer.domElement.addEventListener('webglcontextlost', lost);
-    if (signal?.aborted) cancel();
+      controller.abort(new BakeError(`${lossMessage} during AO rebake`, 'context-loss'));
+    let releaseLossGuard = (): void => {};
     const staged: Array<{
       group: GroupInternals;
       ao: ReturnType<typeof generateAOMapper>;
@@ -242,6 +251,9 @@ export class LightmapBakeResult {
     }> = [];
     let committed = false;
     try {
+      signal?.addEventListener('abort', cancel, { once: true });
+      releaseLossGuard = installRendererLossGuard(this.rendererAdapter, lost);
+      if (signal?.aborted) cancel();
       const groups = this.internals.groups;
       for (let gi = 0; gi < groups.length; gi++) {
         if (controller.signal.aborted) throw controller.signal.reason;
@@ -284,8 +296,8 @@ export class LightmapBakeResult {
         };
         staged.push(entry);
         await runAnimationTask(() => {
-          if (this.renderer.getContext().isContextLost())
-            throw new BakeError('webgl context lost', 'context-loss');
+          if (isRendererAdapterLost(this.rendererAdapter))
+            throw new BakeError(lossMessage, 'context-loss');
           const result = ao.renderTiled(8);
           if (result.sampleComplete) composite.refresh();
           hooks.onProgress?.('bake', (gi + result.samples / opts.targetSamples) / groups.length);
@@ -346,7 +358,7 @@ export class LightmapBakeResult {
           entry.ao.dispose();
         }
       signal?.removeEventListener('abort', cancel);
-      this.renderer.domElement.removeEventListener('webglcontextlost', lost);
+      releaseLossGuard();
       this.aoJob = null;
     }
   }

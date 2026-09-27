@@ -1,5 +1,6 @@
 import { isBakeVisible } from './visibility';
 import { Mesh, Object3D, Scene, Texture, WebGLRenderer } from 'three';
+import { drainRendererAdapter, type LightmapRendererAdapter } from '../rendererAdapter';
 import { MeshBVH } from 'three-mesh-bvh';
 import { collectLightsFromScene, type PackedLight } from '../lightmap';
 import { generateAtlas } from '../atlas/generateAtlas';
@@ -62,6 +63,7 @@ export function collectBakeMeshes(scene: Scene | Object3D): Mesh[] {
 
 export type BakePipelineArgs = {
   renderer: WebGLRenderer;
+  rendererAdapter: LightmapRendererAdapter;
   opts: ResolvedBakerOptions;
   scene: Scene | Object3D;
   allMeshes: Mesh[];
@@ -80,7 +82,8 @@ export type BakePipelineArgs = {
  * through `checkAbort` and the `ctxState.lost` flag visible to inner loops.
  */
 export async function runBakePipeline(args: BakePipelineArgs): Promise<LightmapBakeResult> {
-  const { renderer, opts, scene, allMeshes, hooks, t0, tp, ctxState, checkAbort } = args;
+  const { renderer, rendererAdapter, opts, scene, allMeshes } = args;
+  const { hooks, t0, tp, ctxState, checkAbort } = args;
 
   // Partition meshes - density mode if `texelsPerMeter` is set (groups keyed
   // by atlas index, all sharing `resolution`), else resolution mode (groups
@@ -220,7 +223,7 @@ export async function runBakePipeline(args: BakePipelineArgs): Promise<LightmapB
     // Cost: blocks JS for the queue length (~3s observed at 1024² Production).
     // That cost was happening anyway - this just makes it explicit.
     const tDrain0 = performance.now();
-    renderer.getContext().finish();
+    await drainRendererAdapter(rendererAdapter);
     const tDrain1 = performance.now();
     if (import.meta.env.DEV) {
       console.info(`[baker] GPU queue drain: ${(tDrain1 - tDrain0).toFixed(1)}ms`);
@@ -247,7 +250,7 @@ export async function runBakePipeline(args: BakePipelineArgs): Promise<LightmapB
 
     checkAbort('bake');
     const ownedMatTex = matTex;
-    const result = new LightmapBakeResult(renderer, meshLightmaps, meshResolutions, stats, {
+    const result = new LightmapBakeResult(rendererAdapter, meshLightmaps, meshResolutions, stats, {
       groups: groupResults,
       bvh,
       refinementOptions: opts.refinementOptions,

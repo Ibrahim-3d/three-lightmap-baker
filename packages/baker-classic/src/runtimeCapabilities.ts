@@ -2,6 +2,7 @@ export type LightmapRuntimeKind = 'browser' | 'offscreen-browser' | 'node' | 'un
 
 export type LightmapRuntimeFeature =
   | 'webgl2'
+  | 'webgpu'
   | 'float-color-buffer'
   | 'offscreen-canvas'
   | 'raf'
@@ -10,10 +11,20 @@ export type LightmapRuntimeFeature =
   | 'node-headless-bake';
 
 export type LightmapRuntimeFeatureStatus = 'available' | 'unavailable' | 'unknown';
+export type LightmapRuntimeBackend = 'webgl' | 'webgpu';
 
 export type LightmapRuntimeCapabilities = {
   runtime: LightmapRuntimeKind;
+  /**
+   * True when the currently shipping baker can execute in this runtime.
+   * WebGPU availability alone does not make this true until the WebGPU bake
+   * path reaches product parity.
+   */
   canBake: boolean;
+  /** Backend the shipping baker would select today. */
+  selectedBackend: 'webgl' | null;
+  /** Raw runtime availability, independent from current product support. */
+  backends: Record<LightmapRuntimeBackend, LightmapRuntimeFeatureStatus>;
   rendererStrategy: 'webgl-browser' | 'node-headless-unavailable';
   features: Record<LightmapRuntimeFeature, LightmapRuntimeFeatureStatus>;
   limitations: string[];
@@ -22,6 +33,7 @@ export type LightmapRuntimeCapabilities = {
 type RuntimeProbeGlobals = {
   window?: unknown;
   document?: { createElement?: (tagName: string) => unknown };
+  navigator?: { gpu?: unknown };
   OffscreenCanvas?: new (
     width: number,
     height: number,
@@ -77,6 +89,10 @@ function probeOffscreenWebGL2(globals: RuntimeProbeGlobals): LightmapRuntimeFeat
   }
 }
 
+function probeWebGPU(globals: RuntimeProbeGlobals): LightmapRuntimeFeatureStatus {
+  return globals.navigator?.gpu ? 'available' : 'unavailable';
+}
+
 export function getLightmapRuntimeCapabilities(
   globals: RuntimeProbeGlobals = currentGlobals(),
 ): LightmapRuntimeCapabilities {
@@ -86,17 +102,37 @@ export function getLightmapRuntimeCapabilities(
   const raf = typeof globals.requestAnimationFrame === 'function' ? 'available' : 'unavailable';
   const webgl2 =
     runtime === 'offscreen-browser' ? probeOffscreenWebGL2(globals) : hasWebGL2Constructor(globals);
+  const webgpu = probeWebGPU(globals);
   const canBake =
     (runtime === 'browser' || runtime === 'offscreen-browser') &&
     webgl2 !== 'unavailable' &&
     raf === 'available';
 
+  const limitations: string[] = [];
+  if (runtime === 'node') {
+    limitations.push(
+      'True Node.js headless baking is not implemented yet.',
+      'The current bake pipeline still requires a browser WebGL2 renderer and RAF-driven progressive passes.',
+    );
+  }
+  if (webgpu === 'available') {
+    limitations.push(
+      'WebGPU is available in this runtime, but WebGPU baking is not implemented yet; the shipping baker still selects WebGL.',
+    );
+  }
+
   return {
     runtime,
     canBake,
+    selectedBackend: canBake ? 'webgl' : null,
+    backends: {
+      webgl: webgl2,
+      webgpu,
+    },
     rendererStrategy: canBake ? 'webgl-browser' : 'node-headless-unavailable',
     features: {
       webgl2,
+      webgpu,
       'float-color-buffer': webgl2 === 'unavailable' ? 'unavailable' : 'unknown',
       'offscreen-canvas': offscreenCanvas,
       raf,
@@ -104,12 +140,6 @@ export function getLightmapRuntimeCapabilities(
       'filesystem-export': 'unavailable',
       'node-headless-bake': 'unavailable',
     },
-    limitations:
-      runtime === 'node'
-        ? [
-            'True Node.js headless baking is not implemented yet.',
-            'The current bake pipeline still requires a browser WebGL2 renderer and RAF-driven progressive passes.',
-          ]
-        : [],
+    limitations,
   };
 }
