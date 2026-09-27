@@ -146,6 +146,13 @@ Current architecture already has a renderer-adapter boundary, but important GPU
 stages still depend directly on `WebGLRenderer`, `WebGLRenderTarget`, GLSL
 `ShaderMaterial` code and selected `onBeforeCompile` hooks.
 
+The current dependency set already includes `three-mesh-bvh`'s WebGPU
+`BVHComputeData` path, which gives the project an upstream WebGPU ray-traversal
+foundation rather than requiring a new BVH implementation.
+
+See the [WebGPU backend audit](./plans/2026-09-27-webgpu-backend-audit.md) for the
+file-level migration map, staging and acceptance gates.
+
 Stage the work in this order:
 
 1. Audit and isolate every WebGL-specific dependency in the baking path.
