@@ -19,6 +19,8 @@ test('GPU transport: attenuation, 17 lights, area integral and secondary sky', a
   expect(r.many).toBeCloseTo(17, 3);
   expect(r.sky).toBeCloseTo(Math.PI, 3);
   expect(r.bouncedSky).toBeCloseTo(Math.PI * 0.5, 2);
+  expect(r.blockedSky).toBe(0);
+  expect(r.deeperSky).toBeCloseTo(Math.PI * 0.5, 2);
   expect(r.area).toBeGreaterThan(0.009);
   expect(r.area).toBeLessThan(0.011);
   expect(r.doubleArea / r.area).toBeGreaterThan(1.9);
@@ -52,4 +54,14 @@ test('failed groups, cancelled bakes and AO restore resources', async ({ page })
   ])
     expect(r[key]).toBe(true);
   expect(r.after).toBeLessThanOrEqual(r.before);
+});
+
+test('supersampled atlas resolves to finite lit output at the requested final size', async ({
+  page,
+}) => {
+  const r = await page.evaluate(
+    async (u) => (await import(u)).validateSupersampling(),
+    base + '/tests/browser/bakeCorrectnessValidation.ts',
+  );
+  expect(r).toEqual({ width: 64, height: 64, finite: true, lit: true });
 });

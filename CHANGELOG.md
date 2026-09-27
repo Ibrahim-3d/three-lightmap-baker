@@ -9,7 +9,11 @@ All notable public changes to `lightmap-baker` are documented here.
 - Add scene preflight, ancestor visibility, isolated bake geometry, and static instance expansion with restoration on disposal.
 - Pack at the requested atlas resolution, reject invalid packing, and prevent denoising across chart boundaries.
 - Handle animation callback failures and cancellation, dispose temporary GPU resources, and stage AO rebakes before replacing existing results.
-- Add numerical transport, filtering, and lifecycle regressions. This work is not release-qualified: see `docs/BAKE_CORRECTNESS_REVIEW.md` for open compatibility and worker-lifecycle issues.
+- Fix secondary-sky compatibility on tested Chromium 148/153 SwiftShader builds with packed GPU parameter records.
+- Load packaged ESL preset Draco decoders locally instead of requiring Google CDN access.
+- Own and terminate atlas workers on abort, initialization/RPC failure and timeout; recover on subsequent operations.
+- Enforce padding at the actual output size, cap chart dimensions and reject 16-bit index overflow.
+- Add numerical transport, worker recovery, atlas edge, supersampling, filtering, and lifecycle regressions plus a hardware-only validation gate. This work is not hardware-qualified: see `docs/BAKE_CORRECTNESS_REVIEW.md` for open compatibility and worker-lifecycle issues.
 
 ## lightmap-baker v1.0.0 — 2026-08-13
 

@@ -1,23 +1,24 @@
 import { BakeError } from '../errors';
 import { abortError } from '../bake/animationTask';
 import { BufferAttribute, type BufferGeometry, Mesh, Vector3 } from 'three';
-import { UVUnwrapper } from 'xatlas-three';
+import { AtlasWorker } from './AtlasWorker';
+import { unwrapGeometry } from './unwrap';
+import type { PackOptions } from 'xatlas-three';
 import xatlasScriptUrl from 'xatlasjs/dist/xatlas.js?url';
 import xatlasWasmUrl from 'xatlasjs/dist/xatlas.wasm?url';
 import { computeMeshSurfaceArea } from '../utils/Packing';
 
 const DEBUG = import.meta.env?.DEV === true;
 
-const unwrapper = new UVUnwrapper({ BufferAttribute: BufferAttribute });
 const worldScale = new Vector3();
 const UV_EPSILON = 1.0e-4;
-const MAX_DENSITY_PACK_ATTEMPTS = 6;
-let xatlasLoadPromise: Promise<void> | null = null;
+const MAX_PACK_ATTEMPTS = 6;
+let libraryOptions: LoadXAtlasThreeOptions = {};
 
 export type GenerateAtlasOptions = {
   padding?: number;
   signal?: AbortSignal;
-  /** Actual lightmap side length. Used by xatlas when texel density is active. */
+  /** Actual lightmap side length used to resolve packing and padding. */
   resolution?: number;
   /** Target texels per world unit. When omitted, legacy fill-the-atlas packing is used. */
   texelsPerUnit?: number;
@@ -26,18 +27,12 @@ export type GenerateAtlasOptions = {
 };
 
 export type LoadXAtlasThreeOptions = {
+  signal?: AbortSignal;
   /** Override the packaged xatlas WASM URL, for example when hosting assets on a dedicated CDN. */
   wasmUrl?: string;
   /** Override the packaged xatlas loader URL, for example when applying a custom CSP. */
   scriptUrl?: string;
 };
-
-enum ProgressCategory {
-  AddMesh,
-  ComputeCharts,
-  PackCharts,
-  BuildOutputMeshes,
-}
 
 function getUv2Bounds(meshs: Mesh[]): { min: number; max: number; valid: boolean } {
   let min = Infinity;
@@ -105,50 +100,45 @@ function restoreGeometry(geometry: BufferGeometry, snapshot: GeometrySnapshot): 
   }
 }
 
-function setPackTexelsPerUnit(enabled: boolean, texelsPerUnit: number): void {
-  if (enabled) {
-    unwrapper.packOptions.texelsPerUnit = texelsPerUnit;
-  } else {
-    delete unwrapper.packOptions.texelsPerUnit;
-  }
-}
-
 function resolveLibraryUrl(url: string): string {
   if (typeof document === 'undefined') return url;
   return new URL(url, document.baseURI).href;
 }
 
-export const loadXAtlasThree = async (options: LoadXAtlasThreeOptions = {}): Promise<void> => {
-  if (xatlasLoadPromise) return xatlasLoadPromise;
-  // Only emit one line per category (at 100%). Pre-throttle was per-percent
-  // → ~400 lines drowned diagnostic output.
-  const lastSeen: Partial<Record<number, number>> = {};
-  const onProgress = (mode: number, progress: number): void => {
-    if (!DEBUG) return;
-    if (progress < 100) {
-      lastSeen[mode] = progress;
-      return;
-    }
-    if (lastSeen[mode] === 100) return;
-    lastSeen[mode] = 100;
-    console.info(`[baker] xatlas ${ProgressCategory[mode]} done`);
-  };
-  xatlasLoadPromise = unwrapper
-    .loadLibrary(
-      onProgress,
-      resolveLibraryUrl(options.wasmUrl ?? xatlasWasmUrl),
-      resolveLibraryUrl(options.scriptUrl ?? xatlasScriptUrl),
-    )
-    .then(() => {
-      if (DEBUG) console.info('[baker] xatlas loaded');
-    })
-    .catch((error: unknown) => {
-      // A custom URL can fail because of a transient fetch or CSP issue. Let
-      // callers retry; the packaged defaults do not need network access.
-      xatlasLoadPromise = null;
-      throw error;
+async function createWorker(
+  options: LoadXAtlasThreeOptions,
+  signal?: AbortSignal,
+): Promise<AtlasWorker> {
+  const controller = new AbortController();
+  const onAbort = (): void => controller.abort();
+  signal?.addEventListener('abort', onAbort, { once: true });
+  if (signal?.aborted) controller.abort();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  let worker: AtlasWorker | undefined;
+  try {
+    const response = await fetch(resolveLibraryUrl(options.scriptUrl ?? xatlasScriptUrl), {
+      signal: controller.signal,
     });
-  return xatlasLoadPromise;
+    if (!response.ok) throw new BakeError(`xatlas loader HTTP ${response.status}`, 'unwrap');
+    const script = await response.text();
+    if (signal?.aborted) throw abortError();
+    worker = new AtlasWorker(script, signal);
+    await worker.initialize(resolveLibraryUrl(options.wasmUrl ?? xatlasWasmUrl));
+    return worker;
+  } catch (error) {
+    worker?.dispose();
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    signal?.removeEventListener('abort', onAbort);
+  }
+}
+
+/** Validate/preload the selected assets. Every pack owns a fresh, terminable worker. */
+export const loadXAtlasThree = async (options: LoadXAtlasThreeOptions = {}): Promise<void> => {
+  const worker = await createWorker(options, options.signal);
+  worker.dispose();
+  libraryOptions = { wasmUrl: options.wasmUrl, scriptUrl: options.scriptUrl };
 };
 
 /**
@@ -156,19 +146,31 @@ export const loadXAtlasThree = async (options: LoadXAtlasThreeOptions = {}): Pro
  * attribute is rewritten in place to point at its assigned region within the
  * atlas - downstream `renderAtlas` rasterizes all of them into one G-buffer.
  *
- * The xatlas-three `UVUnwrapper` is module-scoped - calls to this function
- * MUST be serial (await between calls). For multi-atlas pipelines, see
+ * Each call owns its worker and rejects overlapping geometry mutations.
+ * For multi-atlas pipelines, see
  * `generateAtlases` below.
  */
 const packAtlas = async (meshs: Mesh[], options: GenerateAtlasOptions = {}): Promise<void> => {
-  if (options.signal?.aborted) throw abortError();
-  await loadXAtlasThree();
   if (options.signal?.aborted) throw abortError();
 
   const geometry = meshs.map((mesh) => mesh.geometry);
   const densityMode = options.texelsPerUnit !== undefined && options.texelsPerUnit > 0;
   const packResolution = options.resolution ?? 1024;
   let texelsPerUnit = options.texelsPerUnit ?? 0;
+  const requiredPadding = Math.max(6, options.padding ?? 6);
+  if (
+    !Number.isInteger(packResolution) ||
+    packResolution < 2 ||
+    !Number.isFinite(requiredPadding) ||
+    requiredPadding < 0 ||
+    !Number.isFinite(texelsPerUnit) ||
+    texelsPerUnit < 0 ||
+    packResolution <= requiredPadding * 2
+  )
+    throw new BakeError(
+      'Invalid atlas resolution, density or padding; increase resolution',
+      'unwrap',
+    );
 
   if (densityMode) {
     const atlasTexels = packResolution * packResolution;
@@ -187,16 +189,19 @@ const packAtlas = async (meshs: Mesh[], options: GenerateAtlasOptions = {}): Pro
 
   // Crucial: xatlas defaults are padding=0. renderAtlas adds a +/-2 pixel
   // G-buffer halo, so keep roughly four lightmap pixels between charts.
-  unwrapper.packOptions.padding = Math.max(6, options.padding ?? 6);
-  unwrapper.packOptions.resolution = packResolution;
-  setPackTexelsPerUnit(densityMode, texelsPerUnit);
+  const packOptions: PackOptions & { padding: number } = {
+    padding: Math.ceil(requiredPadding),
+    resolution: packResolution,
+  };
 
   const previousWorldScales = densityMode
     ? meshs.map((mesh) => mesh.geometry.userData.worldScale as unknown)
     : [];
 
   const snapshots = geometry.map(snapshotGeometry);
+  let worker: AtlasWorker | undefined;
   try {
+    worker = await createWorker(libraryOptions, options.signal);
     if (densityMode) {
       for (const mesh of meshs) {
         const scale = options.perMeshScale?.[mesh.uuid] ?? 1.0;
@@ -214,7 +219,7 @@ const packAtlas = async (meshs: Mesh[], options: GenerateAtlasOptions = {}): Pro
     // chart shapes and padding are less efficient than the area estimate. Our
     // downstream renderer expects each bake group to be one 0-1 atlas target,
     // so retry with a lower resolved density until xatlas agrees.
-    const maxAttempts = densityMode ? MAX_DENSITY_PACK_ATTEMPTS : 1;
+    const maxAttempts = MAX_PACK_ATTEMPTS;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       if (attempt > 0) {
         for (let i = 0; i < geometry.length; i++) {
@@ -223,22 +228,39 @@ const packAtlas = async (meshs: Mesh[], options: GenerateAtlasOptions = {}): Pro
           if (snapshot && targetGeometry) restoreGeometry(targetGeometry, snapshot);
         }
       }
-      setPackTexelsPerUnit(densityMode, texelsPerUnit);
+      packOptions.texelsPerUnit = densityMode ? texelsPerUnit : 0;
+      packOptions.maxChartSize = Math.max(1, packResolution - 2 * packOptions.padding - 2);
       if (options.signal?.aborted) throw abortError();
-      const atlas = await unwrapper.packAtlas(geometry, 'uv2', 'uv');
+      const atlas = await unwrapGeometry(worker, geometry, packOptions);
       if (options.signal?.aborted) throw abortError();
       const uvBounds = getUv2Bounds(meshs);
-      if (atlas.atlasCount === 1 && uvBounds.valid) break;
+      const dimension = Math.max(atlas.width, atlas.height);
+      const validDimensions = Number.isFinite(dimension) && atlas.width > 0 && atlas.height > 0;
+      const effectivePadding = validDimensions
+        ? (packOptions.padding * packResolution) / dimension
+        : 0;
+      if (atlas.atlasCount === 1 && uvBounds.valid && effectivePadding >= requiredPadding) break;
 
       const canRetry = attempt + 1 < maxAttempts;
       const reason =
         atlas.atlasCount > 1
           ? `${atlas.atlasCount} internal atlases`
-          : `uv2 bounds ${uvBounds.min.toFixed(3)}..${uvBounds.max.toFixed(3)}`;
+          : !uvBounds.valid
+            ? `uv2 bounds ${uvBounds.min.toFixed(3)}..${uvBounds.max.toFixed(3)}`
+            : `padding ${effectivePadding.toFixed(2)}px below ${requiredPadding}px at output resolution`;
       if (canRetry) {
-        texelsPerUnit *= 0.85;
+        if (densityMode) texelsPerUnit *= 0.7;
+        if (validDimensions && effectivePadding < requiredPadding) {
+          const nextPadding = Math.ceil((requiredPadding * dimension) / packResolution) + 1;
+          if (nextPadding * 2 >= packResolution)
+            throw new BakeError(
+              'Atlas padding cannot fit at this resolution; increase resolution or split the group',
+              'unwrap',
+            );
+          packOptions.padding = nextPadding;
+        }
         console.warn(
-          `[baker] xatlas produced ${reason} for one ${packResolution}x${packResolution} bake group; retrying at ${texelsPerUnit.toFixed(2)} texels/m`,
+          `[baker] xatlas produced ${reason} for one ${packResolution}x${packResolution} bake group; retrying packing`,
         );
       } else {
         throw new BakeError(
@@ -254,6 +276,7 @@ const packAtlas = async (meshs: Mesh[], options: GenerateAtlasOptions = {}): Pro
     });
     throw error;
   } finally {
+    worker?.dispose();
     if (densityMode) {
       for (let i = 0; i < meshs.length; i++) {
         const mesh = meshs[i];
@@ -271,8 +294,8 @@ const packAtlas = async (meshs: Mesh[], options: GenerateAtlasOptions = {}): Pro
  * meshes in different bins occupy different atlases (and therefore different
  * lightmap render targets downstream).
  *
- * Calls `generateAtlas` once per bin SERIALLY. Concurrent calls would corrupt
- * the module-scoped `UVUnwrapper`. After this returns, every input mesh has a
+ * Calls `generateAtlas` once per bin serially to keep geometry mutations ordered.
+ * After this returns, every input mesh has a
  * fresh `uv2` attribute mapped into its bin's atlas - there is no per-mesh
  * offset/scale to track on the CPU side; xatlas remaps directly.
  *

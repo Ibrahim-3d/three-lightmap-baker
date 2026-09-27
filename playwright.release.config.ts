@@ -14,17 +14,25 @@ if (angleBackend) gpuArgs.push(`--use-angle=${angleBackend}`);
 /** Local real-hardware release gate: installed Chrome with its native ANGLE choice. */
 export default defineConfig({
   ...baseConfig,
+  globalSetup: './tests/hardware-gpu-setup.ts',
+  outputDir: './test-results/release',
   // GitHub runners only install Playwright Chromium and do not constitute a
   // hardware gate. Locally, use installed Chrome and its native ANGLE backend.
   projects: process.env.CI
     ? baseConfig.projects
     : [
         {
-          name: 'chrome-hardware',
+          name: process.env.BAKER_CHROMIUM_PATH ? 'configured-chromium' : 'chrome-hardware',
           use: {
             ...devices['Desktop Chrome'],
-            channel: 'chrome',
-            launchOptions: { args: gpuArgs },
+            channel: process.env.BAKER_CHROMIUM_PATH ? undefined : 'chrome',
+            launchOptions: {
+              executablePath: process.env.BAKER_CHROMIUM_PATH,
+              args: [
+                ...gpuArgs,
+                ...(angleBackend === 'swiftshader' ? ['--enable-unsafe-swiftshader'] : []),
+              ],
+            },
           },
         },
       ],

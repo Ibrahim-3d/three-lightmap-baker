@@ -184,7 +184,8 @@ const dilationOffsets = [
 
 let nextChartId = 1;
 function makeAtlasMesh(mesh: Mesh, meshIndex: number): Mesh {
-  const geometry = mesh.geometry.clone();
+  // Separate triangle corners so islands touching at one indexed vertex cannot share a label.
+  const geometry = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone();
   const charts = createChartIds(geometry, nextChartId);
   nextChartId = charts.nextId;
   geometry.setAttribute('bakeChart', charts.attribute);

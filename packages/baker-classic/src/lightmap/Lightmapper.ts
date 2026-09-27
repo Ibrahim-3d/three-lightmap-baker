@@ -46,7 +46,7 @@ export type RaycastOptions = {
 
   /** Stop accumulating once this many frames have been rendered (frames × casts = samples/texel). 0 = unlimited. */
   targetSamples: number;
-  /** Number of indirect light bounces. Clamped [1,4]. Default 1. */
+  /** Number of indirect surface bounces [0,4]. Zero still samples sky. Default 1. */
   bounces: number;
   /**
    * Per-draw-call ceiling in texels. When `< resolution`, the bake is split

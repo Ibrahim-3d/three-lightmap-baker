@@ -32,8 +32,8 @@ function texture(data: number[], width = 1, height = 1): DataTexture {
   t.needsUpdate = true;
   return t;
 }
-function read(renderer: WebGLRenderer, source: any, width = 1): number[] {
-  const target = new WebGLRenderTarget(width, 1, { type: FloatType });
+function read(renderer: WebGLRenderer, source: any, width = 1, height = 1): number[] {
+  const target = new WebGLRenderTarget(width, height, { type: FloatType });
   const material = new ShaderMaterial({
     uniforms: { map: { value: source } },
     vertexShader: 'varying vec2 vUv; void main(){vUv=uv;gl_Position=vec4(position,1.0);}',
@@ -45,8 +45,8 @@ function read(renderer: WebGLRenderer, source: any, width = 1): number[] {
   try {
     renderer.setRenderTarget(target);
     renderer.render(quad, new OrthographicCamera());
-    const data = new Float32Array(width * 4);
-    renderer.readRenderTargetPixels(target, 0, 0, width, 1, data);
+    const data = new Float32Array(width * height * 4);
+    renderer.readRenderTargetPixels(target, 0, 0, width, height, data);
     return Array.from(data);
   } finally {
     renderer.setRenderTarget(previous);
@@ -134,6 +134,8 @@ export function validateTransport() {
   try {
     return {
       bouncedSky: sample([], 1, 1, true)[1],
+      blockedSky: sample([], 1, 0, true)[1],
+      deeperSky: sample([], 1, 4, true)[1],
       near: sample([point(2)])[0],
       far: sample([point(4)])[0],
       cutoff: sample([point(4, 3)])[0],
@@ -190,7 +192,7 @@ export async function validateLifecycle() {
   const ga = a.geometry,
     gb = b.geometry;
   const baker = new LightmapBaker(renderer, {
-    resolution: 16,
+    resolution: 64,
     samples: 1,
     castsPerFrame: 1,
     ao: false,
@@ -250,6 +252,42 @@ export async function validateLifecycle() {
     gb.dispose();
     a.material.dispose();
     b.material.dispose();
+    renderer.dispose();
+  }
+}
+
+export async function validateSupersampling() {
+  const renderer = new WebGLRenderer();
+  const mesh = new Mesh(new BoxGeometry(), new MeshStandardMaterial());
+  const original = mesh.geometry;
+  const scene = new Scene();
+  scene.add(mesh, new DirectionalLight());
+  try {
+    const baker = new LightmapBaker(renderer, {
+      resolution: 64,
+      superSample: 2,
+      samples: 1,
+      castsPerFrame: 1,
+      ao: false,
+      denoise: true,
+      refinementOptions: { dilationIterations: 2 },
+    });
+    const result = await baker.bake(scene);
+    try {
+      const map = result.lightmaps.get(mesh)!;
+      const pixels = read(renderer, map, 64, 64);
+      return {
+        width: map.image.width,
+        height: map.image.height,
+        finite: pixels.every(Number.isFinite),
+        lit: pixels.some((v, i) => i % 4 !== 3 && v > 0.01),
+      };
+    } finally {
+      result.dispose();
+    }
+  } finally {
+    original.dispose();
+    mesh.material.dispose();
     renderer.dispose();
   }
 }

@@ -1,4 +1,4 @@
-import { Color, GLSL3, Matrix4, ShaderMaterial, Texture } from 'three';
+import { Color, Vector4, GLSL3, Matrix4, ShaderMaterial, Texture } from 'three';
 import {
   MeshBVH,
   MeshBVHUniformStruct,
@@ -59,6 +59,11 @@ export class LightmapperMaterial extends ShaderMaterial {
     bvhUniformStruct.updateFrom(options.bvh);
     const castCount = Math.max(1, Math.min(256, options.casts | 0));
 
+    // Scalar uniforms in this shader read incorrectly on tested ANGLE/SwiftShader
+    // 148/153 builds after BVH traversal (notably bounces=1 reads as zero).
+    // Explicit vec4 records avoid that layout-sensitive path. Keep the public
+    // CPU uniforms below and synchronize their packed GPU representation per draw.
+    const settings = [new Vector4(), new Vector4()] as const;
     super({
       transparent: true,
       glslVersion: GLSL3,
@@ -67,6 +72,7 @@ export class LightmapperMaterial extends ShaderMaterial {
 
       uniforms: {
         bvh: { value: bvhUniformStruct },
+        bakeSettings: { value: settings },
         positions: { value: options.positions },
         normals: { value: options.normals },
         albedoTex: { value: options.albedoTex },
@@ -129,6 +135,7 @@ export class LightmapperMaterial extends ShaderMaterial {
                 ${shaderStructs}
                 ${shaderIntersectFunction}
 
+                uniform vec4 bakeSettings[2];
                 uniform mat4 invModelMatrix;
                 uniform sampler2D positions;
                 uniform sampler2D normals;
@@ -142,7 +149,7 @@ export class LightmapperMaterial extends ShaderMaterial {
                 uniform sampler2D mapTransform0Tex;
                 uniform sampler2D mapTransform1Tex;
                 uniform sampler2D albedoMapAtlas;
-                uniform float materialTextureSize;
+                #define materialTextureSize bakeSettings[0].z
 
                 #define MAX_BOUNCES 4
                 // Static upper cap on lights checked per shadow loop iteration.
@@ -152,19 +159,19 @@ export class LightmapperMaterial extends ShaderMaterial {
                 // loop produced NaNs on ANGLE when it wrapped texture/BVH calls.
                 #define CASTS ${castCount}
 
-                uniform int bounces;
+                #define bounces int(bakeSettings[0].x)
 
                 // Multi-light texture: 6 texels wide × lightCount tall, RGBA float.
                 uniform sampler2D lightsTex;
-                uniform int lightCount;
+                #define lightCount int(bakeSettings[0].y)
 
                 uniform vec3 skyColor;
-                uniform float skyIntensity;
-                uniform int sampleIndex;
+                #define skyIntensity bakeSettings[0].w
+                #define sampleIndex int(bakeSettings[1].y)
 
-                uniform bool directLightEnabled;
-                uniform bool indirectLightEnabled;
-                uniform float opacity;
+                #define directLightEnabled (bakeSettings[1].z > 0.5)
+                #define indirectLightEnabled (bakeSettings[1].w > 0.5)
+                #define opacity bakeSettings[1].x
 
                 uniform BVH bvh;
                 in vec2 vUv;
@@ -220,8 +227,7 @@ export class LightmapperMaterial extends ShaderMaterial {
 
                 vec4 readTriangleData(sampler2D tex, uint triIdx) {
                     uint W = uint(materialTextureSize);
-                    vec2 uv = (vec2(triIdx % W, triIdx / W) + 0.5) / materialTextureSize;
-                    return texture(tex, uv);
+                    return texelFetch(tex, ivec2(triIdx % W, triIdx / W), 0);
                 }
 
                 float applyMapWrap(float value, float mode) {
@@ -248,7 +254,7 @@ export class LightmapperMaterial extends ShaderMaterial {
                     transformedUv.x = applyMapWrap(transformedUv.x, transform1.z);
                     transformedUv.y = applyMapWrap(transformedUv.y, transform1.w);
                     vec4 rect = readTriangleData(mapRectTex, triIdx);
-                    vec3 mapColor = texture(albedoMapAtlas, rect.xy + transformedUv * rect.zw).rgb;
+                    vec3 mapColor = textureLod(albedoMapAtlas, rect.xy + transformedUv * rect.zw, 0.0).rgb;
                     return baseColor * mapColor;
                 }
 
@@ -485,7 +491,22 @@ export class LightmapperMaterial extends ShaderMaterial {
             `,
     });
 
+    this.onBeforeRender = () => {
+      const value = (name: string): number => Number(this.uniforms[name]?.value ?? 0);
+      settings[0].set(
+        value('bounces'),
+        value('lightCount'),
+        value('materialTextureSize'),
+        value('skyIntensity'),
+      );
+      settings[1].set(
+        value('opacity'),
+        value('sampleIndex'),
+        value('directLightEnabled'),
+        value('indirectLightEnabled'),
+      );
+    };
     this.addEventListener('dispose', () => bvhUniformStruct.dispose());
-    this.programKey = `LightmapperMaterial|glsl3|mrt2|casts=${castCount}|lights=${options.lightCount}`;
+    this.programKey = `LightmapperMaterial|glsl3|mrt2|params=vec4x2|casts=${castCount}|lights=${options.lightCount}`;
   }
 }
