@@ -4,6 +4,17 @@ All notable public changes to `lightmap-baker` are documented here.
 
 ## Unreleased
 
+### Added
+
+- Runtime capability reporting now exposes WebGPU availability separately from
+  the backend currently selected for baking.
+
+### Changed
+
+- Renderer adapters now identify their backend and own WebGL bake validation,
+  GPU identity/limits, loss monitoring and explicit queue completion. The
+  shipping bake path remains WebGL-only and preserves existing output behavior.
+
 ## lightmap-baker v1.1.0 — 2026-09-27
 
 Correctness and lifecycle release for the browser/WebGL baker. This release is
