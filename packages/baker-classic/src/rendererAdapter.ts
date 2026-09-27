@@ -39,10 +39,7 @@ export type LightmapRendererAdapter = {
   label?: string;
 };
 
-export type LightmapRendererAdapterOptions = Omit<
-  LightmapRendererAdapter,
-  'renderer' | 'backend'
->;
+export type LightmapRendererAdapterOptions = Omit<LightmapRendererAdapter, 'renderer' | 'backend'>;
 
 export function createRendererAdapter(
   renderer: WebGLRenderer,
@@ -56,9 +53,7 @@ export function createRendererAdapter(
   };
 }
 
-export function getRendererBackend(
-  adapter: LightmapRendererAdapter,
-): LightmapRendererBackend {
+export function getRendererBackend(adapter: LightmapRendererAdapter): LightmapRendererBackend {
   return adapter.backend ?? 'webgl';
 }
 
@@ -67,9 +62,7 @@ export function getRendererBackend(
  * pipeline. Keeping this check here prevents backend-specific validation from
  * leaking into LightmapBaker orchestration.
  */
-export function getRendererBakeSupportIssue(
-  adapter: LightmapRendererAdapter,
-): string | null {
+export function getRendererBakeSupportIssue(adapter: LightmapRendererAdapter): string | null {
   const backend = getRendererBackend(adapter);
   if (backend !== 'webgl') {
     return `${backend} baking is not implemented yet; use the WebGL backend`;
@@ -151,9 +144,7 @@ export async function drainRendererAdapter(adapter: LightmapRendererAdapter): Pr
 }
 
 export function rendererLossMessage(adapter: LightmapRendererAdapter): string {
-  return getRendererBackend(adapter) === 'webgpu'
-    ? 'webgpu device lost'
-    : 'webgl context lost';
+  return getRendererBackend(adapter) === 'webgpu' ? 'webgpu device lost' : 'webgl context lost';
 }
 
 export function isLightmapRendererAdapter(value: unknown): value is LightmapRendererAdapter {
