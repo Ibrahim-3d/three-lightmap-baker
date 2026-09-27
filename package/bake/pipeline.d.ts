@@ -1,4 +1,5 @@
 import { Mesh, Object3D, Scene, WebGLRenderer } from 'three';
+import { type LightmapRendererAdapter } from '../rendererAdapter';
 import type { BakeErrorPhase } from '../errors';
 import { LightmapBakeResult, type BakeHooks, type ContextLossState, type ResolvedBakerOptions, type TimeoutProtectionOptions } from '.';
 /**
@@ -12,6 +13,7 @@ import { LightmapBakeResult, type BakeHooks, type ContextLossState, type Resolve
 export declare function collectBakeMeshes(scene: Scene | Object3D): Mesh[];
 export type BakePipelineArgs = {
     renderer: WebGLRenderer;
+    rendererAdapter: LightmapRendererAdapter;
     opts: ResolvedBakerOptions;
     scene: Scene | Object3D;
     allMeshes: Mesh[];

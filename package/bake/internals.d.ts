@@ -27,8 +27,9 @@ export type GroupInternals = {
     normalTex: Texture;
     surfaceAlbedoTex: Texture;
 };
-/** Mutable state shared between the canvas listener and the mapper loop. */
+/** Mutable backend-loss state shared between the adapter guard and mapper loop. */
 export type ContextLossState = {
     lost: boolean;
+    message: string;
 };
 //# sourceMappingURL=internals.d.ts.map

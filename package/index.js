@@ -2634,7 +2634,7 @@ function ln(e, t) {
 //#endregion
 //#region packages/baker-classic/src/probes/readFloatTexture.ts
 var un = "\n  out vec2 vUv;\n  void main() {\n    vUv = uv;\n    gl_Position = vec4(position, 1.0);\n  }\n", dn = "\n  uniform sampler2D sourceTexture;\n  in vec2 vUv;\n  out vec4 fragColor;\n  void main() {\n    fragColor = texture(sourceTexture, vUv);\n  }\n";
-function Q(e, t, n) {
+function fn(e, t, n) {
 	if (!Number.isInteger(n) || n < 1) throw Error("[baker:probes] texture readback resolution must be a positive integer");
 	let r = new P(n, n, {
 		type: s,
@@ -2662,15 +2662,15 @@ function Q(e, t, n) {
 }
 //#endregion
 //#region packages/baker-classic/src/probes/bakeProbeIrradiance.ts
-var $ = 1e-6;
-async function fn(e, t, n, i = {}, a = {}) {
-	let o = kn(), s = wn(i.sampleStride ?? 2, "sampleStride"), c = wn(i.rowsPerYield ?? 24, "rowsPerYield"), l = Tn(i.fillIterations ?? 4, "fillIterations"), u = En(i.intensity ?? 1, "intensity"), d = hn(n) * .2, f = En(i.surfaceOffset ?? d, "surfaceOffset"), p = new Float64Array(n.probeCount * 3), m = new Float64Array(n.probeCount), h = _n(), g = _n(), _ = 0, v = 0, y = 0, b = 0, x = 0, S = 0, C = 0, w = 0;
-	Dn(a.signal);
+var Q = 1e-6;
+async function pn(e, t, n, i = {}, a = {}) {
+	let o = An(), s = Tn(i.sampleStride ?? 2, "sampleStride"), c = Tn(i.rowsPerYield ?? 24, "rowsPerYield"), l = En(i.fillIterations ?? 4, "fillIterations"), u = Dn(i.intensity ?? 1, "intensity"), d = gn(n) * .2, f = Dn(i.surfaceOffset ?? d, "surfaceOffset"), p = new Float64Array(n.probeCount * 3), m = new Float64Array(n.probeCount), h = vn(), g = vn(), _ = 0, v = 0, y = 0, b = 0, x = 0, S = 0, C = 0, w = 0;
+	On(a.signal);
 	let T = t.groups;
 	for (let t = 0; t < T.length; t++) {
 		let r = T[t];
 		if (!r) throw Error(`[baker:probes] missing bake group ${t}`);
-		let i = r.internalResolution, o = Q(e, r.textures.position, i), l = Q(e, r.textures.normal, i), u = Q(e, r.textures.refinement ?? r.textures.composite, i), d = Q(e, r.textures.surfaceAlbedo, i);
+		let i = r.internalResolution, o = fn(e, r.textures.position, i), l = fn(e, r.textures.normal, i), u = fn(e, r.textures.refinement ?? r.textures.composite, i), d = fn(e, r.textures.surfaceAlbedo, i);
 		for (let e = 0; e < i; e += s) {
 			for (let t = 0; t < i; t += s) {
 				let r = (e * i + t) * 4;
@@ -2702,11 +2702,11 @@ async function fn(e, t, n, i = {}, a = {}) {
 					A,
 					j
 				].every(Number.isFinite)) {
-					w++, h.invalidValueCount += Cn(k, A, j);
+					w++, h.invalidValueCount += wn(k, A, j);
 					continue;
 				}
 				let M = Math.max(0, k), N = Math.max(0, A), P = Math.max(0, j);
-				vn(h, M, N, P);
+				yn(h, M, N, P);
 				let F = d[r] ?? NaN, I = d[r + 1] ?? NaN, L = d[r + 2] ?? NaN;
 				if (![
 					F,
@@ -2716,7 +2716,7 @@ async function fn(e, t, n, i = {}, a = {}) {
 					S++;
 					continue;
 				}
-				let [R, z, B] = gn([
+				let [R, z, B] = _n([
 					M,
 					N,
 					P
@@ -2725,8 +2725,8 @@ async function fn(e, t, n, i = {}, a = {}) {
 					Math.max(0, I),
 					Math.max(0, L)
 				]);
-				if (vn(g, R, z, B), v++, Math.max(R, z, B) <= $) continue;
-				let ee = a + T * f, te = s + E * f, V = c + D * f, H = mn(ee, n.bounds.min.x, n.bounds.max.x, n.counts[0]), U = mn(te, n.bounds.min.y, n.bounds.max.y, n.counts[1]), W = mn(V, n.bounds.min.z, n.bounds.max.z, n.counts[2]), ne = !1;
+				if (yn(g, R, z, B), v++, Math.max(R, z, B) <= Q) continue;
+				let ee = a + T * f, te = s + E * f, V = c + D * f, H = hn(ee, n.bounds.min.x, n.bounds.max.x, n.counts[0]), U = hn(te, n.bounds.min.y, n.bounds.max.y, n.counts[1]), W = hn(V, n.bounds.min.z, n.bounds.max.z, n.counts[2]), ne = !1;
 				for (let e = 0; e <= 1; e++) {
 					let t = e === 0 ? W.low : W.high, r = e === 0 ? 1 - W.t : W.t;
 					for (let e = 0; e <= 1; e++) {
@@ -2744,9 +2744,9 @@ async function fn(e, t, n, i = {}, a = {}) {
 				ne && y++;
 			}
 			if (Math.floor(e / s) % c === 0) {
-				Dn(a.signal);
+				On(a.signal);
 				let n = Math.min(1, (e + s) / i);
-				a.onProgress?.((t + n) / Math.max(1, T.length) * .9), await On();
+				a.onProgress?.((t + n) / Math.max(1, T.length) * .9), await kn();
 			}
 		}
 	}
@@ -2758,11 +2758,11 @@ async function fn(e, t, n, i = {}, a = {}) {
 			E[n] = r, E[n + 1] = i, E[n + 2] = a, D[e] = 1, k += r, A += i, j += a, M++;
 		} else O++;
 	}
-	pn(E, D, n.counts, l, a);
+	mn(E, D, n.counts, l, a);
 	let N = i.fallbackColor ? new r(i.fallbackColor) : M > 0 ? new r(k / M, A / M, j / M) : new r(0, 0, 0), P = 0, F = 0, I = 0;
 	for (let e = 0; e < n.probeCount; e++) {
 		let t = e * 3, n = D[e] === 1;
-		n || (E[t] = N.r, E[t + 1] = N.g, E[t + 2] = N.b, P++), E[t] = (E[t] ?? 0) * u, E[t + 1] = (E[t + 1] ?? 0) * u, E[t + 2] = (E[t + 2] ?? 0) * u, Math.max(E[t] ?? 0, E[t + 1] ?? 0, E[t + 2] ?? 0) <= $ && (n ? F++ : I++);
+		n || (E[t] = N.r, E[t + 1] = N.g, E[t + 2] = N.b, P++), E[t] = (E[t] ?? 0) * u, E[t + 1] = (E[t + 1] ?? 0) * u, E[t + 2] = (E[t + 2] ?? 0) * u, Math.max(E[t] ?? 0, E[t + 1] ?? 0, E[t + 2] ?? 0) <= Q && (n ? F++ : I++);
 	}
 	n.irradiance.set(E), a.onProgress?.(1);
 	let L = O - P;
@@ -2788,7 +2788,7 @@ async function fn(e, t, n, i = {}, a = {}) {
 				n.spacing.z
 			]
 		},
-		blackThreshold: $,
+		blackThreshold: Q,
 		sampledTexels: _,
 		validSourceSamples: v,
 		contributingTexels: y,
@@ -2803,14 +2803,14 @@ async function fn(e, t, n, i = {}, a = {}) {
 		fallbackFilled: P,
 		populatedEffectivelyBlack: F,
 		fallbackEffectivelyBlack: I,
-		sourceLightmap: bn(h),
-		projectedSurfaceLight: bn(g),
-		irradiance: yn(E),
-		blackProbeLocations: xn(E, n, t),
-		durationMs: kn() - o
+		sourceLightmap: xn(h),
+		projectedSurfaceLight: xn(g),
+		irradiance: bn(E),
+		blackProbeLocations: Sn(E, n, t),
+		durationMs: An() - o
 	};
 }
-function pn(e, t, n, r, i) {
+function mn(e, t, n, r, i) {
 	let [a, o, s] = n, c = [
 		[
 			-1,
@@ -2844,7 +2844,7 @@ function pn(e, t, n, r, i) {
 		]
 	];
 	for (let n = 0; n < r; n++) {
-		Dn(i.signal);
+		On(i.signal);
 		let l = e.slice(), u = t.slice();
 		for (let n = 0; n < s; n++) for (let r = 0; r < o; r++) for (let i = 0; i < a; i++) {
 			let d = i + a * (r + o * n);
@@ -2866,7 +2866,7 @@ function pn(e, t, n, r, i) {
 		e.set(l), t.set(u), i.onProgress?.(.9 + (n + 1) / Math.max(1, r) * .1);
 	}
 }
-function mn(e, t, n, r) {
+function hn(e, t, n, r) {
 	if (r <= 1 || Math.abs(n - t) <= 1e-8) return {
 		low: 0,
 		high: 0,
@@ -2879,7 +2879,7 @@ function mn(e, t, n, r) {
 		t: i - a
 	};
 }
-function hn(e) {
+function gn(e) {
 	let t = [
 		e.spacing.x,
 		e.spacing.y,
@@ -2887,14 +2887,14 @@ function hn(e) {
 	].filter((e) => e > 0);
 	return t.length ? Math.min(...t) : .5;
 }
-function gn(e, t) {
+function _n(e, t) {
 	return [
 		e[0] * t[0],
 		e[1] * t[1],
 		e[2] * t[2]
 	];
 }
-function _n() {
+function vn() {
 	return {
 		sampleCount: 0,
 		minRGB: [
@@ -2918,11 +2918,11 @@ function _n() {
 		invalidValueCount: 0
 	};
 }
-function vn(e, t, n, r) {
-	e.sampleCount++, e.minRGB[0] = Math.min(e.minRGB[0], t), e.minRGB[1] = Math.min(e.minRGB[1], n), e.minRGB[2] = Math.min(e.minRGB[2], r), e.maxRGB[0] = Math.max(e.maxRGB[0], t), e.maxRGB[1] = Math.max(e.maxRGB[1], n), e.maxRGB[2] = Math.max(e.maxRGB[2], r), e.sumRGB[0] += t, e.sumRGB[1] += n, e.sumRGB[2] += r, e.luminances.push(.2126 * t + .7152 * n + .0722 * r), Math.max(t, n, r) > $ ? e.nonZeroCount++ : e.effectivelyBlackCount++;
+function yn(e, t, n, r) {
+	e.sampleCount++, e.minRGB[0] = Math.min(e.minRGB[0], t), e.minRGB[1] = Math.min(e.minRGB[1], n), e.minRGB[2] = Math.min(e.minRGB[2], r), e.maxRGB[0] = Math.max(e.maxRGB[0], t), e.maxRGB[1] = Math.max(e.maxRGB[1], n), e.maxRGB[2] = Math.max(e.maxRGB[2], r), e.sumRGB[0] += t, e.sumRGB[1] += n, e.sumRGB[2] += r, e.luminances.push(.2126 * t + .7152 * n + .0722 * r), Math.max(t, n, r) > Q ? e.nonZeroCount++ : e.effectivelyBlackCount++;
 }
-function yn(e) {
-	let t = _n();
+function bn(e) {
+	let t = vn();
 	for (let n = 0; n < e.length; n += 3) {
 		let r = e[n] ?? 0, i = e[n + 1] ?? 0, a = e[n + 2] ?? 0;
 		if (![
@@ -2930,14 +2930,14 @@ function yn(e) {
 			i,
 			a
 		].every(Number.isFinite)) {
-			t.invalidValueCount += Cn(r, i, a);
+			t.invalidValueCount += wn(r, i, a);
 			continue;
 		}
-		vn(t, r, i, a);
+		yn(t, r, i, a);
 	}
-	return bn(t);
+	return xn(t);
 }
-function bn(e) {
+function xn(e) {
 	let t = e.sampleCount, n = e.luminances.sort((e, t) => e - t), r = t ? [...e.minRGB] : [
 		0,
 		0,
@@ -2960,10 +2960,10 @@ function bn(e) {
 		maxLuminance: n[n.length - 1] ?? 0,
 		averageLuminance: o,
 		luminancePercentiles: {
-			p10: Sn(n, .1),
-			p50: Sn(n, .5),
-			p90: Sn(n, .9),
-			p99: Sn(n, .99)
+			p10: Cn(n, .1),
+			p50: Cn(n, .5),
+			p90: Cn(n, .9),
+			p99: Cn(n, .99)
 		},
 		nonZeroCount: e.nonZeroCount,
 		nonZeroPercentage: t ? e.nonZeroCount / t * 100 : 0,
@@ -2972,7 +2972,7 @@ function bn(e) {
 		invalidValueCount: e.invalidValueCount
 	};
 }
-function xn(e, t, n) {
+function Sn(e, t, n) {
 	let [r, i, a] = t.counts, o = [
 		Infinity,
 		Infinity,
@@ -2988,7 +2988,7 @@ function xn(e, t, n) {
 			_,
 			v,
 			y
-		].every(Number.isFinite) || Math.max(_, v, y) > $) continue;
+		].every(Number.isFinite) || Math.max(_, v, y) > Q) continue;
 		let b = t.bounds.min.x + t.spacing.x * m, x = t.bounds.min.y + t.spacing.y * p, S = t.bounds.min.z + t.spacing.z * f;
 		o[0] = Math.min(o[0], b), o[1] = Math.min(o[1], x), o[2] = Math.min(o[2], S), s[0] = Math.max(s[0], b), s[1] = Math.max(s[1], x), s[2] = Math.max(s[2], S);
 		let C = m === 0 || p === 0 || f === 0 || m === r - 1 || p === i - 1 || f === a - 1, w = n.groups.some((e) => e.meshes.some((e) => {
@@ -3010,51 +3010,51 @@ function xn(e, t, n) {
 		} : null
 	};
 }
-function Sn(e, t) {
+function Cn(e, t) {
 	if (!e.length) return 0;
 	let n = (e.length - 1) * t, r = Math.floor(n), i = Math.ceil(n);
 	if (r === i) return e[r] ?? 0;
 	let a = n - r;
 	return (e[r] ?? 0) * (1 - a) + (e[i] ?? 0) * a;
 }
-function Cn(...e) {
+function wn(...e) {
 	return e.reduce((e, t) => e + +!Number.isFinite(t), 0);
 }
-function wn(e, t) {
+function Tn(e, t) {
 	if (!Number.isInteger(e) || e < 1) throw Error(`[baker:probes] ${t} must be >= 1`);
 	return e;
 }
-function Tn(e, t) {
+function En(e, t) {
 	if (!Number.isInteger(e) || e < 0) throw Error(`[baker:probes] ${t} must be >= 0`);
 	return e;
 }
-function En(e, t) {
+function Dn(e, t) {
 	if (!Number.isFinite(e) || e < 0) throw Error(`[baker:probes] ${t} must be finite and >= 0`);
 	return e;
 }
-function Dn(e) {
+function On(e) {
 	if (!e?.aborted) return;
 	let t = /* @__PURE__ */ Error("[baker:probes] probe generation aborted");
 	throw t.name = "AbortError", t;
 }
-function On() {
+function kn() {
 	return typeof requestAnimationFrame == "function" ? new Promise((e) => requestAnimationFrame(() => e())) : Promise.resolve();
 }
-function kn() {
+function An() {
 	return typeof performance < "u" ? performance.now() : Date.now();
 }
 //#endregion
 //#region packages/baker-classic/src/probes/generateProbeVolume.ts
-async function An(e, t, n, r = {}, i = {}) {
+async function jn(e, t, n, r = {}, i = {}) {
 	let { bake: a, ...o } = r, s = At(t, o);
 	return {
 		volume: s,
-		stats: await fn(e, n, s, a, i)
+		stats: await pn(e, n, s, a, i)
 	};
 }
 //#endregion
 //#region packages/baker-classic/src/probes/ProbeDebugView.ts
-var jn = class extends l {
+var Mn = class extends l {
 	volume;
 	mesh;
 	geometry;
@@ -3065,7 +3065,7 @@ var jn = class extends l {
 	color = new r();
 	constructor(e, t = {}) {
 		super(), this.volume = e, this.name = "ProbeDebugView";
-		let n = Math.max(1e-4, t.radius ?? Nn(e)), r = Math.min(1, Math.max(0, t.opacity ?? .9));
+		let n = Math.max(1e-4, t.radius ?? Pn(e)), r = Math.min(1, Math.max(0, t.opacity ?? .9));
 		this.geometry = new D(n, Math.max(4, Math.floor(t.widthSegments ?? 8)), Math.max(3, Math.floor(t.heightSegments ?? 6))), this.material = new E({
 			glslVersion: c,
 			uniforms: { opacity: { value: r } },
@@ -3088,10 +3088,10 @@ var jn = class extends l {
 		this.remove(this.mesh), this.geometry.dispose(), this.material.dispose();
 	}
 };
-function Mn(e, t = {}) {
-	return new jn(e, t);
+function Nn(e, t = {}) {
+	return new Mn(e, t);
 }
-function Nn(e) {
+function Pn(e) {
 	let t = [
 		e.spacing.x,
 		e.spacing.y,
@@ -3101,7 +3101,7 @@ function Nn(e) {
 }
 //#endregion
 //#region packages/baker-classic/src/probes/ProbeLightingBinding.ts
-var Pn = class {
+var Fn = class {
 	mesh;
 	volume;
 	states;
@@ -3114,14 +3114,14 @@ var Pn = class {
 	sampleOffset;
 	disposed = !1;
 	constructor(e, t, n = {}) {
-		this.mesh = e, this.volume = t, this.intensity = In(n.intensity ?? 1, "intensity"), this.multiplyByAlbedo = n.multiplyByAlbedo ?? !0, this.maxIrradiance = n.maxIrradiance === void 0 ? null : In(n.maxIrradiance, "maxIrradiance"), this.sampleOffset = n.sampleOffset?.clone() ?? new M();
+		this.mesh = e, this.volume = t, this.intensity = Ln(n.intensity ?? 1, "intensity"), this.multiplyByAlbedo = n.multiplyByAlbedo ?? !0, this.maxIrradiance = n.maxIrradiance === void 0 ? null : Ln(n.maxIrradiance, "maxIrradiance"), this.sampleOffset = n.sampleOffset?.clone() ?? new M();
 		let r = Array.isArray(e.material) ? e.material : [e.material];
 		if (this.states = r.filter((e) => "isMeshStandardMaterial" in e && e.isMeshStandardMaterial === !0).map((e) => this.installMaterialHook(e)), !this.states.length) throw Error("[baker:probes] probe lighting requires MeshStandardMaterial");
 		this.update();
 	}
 	update() {
 		if (!this.disposed) {
-			this.mesh.updateWorldMatrix(!0, !1), this.mesh.getWorldPosition(this.worldPosition).add(this.sampleOffset), this.volume.sample(this.worldPosition, this.sampled), this.contribution.copy(this.sampled), this.contribution.setRGB(Ln(this.contribution.r, this.maxIrradiance), Ln(this.contribution.g, this.maxIrradiance), Ln(this.contribution.b, this.maxIrradiance)), this.contribution.multiplyScalar(this.intensity);
+			this.mesh.updateWorldMatrix(!0, !1), this.mesh.getWorldPosition(this.worldPosition).add(this.sampleOffset), this.volume.sample(this.worldPosition, this.sampled), this.contribution.copy(this.sampled), this.contribution.setRGB(Rn(this.contribution.r, this.maxIrradiance), Rn(this.contribution.g, this.maxIrradiance), Rn(this.contribution.b, this.maxIrradiance)), this.contribution.multiplyScalar(this.intensity);
 			for (let e of this.states) e.uniform.value.copy(this.contribution);
 		}
 	}
@@ -3149,20 +3149,20 @@ var Pn = class {
 		};
 	}
 };
-function Fn(e, t, n = {}) {
-	return new Pn(e, t, n);
+function In(e, t, n = {}) {
+	return new Fn(e, t, n);
 }
-function In(e, t) {
+function Ln(e, t) {
 	if (!Number.isFinite(e) || e < 0) throw Error(`[baker:probes] ${t} must be finite and >= 0`);
 	return e;
 }
-function Ln(e, t) {
+function Rn(e, t) {
 	let n = Math.max(0, e);
 	return t === null ? n : Math.min(t, n);
 }
 //#endregion
 //#region packages/baker-classic/src/bake/preflight.ts
-function Rn(e) {
+function zn(e) {
 	let t = [];
 	return e.updateWorldMatrix(!0, !0), e.traverse((e) => {
 		if (!e.isMesh || !Fe(e)) return;
@@ -3226,7 +3226,7 @@ function Rn(e) {
 }
 //#endregion
 //#region packages/baker-classic/src/bake/prepareScene.ts
-function zn(e, t) {
+function Bn(e, t) {
 	let n = [];
 	e.traverse((e) => {
 		if (!e.isMesh || !Fe(e)) return;
@@ -3252,7 +3252,7 @@ function zn(e, t) {
 					let t = e.clone();
 					return d.push(t), n.instanceColor && t.color && t.color.multiply(o), t;
 				}), l = n.geometry.clone();
-				u.push(l), Bn(l);
+				u.push(l), Vn(l);
 				let f = new g(l, Array.isArray(n.material) ? s : s[0]);
 				f.name = `${n.name || n.uuid}[${e}]`, f.matrixAutoUpdate = !1, n.getMatrixAt(e, f.matrix), f.layers.mask = n.layers.mask, f.castShadow = n.castShadow, f.receiveShadow = n.receiveShadow, f.userData = {
 					...n.userData,
@@ -3267,7 +3267,7 @@ function zn(e, t) {
 			let t = e.geometry, n = t.clone();
 			o.push(() => {
 				e.geometry === n && (e.geometry = t), n.dispose();
-			}), e.geometry = n, Bn(n), i.push(e);
+			}), e.geometry = n, Vn(n), i.push(e);
 		}
 		return e.updateWorldMatrix(!0, !0), {
 			meshes: i,
@@ -3278,7 +3278,7 @@ function zn(e, t) {
 		throw c(), e;
 	}
 }
-function Bn(e) {
+function Vn(e) {
 	for (let [n, r] of Object.entries(e.attributes)) if ("isInterleavedBufferAttribute" in r) {
 		let i = new Float32Array(r.count * r.itemSize);
 		for (let e = 0; e < r.count; e++) for (let t = 0; t < r.itemSize; t++) i[e * r.itemSize + t] = r.getComponent(e, t);
@@ -3288,8 +3288,62 @@ function Bn(e) {
 	e.index || e.setIndex(Array.from({ length: n.count }, (e, t) => t)), e.hasAttribute("normal") || e.computeVertexNormals();
 }
 //#endregion
+//#region packages/baker-classic/src/rendererAdapter.ts
+function Hn(e, t = {}) {
+	return {
+		backend: "webgl",
+		renderer: e,
+		contextLossTarget: t.contextLossTarget ?? e.domElement,
+		label: t.label
+	};
+}
+function $(e) {
+	return e.backend ?? "webgl";
+}
+function Un(e) {
+	let t = $(e);
+	return t === "webgl" ? e.renderer.getContext().getExtension("EXT_color_buffer_float") ? null : "EXT_color_buffer_float WebGL2 extension is unavailable; FloatType RTs cannot be allocated" : `${t} baking is not implemented yet; use the WebGL backend`;
+}
+function Wn(e) {
+	if ($(e) !== "webgl") return {
+		vendor: "",
+		renderer: "",
+		maxTextureSize: e.renderer.capabilities.maxTextureSize
+	};
+	let t = e.renderer.getContext(), n = t.getExtension("WEBGL_debug_renderer_info");
+	return {
+		vendor: n ? String(t.getParameter(n.UNMASKED_VENDOR_WEBGL) ?? "") : "",
+		renderer: n ? String(t.getParameter(n.UNMASKED_RENDERER_WEBGL) ?? "") : "",
+		maxTextureSize: e.renderer.capabilities.maxTextureSize
+	};
+}
+function Gn(e) {
+	return $(e) === "webgl" && e.renderer.getContext().isContextLost();
+}
+function Kn(e, t) {
+	if ($(e) !== "webgl") return () => {};
+	let n = e.contextLossTarget ?? e.renderer.domElement, r = (e) => {
+		e.preventDefault(), t();
+	};
+	n.addEventListener("webglcontextlost", r, !1);
+	let i = !1;
+	return () => {
+		i || (i = !0, n.removeEventListener("webglcontextlost", r, !1));
+	};
+}
+async function qn(e) {
+	if ($(e) !== "webgl") throw Error(`${$(e)} queue drain is not implemented yet`);
+	e.renderer.getContext().finish();
+}
+function Jn(e) {
+	return $(e) === "webgpu" ? "webgpu device lost" : "webgl context lost";
+}
+function Yn(e) {
+	return !!e && typeof e == "object" && "renderer" in e && e.renderer !== null && typeof e.renderer?.isWebGLRenderer == "boolean";
+}
+//#endregion
 //#region packages/baker-classic/src/gpu/Capabilities.ts
-var Vn = {
+var Xn = {
 	discrete: {
 		initialTileSize: 1024,
 		maxBatchMs: 500
@@ -3303,7 +3357,7 @@ var Vn = {
 		maxBatchMs: 250
 	}
 };
-function Hn(e) {
+function Zn(e) {
 	let t = e.toLowerCase();
 	return [
 		"intel hd",
@@ -3323,9 +3377,10 @@ function Hn(e) {
 		"apple m"
 	].some((e) => t.includes(e)) ? "discrete" : "unknown";
 }
-function Un(e) {
-	let t = e.getContext(), n = t.getExtension("WEBGL_debug_renderer_info"), r = n ? String(t.getParameter(n.UNMASKED_VENDOR_WEBGL) ?? "") : "", i = n ? String(t.getParameter(n.UNMASKED_RENDERER_WEBGL) ?? "") : "", a = Hn(i), o = Vn[a];
+function Qn(e) {
+	let t = Yn(e) ? e : Hn(e), n = Wn(t), r = n.vendor, i = n.renderer, a = Zn(i), o = Xn[a];
 	return {
+		backend: $(t),
 		tier: a,
 		vendor: r,
 		renderer: i,
@@ -3336,14 +3391,14 @@ function Un(e) {
 }
 //#endregion
 //#region packages/baker-classic/src/bake/validation.ts
-var Wn = (e, t) => new r(e ?? t), Gn = (e) => e > 0 && !(e & e - 1), Kn = {
+var $n = (e, t) => new r(e ?? t), er = (e) => e > 0 && !(e & e - 1), tr = {
 	dilationIterations: 4,
 	denoiseEnabled: !0,
 	denoiseSigma: 2.5,
 	denoiseThreshold: .18,
 	denoiseKSigma: 1
 };
-function qn(e) {
+function nr(e) {
 	let t = e.samples ?? 96;
 	if (!Number.isFinite(t) || t < 1 || t > 4096) throw new V(`samples must be 1-4096, got ${t}`, "validation");
 	let n = e.castsPerFrame ?? 5;
@@ -3354,7 +3409,7 @@ function qn(e) {
 	if (!Number.isInteger(o) || o < 0 || o > 4) throw new V(`bounces must be integer 0-4, got ${o}`, "validation");
 	let s = e.resolution ?? 1024;
 	if (!Number.isFinite(s) || s < 16 || s > 4096) throw new V(`resolution must be 16-4096, got ${s}`, "validation");
-	if (!Gn(s)) throw new V(`resolution must be a power of two, got ${s}`, "validation");
+	if (!er(s)) throw new V(`resolution must be a power of two, got ${s}`, "validation");
 	let c = e.superSample ?? 1;
 	if (!Number.isInteger(c) || c < 1 || c > 4) throw new V(`superSample must be integer 1-4, got ${c}`, "validation");
 	if (s * c > 4096) throw new V(`resolution × superSample must be ≤ 4096, got ${s * c}`, "validation");
@@ -3383,7 +3438,7 @@ function qn(e) {
 		let e = n.resolution;
 		if (e !== void 0) {
 			if (!Number.isFinite(e) || e < 128 || e > 4096) throw new V(`perMesh[${t}].resolution must be 128-4096, got ${e}`, "validation");
-			if (!Gn(e)) throw new V(`perMesh[${t}].resolution must be a power of two, got ${e}`, "validation");
+			if (!er(e)) throw new V(`perMesh[${t}].resolution must be a power of two, got ${e}`, "validation");
 		}
 		let r = n.density;
 		if (r !== void 0 && (!Number.isFinite(r) || r < .1 || r > 10)) throw new V(`perMesh[${t}].density must be in [0.1, 10], got ${r}`, "validation");
@@ -3397,7 +3452,7 @@ function qn(e) {
 	if (u?.maxBatchMs !== void 0 && (!Number.isFinite(u.maxBatchMs) || u.maxBatchMs <= 0)) throw new V(`timeoutProtection.maxBatchMs must be > 0, got ${u.maxBatchMs}`, "validation");
 	if (u?.maxFrameMs !== void 0 && (!Number.isFinite(u.maxFrameMs) || u.maxFrameMs <= 0)) throw new V(`timeoutProtection.maxFrameMs must be > 0, got ${u.maxFrameMs}`, "validation");
 }
-function Jn(e, t) {
+function rr(e, t) {
 	let n = e?.safeMode ?? !1;
 	return {
 		safeMode: n,
@@ -3409,7 +3464,7 @@ function Jn(e, t) {
 }
 //#endregion
 //#region packages/baker-classic/src/lightmap/Downscale.ts
-var Yn = class extends E {
+var ir = class extends E {
 	constructor(e) {
 		super({
 			glslVersion: c,
@@ -3421,17 +3476,17 @@ var Yn = class extends E {
 	customProgramCacheKey() {
 		return "DownscaleMaterial|glsl3|single-out";
 	}
-}, Xn = new b();
-function Zn(e, t, n) {
+}, ar = new b();
+function or(e, t, n) {
 	let r = new P(n, n, {
 		type: u,
 		minFilter: p,
 		magFilter: p,
 		generateMipmaps: !1
-	}), i = new Yn(t), a = new g(new x(2, 2), i), o = () => {
+	}), i = new ir(t), a = new g(new x(2, 2), i), o = () => {
 		let t = e.getRenderTarget();
 		try {
-			e.setRenderTarget(r), e.render(a, Xn);
+			e.setRenderTarget(r), e.render(a, ar);
 		} finally {
 			e.setRenderTarget(t);
 		}
@@ -3456,7 +3511,7 @@ function Zn(e, t, n) {
 }
 //#endregion
 //#region packages/baker-classic/src/utils/Partition.ts
-function Qn(e, t, n) {
+function sr(e, t, n) {
 	let r = [], i = /* @__PURE__ */ new Map();
 	for (let a of e) {
 		let e = t[a.uuid] ?? {};
@@ -3473,7 +3528,7 @@ function Qn(e, t, n) {
 		resolution: n
 	};
 }
-function $n(e, t, n, r) {
+function cr(e, t, n, r) {
 	let i = [], a = [];
 	for (let n of e) t[n.uuid]?.exclude === !0 ? i.push(n) : a.push(n);
 	let o = {};
@@ -3506,8 +3561,8 @@ function $n(e, t, n, r) {
 }
 //#endregion
 //#region packages/baker-classic/src/bake/result.ts
-var er = class {
-	renderer;
+var lr = class {
+	rendererAdapter;
 	meshLightmaps;
 	meshResolutions;
 	stats;
@@ -3516,7 +3571,10 @@ var er = class {
 	aoJob = null;
 	persistentMaterialMount = null;
 	constructor(e, t, n, r, i) {
-		this.renderer = e, this.meshLightmaps = t, this.meshResolutions = n, this.stats = r, this.internals = i;
+		this.rendererAdapter = e, this.meshLightmaps = t, this.meshResolutions = n, this.stats = r, this.internals = i;
+	}
+	get renderer() {
+		return this.rendererAdapter.renderer;
 	}
 	get lightmaps() {
 		return new Map(this.meshLightmaps);
@@ -3565,7 +3623,7 @@ var er = class {
 	}
 	apply() {
 		if (this.disposed) throw Error("Bake result is disposed");
-		if (this.persistentMaterialMount && tr(this.persistentMaterialMount.lightmaps, this.meshLightmaps)) return;
+		if (this.persistentMaterialMount && ur(this.persistentMaterialMount.lightmaps, this.meshLightmaps)) return;
 		this.persistentMaterialMount?.restore(), this.persistentMaterialMount = null;
 		let e = new Map(this.meshLightmaps), t = en([...e].map(([e, t]) => ({
 			mesh: e,
@@ -3604,80 +3662,79 @@ var er = class {
 		if (!Number.isInteger(e.samples) || e.samples < 0 || e.samples > 64 || !Number.isInteger(e.targetSamples) || e.targetSamples < 1 || e.targetSamples > 4096 || !Number.isFinite(e.distance) || e.distance < 0) throw new V("Invalid AO rebake options", "validation");
 		let n = new AbortController();
 		this.aoJob = n;
-		let r = t.signal, i = () => n.abort(r?.reason ?? H()), a = () => n.abort(new V("webgl context lost during AO rebake", "context-loss"));
-		r?.addEventListener("abort", i, { once: !0 }), this.renderer.domElement.addEventListener("webglcontextlost", a), r?.aborted && i();
-		let o = [], s = !1;
+		let r = t.signal, i = () => n.abort(r?.reason ?? H()), a = Jn(this.rendererAdapter), o = () => n.abort(new V(`${a} during AO rebake`, "context-loss")), s = () => {}, c = [], l = !1;
 		try {
-			let r = this.internals.groups;
-			for (let i = 0; i < r.length; i++) {
+			r?.addEventListener("abort", i, { once: !0 }), s = Kn(this.rendererAdapter, o), r?.aborted && i();
+			let u = this.internals.groups;
+			for (let r = 0; r < u.length; r++) {
 				if (n.signal.aborted) throw n.signal.reason;
-				let a = r[i];
-				if (!a) continue;
-				let s = Ue(this.renderer, a.positionTex, a.normalTex, this.internals.bvh, {
-					resolution: a.internalResolution,
+				let i = u[r];
+				if (!i) continue;
+				let o = Ue(this.renderer, i.positionTex, i.normalTex, this.internals.bvh, {
+					resolution: i.internalResolution,
 					aoSamples: e.samples,
 					ambientDistance: e.distance,
 					targetSamples: e.targetSamples
-				}), c;
+				}), s;
 				try {
-					c = Ge(this.renderer, {
-						direct: a.lightmapper.textures.direct,
-						indirect: a.lightmapper.textures.indirect,
-						ao: s.texture
-					}, a.internalResolution, a.composite.getOptions());
+					s = Ge(this.renderer, {
+						direct: i.lightmapper.textures.direct,
+						indirect: i.lightmapper.textures.indirect,
+						ao: o.texture
+					}, i.internalResolution, i.composite.getOptions());
 				} catch (e) {
-					throw s.dispose(), e;
+					throw o.dispose(), e;
 				}
 				let l = {
-					group: a,
-					ao: s,
-					composite: c,
+					group: i,
+					ao: o,
+					composite: s,
 					refinement: null,
 					downscale: null
 				};
-				o.push(l), await U(() => {
-					if (this.renderer.getContext().isContextLost()) throw new V("webgl context lost", "context-loss");
-					let n = s.renderTiled(8);
-					return n.sampleComplete && c.refresh(), t.onProgress?.("bake", (i + n.samples / e.targetSamples) / r.length), t.onFrame?.({
-						groupIndex: i,
-						totalGroups: r.length,
+				c.push(l), await U(() => {
+					if (Gn(this.rendererAdapter)) throw new V(a, "context-loss");
+					let n = o.renderTiled(8);
+					return n.sampleComplete && s.refresh(), t.onProgress?.("bake", (r + n.samples / e.targetSamples) / u.length), t.onFrame?.({
+						groupIndex: r,
+						totalGroups: u.length,
 						bounceSamples: 0,
 						aoSamples: n.samples,
 						targetSamples: e.targetSamples,
 						done: n.done,
-						compositeTexture: c.texture,
-						directTexture: a.lightmapper.textures.direct,
-						indirectTexture: a.lightmapper.textures.indirect,
-						aoTexture: s.texture
+						compositeTexture: s.texture,
+						directTexture: i.lightmapper.textures.direct,
+						indirectTexture: i.lightmapper.textures.indirect,
+						aoTexture: o.texture
 					}), n.done;
-				}, n.signal), a.refinement && (l.refinement = await Je(this.renderer, c.texture, a.positionTex, a.internalResolution, this.internals.refinementOptions, void 0, {
+				}, n.signal), i.refinement && (l.refinement = await Je(this.renderer, s.texture, i.positionTex, i.internalResolution, this.internals.refinementOptions, void 0, {
 					signal: n.signal,
-					normals: a.normalTex
-				})), a.downscale && (l.downscale = Zn(this.renderer, l.refinement?.texture ?? c.texture, a.resolution));
+					normals: i.normalTex
+				})), i.downscale && (l.downscale = or(this.renderer, l.refinement?.texture ?? s.texture, i.resolution));
 			}
 			if (n.signal.aborted || this.disposed) throw n.signal.reason ?? H();
-			for (let e of o) {
+			for (let e of c) {
 				let { group: t, ao: n, composite: r, refinement: i, downscale: a } = e;
 				t.aoMapper.dispose(), t.composite.dispose(), t.refinement?.dispose(), t.downscale?.dispose(), t.aoMapper = n, t.composite = r, t.refinement = i, t.downscale = a;
 				let o = a?.texture ?? i?.texture ?? r.texture;
 				for (let e of t.meshes) this.meshLightmaps.set(e, o);
 			}
-			s = !0, this.persistentMaterialMount && this.apply();
+			l = !0, this.persistentMaterialMount && this.apply();
 		} finally {
-			if (!s) for (let e of o) e.downscale?.dispose(), e.refinement?.dispose(), e.composite.dispose(), e.ao.dispose();
-			r?.removeEventListener("abort", i), this.renderer.domElement.removeEventListener("webglcontextlost", a), this.aoJob = null;
+			if (!l) for (let e of c) e.downscale?.dispose(), e.refinement?.dispose(), e.composite.dispose(), e.ao.dispose();
+			r?.removeEventListener("abort", i), s(), this.aoJob = null;
 		}
 	}
 };
-function tr(e, t) {
+function ur(e, t) {
 	if (e.size !== t.size) return !1;
 	for (let [n, r] of e) if (t.get(n) !== r) return !1;
 	return !0;
 }
 //#endregion
 //#region packages/baker-classic/src/bake/groups.ts
-var nr = 64;
-function rr(e, t, n, r, i, a) {
+var dr = 64;
+function fr(e, t, n, r, i, a) {
 	return {
 		resolution: t,
 		casts: e.castsPerFrame,
@@ -3701,7 +3758,7 @@ function rr(e, t, n, r, i, a) {
 		tileSize: a.initialTileSize
 	};
 }
-function ir(e, t, n) {
+function pr(e, t, n) {
 	return {
 		resolution: t,
 		aoSamples: e.ao.samples,
@@ -3710,13 +3767,13 @@ function ir(e, t, n) {
 		tileSize: n.initialTileSize
 	};
 }
-async function ar(e, t, n, r, i, a, o, s) {
+async function mr(e, t, n, r, i, a, o, s) {
 	let { renderer: c, opts: l, bvh: u, sceneLights: d, skyColor: f, matTex: p, tp: m, ctxState: h } = e;
 	o.onProgress?.("bake", t / n), s("bake");
 	let g = null, _ = null, v = null, y = null, b = null, x = null, S = !1;
 	try {
 		g = Ne(c, r, a, !0);
-		let e = rr(l, a, d, f, p, m), C = ir(l, a, m);
+		let e = fr(l, a, d, f, p, m), C = pr(l, a, m);
 		_ = Ve(c, g.positionTexture, g.normalTexture, u, e), v = Ue(c, g.positionTexture, g.normalTexture, u, C), y = Ge(c, {
 			direct: _.textures.direct,
 			indirect: _.textures.indirect,
@@ -3727,12 +3784,12 @@ async function ar(e, t, n, r, i, a, o, s) {
 			aoEnabled: l.ao.enabled,
 			aoIntensity: l.ao.intensity,
 			aoExponent: l.ao.exponent
-		}), await sr(_, v, y, l.samples, o, h, m, t, n, (e) => o.onProgress?.("bake", (t + e) / n)), s("bake"), (l.denoise || l.refinementOptions.dilationIterations > 0) && (b = await Je(c, y.texture, g.positionTexture, a, l.refinementOptions, void 0, {
+		}), await gr(_, v, y, l.samples, o, h, m, t, n, (e) => o.onProgress?.("bake", (t + e) / n)), s("bake"), (l.denoise || l.refinementOptions.dilationIterations > 0) && (b = await Je(c, y.texture, g.positionTexture, a, l.refinementOptions, void 0, {
 			signal: o.signal,
 			normals: g.normalTexture
 		}));
 		let w = b?.texture ?? y.texture;
-		x = l.superSample > 1 ? Zn(c, w, i) : null;
+		x = l.superSample > 1 ? or(c, w, i) : null;
 		let T = x?.texture ?? w, E = g;
 		if (!E) throw new V("atlas render did not complete", "bake");
 		return s("bake"), S = !0, {
@@ -3756,16 +3813,16 @@ async function ar(e, t, n, r, i, a, o, s) {
 		S || (x?.dispose(), b?.dispose(), y?.dispose(), v?.dispose(), _?.dispose(), g?.dispose());
 	}
 }
-function or(e, t, n) {
-	return e.length < 4 ? t : e.slice(-4).filter((e) => e > n.maxFrameMs * 1.5).length >= 3 ? Math.max(nr, t >> 1) : t;
+function hr(e, t, n) {
+	return e.length < 4 ? t : e.slice(-4).filter((e) => e > n.maxFrameMs * 1.5).length >= 3 ? Math.max(dr, t >> 1) : t;
 }
-function sr(e, t, n, r, i, a, o, s, c, l) {
+function gr(e, t, n, r, i, a, o, s, c, l) {
 	let u = [], d = performance.now(), f = o.initialTileSize;
 	return U(() => {
-		if (a.lost) throw new V("webgl context lost during bake", "context-loss");
+		if (a.lost) throw new V(a.message, "context-loss");
 		let p = performance.now();
 		if (u.push(p - d), u.length > 8 && u.shift(), d = p, o.autoAdapt) {
-			let n = or(u, f, o);
+			let n = hr(u, f, o);
 			n !== f && (console.warn(`[baker] adaptive throttle: tileSize ${f} → ${n}`), f = n, e.setTileSize(f), t.setTileSize(f), u.length = 0);
 		}
 		let m = e.renderTiled(o.maxFrameMs), h = t.renderTiled(o.maxFrameMs), g = Math.min(m.samples, h.samples);
@@ -3789,103 +3846,91 @@ function sr(e, t, n, r, i, a, o, s, c, l) {
 }
 //#endregion
 //#region packages/baker-classic/src/bake/pipeline.ts
-async function cr(e) {
-	let { renderer: t, opts: n, scene: r, allMeshes: i, hooks: a, t0: o, tp: s, ctxState: c, checkAbort: l } = e, u = n.texelsPerMeter, d = {};
-	for (let [e, t] of Object.entries(n.perMesh)) t.density !== void 0 && (d[e] = t.density);
-	let f = u > 0 ? le(i.filter((e) => n.perMesh[e.uuid]?.exclude !== !0), {
-		atlasResolution: n.resolution,
-		densityMultiplier: u,
-		perMeshScale: d
-	}) : 0, p = f > 0 ? $n(i, n.perMesh, n.resolution, f) : Qn(i, n.perMesh, n.resolution), { excluded: m, groups: h } = p, g = (e) => f > 0 ? p.resolution : e, _ = performance.now();
-	a.onProgress?.("uv-unwrap", 0);
-	let v = [...h.values()];
-	for (let [e, t] of h) await Se(t, {
-		resolution: g(e),
-		signal: a.signal,
-		texelsPerUnit: f > 0 ? f : void 0,
-		perMeshScale: d
+async function _r(e) {
+	let { renderer: t, rendererAdapter: n, opts: r, scene: i, allMeshes: a } = e, { hooks: o, t0: s, tp: c, ctxState: l, checkAbort: u } = e, d = r.texelsPerMeter, f = {};
+	for (let [e, t] of Object.entries(r.perMesh)) t.density !== void 0 && (f[e] = t.density);
+	let p = d > 0 ? le(a.filter((e) => r.perMesh[e.uuid]?.exclude !== !0), {
+		atlasResolution: r.resolution,
+		densityMultiplier: d,
+		perMeshScale: f
+	}) : 0, m = p > 0 ? cr(a, r.perMesh, r.resolution, p) : sr(a, r.perMesh, r.resolution), { excluded: h, groups: g } = m, _ = (e) => p > 0 ? m.resolution : e, v = performance.now();
+	o.onProgress?.("uv-unwrap", 0);
+	let y = [...g.values()];
+	for (let [e, t] of g) await Se(t, {
+		resolution: _(e),
+		signal: o.signal,
+		texelsPerUnit: p > 0 ? p : void 0,
+		perMeshScale: f
 	});
-	a.onProgress?.("uv-unwrap", 1), l("unwrap");
-	let y = performance.now(), b = performance.now();
-	a.onProgress?.("geometry", 0);
-	let x, S = [], C = !1, w = et(i);
+	o.onProgress?.("uv-unwrap", 1), u("unwrap");
+	let b = performance.now(), x = performance.now();
+	o.onProgress?.("geometry", 0);
+	let S, C = [], w = !1, T = et(a);
 	try {
-		let u = new F(w);
-		a.onProgress?.("geometry", .5), x = ut(t, ot(w, i)), a.onProgress?.("geometry", 1), l("geometry");
-		let d = performance.now(), f = Wn(n.gi.skyColor, 16777215), p = Le(r);
-		if (p.length > t.capabilities.maxTextureSize) throw Error("Light count exceeds GPU texture capacity");
-		let m = performance.now(), T = [...h.keys()], E = /* @__PURE__ */ new Map(), D = /* @__PURE__ */ new Map(), O = {
+		let d = new F(T);
+		o.onProgress?.("geometry", .5), S = ut(t, ot(T, a)), o.onProgress?.("geometry", 1), u("geometry");
+		let f = performance.now(), p = $n(r.gi.skyColor, 16777215), m = Le(i);
+		if (m.length > t.capabilities.maxTextureSize) throw Error("Light count exceeds GPU texture capacity");
+		let h = performance.now(), E = [...g.keys()], D = /* @__PURE__ */ new Map(), O = /* @__PURE__ */ new Map(), k = {
 			renderer: t,
-			opts: n,
-			bvh: u,
-			sceneLights: p,
-			skyColor: f,
-			matTex: x,
-			tp: s,
-			ctxState: c
+			opts: r,
+			bvh: d,
+			sceneLights: m,
+			skyColor: p,
+			matTex: S,
+			tp: c,
+			ctxState: l
 		};
-		for (let e = 0; e < T.length; e++) {
-			let t = T[e];
+		for (let e = 0; e < E.length; e++) {
+			let t = E[e];
 			if (t === void 0) throw Error("[baker] bake group key is missing");
-			let r = g(t), i = r * n.superSample, o = h.get(t);
-			if (!o) throw Error(`[baker] bake group ${t} is missing`);
-			let { group: s, finalTex: c } = await ar(O, e, T.length, o, r, i, a, l);
-			S.push(s);
-			for (let e of o) E.set(e, c), D.set(e, r);
+			let n = _(t), i = n * r.superSample, a = g.get(t);
+			if (!a) throw Error(`[baker] bake group ${t} is missing`);
+			let { group: s, finalTex: c } = await mr(k, e, E.length, a, n, i, o, u);
+			C.push(s);
+			for (let e of a) D.set(e, c), O.set(e, n);
 		}
-		let k = performance.now(), A = performance.now();
-		a.onProgress?.("refine", 1);
-		let j = performance.now();
-		performance.now(), t.getContext().finish(), performance.now();
-		let M = T.reduce((e, t) => {
-			let n = g(t);
+		let A = performance.now(), j = performance.now();
+		o.onProgress?.("refine", 1);
+		let M = performance.now();
+		performance.now(), await qn(n), performance.now();
+		let N = E.reduce((e, t) => {
+			let n = _(t);
 			return e + n * n;
-		}, 0), N = {
-			meshCount: v.flat().length,
-			texelCount: M,
-			raysTraced: n.samples * n.castsPerFrame * M,
+		}, 0), P = {
+			meshCount: y.flat().length,
+			texelCount: N,
+			raysTraced: r.samples * r.castsPerFrame * N,
 			duration: {
-				uvUnwrap: y - _,
-				geometry: d - b,
-				bake: k - m,
-				refine: j - A,
-				total: performance.now() - o
+				uvUnwrap: b - v,
+				geometry: f - x,
+				bake: A - h,
+				refine: M - j,
+				total: performance.now() - s
 			}
 		};
-		l("bake");
-		let P = x, I = new er(t, E, D, N, {
-			groups: S,
-			bvh: u,
-			refinementOptions: n.refinementOptions,
-			denoise: n.denoise,
+		u("bake");
+		let I = S, L = new lr(n, D, O, P, {
+			groups: C,
+			bvh: d,
+			refinementOptions: r.refinementOptions,
+			denoise: r.denoise,
 			matTexDispose: () => {
-				P.dispose(), w.dispose();
+				I.dispose(), T.dispose();
 			},
 			sceneDispose: e.sceneDispose
 		});
-		return C = !0, I;
+		return w = !0, L;
 	} finally {
-		if (!C) {
-			for (let e of S) e.downscale?.dispose(), e.refinement?.dispose(), e.composite.dispose(), e.aoMapper.dispose(), e.lightmapper.dispose(), e.atlasDispose();
-			x?.dispose(), w.dispose();
+		if (!w) {
+			for (let e of C) e.downscale?.dispose(), e.refinement?.dispose(), e.composite.dispose(), e.aoMapper.dispose(), e.lightmapper.dispose(), e.atlasDispose();
+			S?.dispose(), T.dispose();
 		}
 	}
 }
 //#endregion
-//#region packages/baker-classic/src/rendererAdapter.ts
-function lr(e, t = {}) {
-	return {
-		renderer: e,
-		contextLossTarget: t.contextLossTarget ?? e.domElement,
-		label: t.label
-	};
-}
-function ur(e) {
-	return !!e && typeof e == "object" && "renderer" in e && e.renderer !== null && typeof e.renderer?.isWebGLRenderer == "boolean";
-}
-//#endregion
 //#region packages/baker-classic/src/LightmapBaker.ts
-function dr(e) {
+function vr(e) {
 	return typeof e == "boolean" ? {
 		enabled: e,
 		intensity: 1,
@@ -3898,7 +3943,7 @@ function dr(e) {
 		skyIntensity: e?.skyIntensity ?? 0
 	};
 }
-function fr(e, t) {
+function yr(e, t) {
 	return typeof e == "boolean" ? {
 		enabled: e,
 		distance: .5,
@@ -3913,11 +3958,11 @@ function fr(e, t) {
 		samples: e?.samples ?? t ?? 5
 	};
 }
-var pr = !1, mr = class {
+var br = !1, xr = class {
 	_rendererAdapter = null;
 	opts;
 	constructor(e = {}, t = {}) {
-		let n = ur(e) ? {
+		let n = Yn(e) ? {
 			...t,
 			rendererAdapter: e
 		} : ((e) => !!e && typeof e == "object" && ("isWebGLRenderer" in e && e.isWebGLRenderer === !0 || "getContext" in e && "domElement" in e))(e) ? {
@@ -3927,7 +3972,7 @@ var pr = !1, mr = class {
 			...e,
 			...t
 		};
-		qn(n), this._rendererAdapter = n.rendererAdapter ?? (n.renderer ? lr(n.renderer) : null);
+		nr(n), this._rendererAdapter = n.rendererAdapter ?? (n.renderer ? Hn(n.renderer) : null);
 		let r = n.light?.position;
 		this.opts = {
 			samples: n.samples ?? 96,
@@ -3946,12 +3991,12 @@ var pr = !1, mr = class {
 				size: n.light?.size ?? 1,
 				enabled: n.light?.enabled ?? !0
 			},
-			gi: dr(n.gi),
-			ao: fr(n.ao, n.castsPerFrame),
+			gi: vr(n.gi),
+			ao: yr(n.ao, n.castsPerFrame),
 			refinementOptions: {
-				...Kn,
+				...tr,
 				...n.refinementOptions ?? {},
-				denoiseEnabled: n.denoise ?? Kn.denoiseEnabled
+				denoiseEnabled: n.denoise ?? tr.denoiseEnabled
 			},
 			timeoutProtection: n.timeoutProtection
 		};
@@ -3963,78 +4008,81 @@ var pr = !1, mr = class {
 		return this._rendererAdapter;
 	}
 	setRenderer(e) {
-		return this._rendererAdapter = lr(e), this;
+		return this._rendererAdapter = Hn(e), this;
 	}
 	setRendererAdapter(e) {
 		return this._rendererAdapter = e, this;
 	}
 	async bake(e, t = {}) {
 		let n = this._rendererAdapter, r = n?.renderer ?? null;
-		if (!r) throw new V("renderer is required: use `new LightmapBaker(renderer, opts)`, `new LightmapBaker({ renderer, ...opts })`, `new LightmapBaker({ rendererAdapter, ...opts })`, `baker.setRenderer(renderer)`, or `baker.setRendererAdapter(adapter)`", "validation");
+		if (!n || !r) throw new V("renderer is required: use `new LightmapBaker(renderer, opts)`, `new LightmapBaker({ renderer, ...opts })`, `new LightmapBaker({ rendererAdapter, ...opts })`, `baker.setRenderer(renderer)`, or `baker.setRendererAdapter(adapter)`", "validation");
 		let i = performance.now();
-		if (pr) throw new V("Another bake is active; await it before starting a new bake", "validation");
+		if (br) throw new V("Another bake is active; await it before starting a new bake", "validation");
 		if (t.signal?.aborted) throw t.signal.reason ?? new DOMException("Aborted", "AbortError");
-		let a = Rn(e), o = a.filter((e) => e.severity === "error");
+		let a = zn(e), o = a.filter((e) => e.severity === "error");
 		if (o.length) throw new V(o.map((e) => `${e.object}: ${e.message}`).join("\n"), "validation");
 		for (let e of a) e.severity === "warning" && console.warn(`[baker] ${e.object}: ${e.message}`);
-		if (!r.getContext().getExtension("EXT_color_buffer_float")) throw new V("EXT_color_buffer_float WebGL2 extension is unavailable; FloatType RTs cannot be allocated", "validation");
-		let s = Un(r), c = Jn(this.opts.timeoutProtection, s), l = zn(e, this.opts.perMesh), u = l.meshes;
-		if (!u.length) throw l.restore(), new V("No bake-eligible meshes", "validation");
-		pr = !0;
-		let d = new AbortController(), f = t.signal, p = () => d.abort(f?.reason);
+		let s = Un(n);
+		if (s) throw new V(s, "validation");
+		let c = Qn(n), l = rr(this.opts.timeoutProtection, c), u = Bn(e, this.opts.perMesh), d = u.meshes;
+		if (!d.length) throw u.restore(), new V("No bake-eligible meshes", "validation");
+		br = !0;
+		let f = new AbortController(), p = t.signal, m = () => f.abort(p?.reason);
 		t = {
 			...t,
-			signal: d.signal
+			signal: f.signal
 		};
-		let m = { lost: !1 }, h = n?.contextLossTarget ?? r.domElement, g = (e) => {
-			e.preventDefault(), m.lost = !0, d.abort(new V("webgl context lost", "context-loss")), console.error("[baker] webglcontextlost during bake - cancelling");
+		let h = Jn(n), g = {
+			lost: !1,
+			message: h
 		}, _ = () => {
-			h.removeEventListener("webglcontextlost", g, !1);
-		}, v = (e) => {
-			if (m.lost) throw new V("webgl context lost", "context-loss");
+			g.lost = !0, f.abort(new V(h, "context-loss")), console.error(`[baker] ${h} during bake - cancelling`);
+		}, v = () => {}, y = (e) => {
+			if (g.lost || Gn(n)) throw new V(h, "context-loss");
 			if (t.signal?.aborted) {
 				let t = new V("aborted by signal", e);
 				throw t.name = "AbortError", t;
 			}
 		};
 		try {
-			return f?.addEventListener("abort", p, { once: !0 }), h.addEventListener("webglcontextlost", g, !1), e.updateMatrixWorld(!0), await cr({
+			return p?.addEventListener("abort", m, { once: !0 }), v = Kn(n, _), e.updateMatrixWorld(!0), await _r({
 				renderer: r,
+				rendererAdapter: n,
 				opts: {
 					...this.opts,
-					perMesh: l.perMesh
+					perMesh: u.perMesh
 				},
-				sceneDispose: l.restore,
+				sceneDispose: u.restore,
 				scene: e,
-				allMeshes: u,
+				allMeshes: d,
 				hooks: t,
 				t0: i,
-				tp: c,
-				ctxState: m,
-				checkAbort: v
+				tp: l,
+				ctxState: g,
+				checkAbort: y
 			});
 		} catch (e) {
-			throw l.restore(), e;
+			throw u.restore(), e;
 		} finally {
-			pr = !1, f?.removeEventListener("abort", p), _();
+			br = !1, p?.removeEventListener("abort", m), v();
 		}
 	}
 };
 //#endregion
 //#region packages/baker-classic/src/runtimeCapabilities.ts
-function hr() {
+function Sr() {
 	return globalThis;
 }
-function gr(e) {
+function Cr(e) {
 	return typeof e.process?.versions?.node == "string";
 }
-function _r(e) {
+function wr(e) {
 	return e.window !== void 0 && e.document !== void 0;
 }
-function vr(e) {
-	return _r(e) ? "browser" : typeof e.OffscreenCanvas == "function" ? "offscreen-browser" : gr(e) ? "node" : "unknown";
+function Tr(e) {
+	return wr(e) ? "browser" : typeof e.OffscreenCanvas == "function" ? "offscreen-browser" : Cr(e) ? "node" : "unknown";
 }
-function yr(e) {
+function Er(e) {
 	if (typeof e.WebGL2RenderingContext != "function") return "unavailable";
 	if (typeof e.document?.createElement != "function") return "available";
 	try {
@@ -4043,7 +4091,7 @@ function yr(e) {
 		return "unavailable";
 	}
 }
-function br(e) {
+function Dr(e) {
 	if (typeof e.OffscreenCanvas != "function") return "unavailable";
 	try {
 		return new e.OffscreenCanvas(1, 1).getContext?.("webgl2") ? "available" : "unavailable";
@@ -4051,14 +4099,23 @@ function br(e) {
 		return "unavailable";
 	}
 }
-function xr(e = hr()) {
-	let t = vr(e), n = typeof e.OffscreenCanvas == "function" ? "available" : "unavailable", r = typeof e.requestAnimationFrame == "function" ? "available" : "unavailable", i = t === "offscreen-browser" ? br(e) : yr(e), a = (t === "browser" || t === "offscreen-browser") && i !== "unavailable" && r === "available";
-	return {
+function Or(e) {
+	return e.navigator?.gpu ? "available" : "unavailable";
+}
+function kr(e = Sr()) {
+	let t = Tr(e), n = typeof e.OffscreenCanvas == "function" ? "available" : "unavailable", r = typeof e.requestAnimationFrame == "function" ? "available" : "unavailable", i = t === "offscreen-browser" ? Dr(e) : Er(e), a = Or(e), o = (t === "browser" || t === "offscreen-browser") && i !== "unavailable" && r === "available", s = [];
+	return t === "node" && s.push("True Node.js headless baking is not implemented yet.", "The current bake pipeline still requires a browser WebGL2 renderer and RAF-driven progressive passes."), a === "available" && s.push("WebGPU is available in this runtime, but WebGPU baking is not implemented yet; the shipping baker still selects WebGL."), {
 		runtime: t,
-		canBake: a,
-		rendererStrategy: a ? "webgl-browser" : "node-headless-unavailable",
+		canBake: o,
+		selectedBackend: o ? "webgl" : null,
+		backends: {
+			webgl: i,
+			webgpu: a
+		},
+		rendererStrategy: o ? "webgl-browser" : "node-headless-unavailable",
 		features: {
 			webgl2: i,
+			webgpu: a,
 			"float-color-buffer": i === "unavailable" ? "unavailable" : "unknown",
 			"offscreen-canvas": n,
 			raf: r,
@@ -4066,12 +4123,12 @@ function xr(e = hr()) {
 			"filesystem-export": "unavailable",
 			"node-headless-bake": "unavailable"
 		},
-		limitations: t === "node" ? ["True Node.js headless baking is not implemented yet.", "The current bake pipeline still requires a browser WebGL2 renderer and RAF-driven progressive passes."] : []
+		limitations: s
 	};
 }
 //#endregion
 //#region packages/baker-classic/src/utils/Diagnostics.ts
-var Sr = {
+var Ar = {
 	0: "NO_ERROR",
 	1280: "INVALID_ENUM",
 	1281: "INVALID_VALUE",
@@ -4081,7 +4138,7 @@ var Sr = {
 	1285: "OUT_OF_MEMORY",
 	1286: "INVALID_FRAMEBUFFER_OPERATION",
 	37442: "CONTEXT_LOST_WEBGL"
-}, Cr = class {
+}, jr = class {
 	renderer;
 	start = performance.now();
 	snapshots = [];
@@ -4123,7 +4180,7 @@ var Sr = {
 		let c = {
 			label: e,
 			t: performance.now() - this.start,
-			glError: Sr[n] ?? `0x${n.toString(16)}`,
+			glError: Ar[n] ?? `0x${n.toString(16)}`,
 			threejs: {
 				geometries: i.memory.geometries,
 				textures: i.memory.textures,
@@ -4143,7 +4200,7 @@ var Sr = {
 		do
 			s = n.getError(), s !== 0 && (o = s);
 		while (s !== 0);
-		return console.log(`[diag] MEASURE ${e}: ${a.toFixed(1)}ms gl=${Sr[o] ?? `0x${o.toString(16)}`}`), i;
+		return console.log(`[diag] MEASURE ${e}: ${a.toFixed(1)}ms gl=${Ar[o] ?? `0x${o.toString(16)}`}`), i;
 	}
 	contextLossInfo() {
 		let e = this.renderer.getContext(), t = e.getExtension("WEBGL_lose_context");
@@ -4159,4 +4216,4 @@ var Sr = {
 	}
 };
 //#endregion
-export { St as AtlasViewer, V as BakeError, Cr as Diagnostics, er as LightmapBakeResult, mr as LightmapBaker, jn as ProbeDebugView, Pn as ProbeLightingBinding, Tt as ProbeVolume, Ct as TexelDensityMaterial, fn as bakeProbeIrradianceFromLightmaps, ue as binPackMeshes, Fn as bindProbeLighting, Re as buildLightTexture, ut as buildMaterialTextures, nn as captureLightmappedProbeGrid, rn as captureLightmappedProbeGridFromJSON, Bt as captureNativeLightProbeGrid, Vt as captureNativeLightProbeGridFromJSON, Hn as classifyRenderer, Le as collectLightsFromScene, G as computeMeshSurfaceArea, Mn as createProbeDebugView, lr as createRendererAdapter, Un as detectGPUCapabilities, ze as disposeLightTexture, yt as exportEXR, xt as exportLightmap, vt as exportPNG, bt as exportRaw, ot as extractPerTriangleMaterials, Ue as generateAOMapper, Se as generateAtlas, be as generateAtlases, Ve as generateLightmapper, At as generateProbeGrid, An as generateProbeVolume, xr as getLightmapRuntimeCapabilities, ur as isLightmapRendererAdapter, ve as loadXAtlasThree, nt as materialSlotForTriangle, et as mergeGeometry, Rn as preflightBakeScene, Ne as renderAtlas, le as resolveDensityTexelsPerMeter, Ge as runComposite, Je as runRefinement };
+export { St as AtlasViewer, V as BakeError, jr as Diagnostics, lr as LightmapBakeResult, xr as LightmapBaker, Mn as ProbeDebugView, Fn as ProbeLightingBinding, Tt as ProbeVolume, Ct as TexelDensityMaterial, pn as bakeProbeIrradianceFromLightmaps, ue as binPackMeshes, In as bindProbeLighting, Re as buildLightTexture, ut as buildMaterialTextures, nn as captureLightmappedProbeGrid, rn as captureLightmappedProbeGridFromJSON, Bt as captureNativeLightProbeGrid, Vt as captureNativeLightProbeGridFromJSON, Zn as classifyRenderer, Le as collectLightsFromScene, G as computeMeshSurfaceArea, Nn as createProbeDebugView, Hn as createRendererAdapter, Qn as detectGPUCapabilities, ze as disposeLightTexture, yt as exportEXR, xt as exportLightmap, vt as exportPNG, bt as exportRaw, ot as extractPerTriangleMaterials, Ue as generateAOMapper, Se as generateAtlas, be as generateAtlases, Ve as generateLightmapper, At as generateProbeGrid, jn as generateProbeVolume, kr as getLightmapRuntimeCapabilities, Yn as isLightmapRendererAdapter, ve as loadXAtlasThree, nt as materialSlotForTriangle, et as mergeGeometry, zn as preflightBakeScene, Ne as renderAtlas, le as resolveDensityTexelsPerMeter, Ge as runComposite, Je as runRefinement };

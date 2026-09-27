@@ -1,4 +1,5 @@
 import type { WebGLRenderer } from 'three';
+import { type LightmapRendererAdapter, type LightmapRendererBackend } from '../rendererAdapter';
 /**
  * GPU capability detection used by timeout protection to pick conservative
  * defaults on integrated or unknown hardware while letting discrete GPUs run
@@ -9,6 +10,7 @@ import type { WebGLRenderer } from 'three';
  */
 export type GPUTier = 'discrete' | 'integrated' | 'unknown';
 export type GPUCapabilities = {
+    backend: LightmapRendererBackend;
     tier: GPUTier;
     /** Raw vendor string, or empty when WEBGL_debug_renderer_info is masked. */
     vendor: string;
@@ -37,5 +39,5 @@ export declare function classifyRenderer(renderer: string): GPUTier;
  * structure and never throws. If debug renderer info is unavailable, returns
  * tier 'unknown' with conservative defaults.
  */
-export declare function detectGPUCapabilities(renderer: WebGLRenderer): GPUCapabilities;
+export declare function detectGPUCapabilities(rendererOrAdapter: WebGLRenderer | LightmapRendererAdapter): GPUCapabilities;
 //# sourceMappingURL=Capabilities.d.ts.map
