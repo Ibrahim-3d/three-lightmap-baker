@@ -45,10 +45,10 @@ The first stable public release includes:
 See the [v1.0.0 release](https://github.com/Ibrahim-3d/three-lightmap-baker/releases/tag/v1.0.0)
 and [Changelog](../CHANGELOG.md) for the release record.
 
-## Now — qualify the post-v1 patch line
+## Now — ship the post-v1 v1.1 line
 
-The immediate priority is to turn the correctness and lifecycle hardening already
-landed on `master` into a fully qualified patch release.
+The correctness and lifecycle hardening on `master` has cleared the hardware gate.
+The immediate priority is packaging and publishing it as the v1.1 release.
 
 ### Correctness and lifecycle
 
@@ -63,14 +63,14 @@ Current unreleased work includes:
 - cancellation/error cleanup for GPU work and atlas workers;
 - packaged Draco decoder assets instead of a runtime CDN dependency.
 
-Before the next patch release:
+Release qualification:
 
-- keep `pnpm run check`, package builds and browser CI green;
-- run `pnpm run test:release:hardware` on supported hardware without a software
-  WebGL fallback;
-- visually review representative production scenes, not only numerical tests;
-- verify fresh npm-package installation and the documented minimal example;
-- ensure `CHANGELOG.md`, API status, release notes and known limitations agree.
+- GitHub CI: green on the current release-prep base.
+- Hardware gate: 14/14 focused correctness checks passed; full RTX 3090 / ANGLE
+  D3D11 release suite passed 47 tests with one intentional benchmark skip.
+- Release commit must keep package version, Changelog, API status, release notes
+  and known limitations aligned.
+- After registry publication, verify a clean consumer install and minimal browser import.
 
 ### Flagship architectural showcase
 

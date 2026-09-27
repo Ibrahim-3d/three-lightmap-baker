@@ -70,6 +70,22 @@ result.apply();
 
 The baker automatically prepares lightmap UVs where needed, builds the shared BVH, traces lighting, runs AO/compositing/refinement, and returns a `LightmapBakeResult`.
 
+## Scene preflight
+
+For editor/configurator workflows that need validation before starting a bake:
+
+```ts
+import { preflightBakeScene } from 'lightmap-baker';
+
+const issues = preflightBakeScene(scene);
+for (const issue of issues) {
+  console[issue.severity === 'error' ? 'error' : 'warn'](issue.object, issue.message);
+}
+```
+
+Preflight does not mutate UVs or allocate bake GPU resources. The normal
+`LightmapBaker.bake()` path runs the same validation internally.
+
 ## Scene preparation
 
 The high-level baker targets visible Three.js meshes with standard-material-style surfaces.

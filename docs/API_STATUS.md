@@ -10,6 +10,18 @@ three >=0.185.1 <0.186.0
 
 ## Primary public API
 
+Scene preflight can be run before a bake when an application wants to surface
+validation issues explicitly:
+
+```ts
+import { preflightBakeScene } from 'lightmap-baker';
+
+const issues = preflightBakeScene(scene);
+```
+
+`preflightBakeScene()` returns structured warnings/errors without starting GPU
+work. The high-level bake path performs equivalent validation internally.
+
 ```ts
 import { LightmapBaker } from 'lightmap-baker';
 
@@ -98,7 +110,7 @@ Native Three.js probes are preferred for v1 because they preserve directional L2
 
 - Browser/WebGL lightmap baking.
 - Path-traced direct and indirect GI.
-- 1–4 configurable bounce depth.
+- 0–4 configurable bounce depth; zero bounces still evaluates the configured sky contribution.
 - BVH acceleration through `three-mesh-bvh`.
 - Automatic lightmap UV generation through packaged xatlas JS/WASM.
 - Multiple atlas/resolution groups.

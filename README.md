@@ -24,7 +24,7 @@
   <img src="https://img.shields.io/badge/Three.js-r185-black?logo=threedotjs" alt="Three.js r185" />
   <img src="https://img.shields.io/badge/WebGL-2-990000?logo=webgl" alt="WebGL 2" />
   <img src="https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript" alt="TypeScript" />
-  <img src="https://img.shields.io/badge/GI_Bounces-1--4-orange" alt="GI Bounces" />
+  <img src="https://img.shields.io/badge/GI_Bounces-0--4-orange" alt="GI Bounces" />
   <img src="https://img.shields.io/badge/License-MIT-green" alt="MIT License" />
 </p>
 
@@ -185,7 +185,7 @@ result.dispose();
 - **Path-traced global illumination** — real bounce lighting, not a screen-space approximation. Red walls bleed red light onto white surfaces. The Cornell Box test is part of the hardware-GPU release gate.
 - **Automatic lightmap UVs** — xatlas generates non-overlapping lightmap UVs and the package ships the required JS/WASM assets.
 - **GPU-accelerated BVH ray tracing** — powered by [three-mesh-bvh](https://github.com/gkjohnson/three-mesh-bvh).
-- **1–4 configurable GI bounces** — multi-bounce diffuse transport with progressive accumulation.
+- **0–4 configurable GI bounces** — multi-bounce diffuse transport with progressive accumulation.
 - **Textured GI** — secondary hits evaluate `material.color × material.map`.
 - **UV0 + UV1 base-color support** — `material.map.channel = 0` and `1` are carried through the BVH/material transport path.
 - **Multi-material geometry** — geometry groups resolve the correct material slot per hit even after BVH index reordering.
