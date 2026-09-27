@@ -88,7 +88,7 @@ export function detectGPUCapabilities(
   const tier = classifyRenderer(rendererStr);
   const def = DEFAULTS[tier];
 
-  if (import.meta.env.DEV) {
+  if (import.meta.env?.DEV) {
     if (tier === 'unknown') {
       console.warn(
         `[baker] GPU tier unknown (renderer="${rendererStr}"); using conservative defaults`,
