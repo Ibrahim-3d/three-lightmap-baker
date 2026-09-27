@@ -56,7 +56,7 @@ import type { PerMeshMap, RenderModeOptions, SceneObj } from './three/types';
 /**
  * Bake-quality presets. `targetSamples` is **frames**, not samples-per-texel:
  * with `casts` rays per frame the actual samples-per-texel ≈ targetSamples × casts.
- * Bounces are a separate quality knob (1–4) so users can crank GI without
+ * Bounces are a separate quality knob (0–4) so users can crank GI without
  * relinquishing their preferred resolution/casts/sample budget.
  */
 const QUALITY_PRESETS = {
