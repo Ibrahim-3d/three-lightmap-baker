@@ -169,5 +169,6 @@ export class AOMaterial extends ShaderMaterial {
                 }
             `,
     });
+    this.addEventListener('dispose', () => bvhUniformStruct.dispose());
   }
 }

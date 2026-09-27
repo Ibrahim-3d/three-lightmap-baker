@@ -71,6 +71,9 @@ jobs:
       - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
 
+      - name: Bake correctness regressions
+        run: pnpm run test:correctness
+
       - name: Browser smoke suite
         run: pnpm run test:browser-smoke
 

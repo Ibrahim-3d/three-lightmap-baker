@@ -1,3 +1,4 @@
+import { runAnimationTask } from './animationTask';
 import { Color, LinearFilter, Mesh, NearestFilter, Texture, WebGLRenderer } from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
 import {
@@ -191,6 +192,7 @@ export async function runGroupBake(
       (p) => hooks.onProgress?.('bake', (groupIndex + p) / totalGroups),
     );
 
+    checkAbort('bake');
     if (opts.denoise || opts.refinementOptions.dilationIterations > 0) {
       refinement = await runPostProcess(
         renderer,
@@ -198,6 +200,8 @@ export async function runGroupBake(
         atlas.positionTexture,
         internalResolution,
         opts.refinementOptions,
+        undefined,
+        { signal: hooks.signal, normals: atlas.normalTexture },
       );
     }
 
@@ -213,6 +217,7 @@ export async function runGroupBake(
     const completedAtlas = atlas;
     if (!completedAtlas) throw new BakeError('atlas render did not complete', 'bake');
 
+    checkAbort('bake');
     returned = true;
     return {
       group: {
@@ -287,72 +292,54 @@ function runMappersWithTimeoutProtection(
   totalGroups: number,
   onProgress: (p: number) => void,
 ): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const intervals: number[] = [];
-    let lastRaf = performance.now();
-    let tileSize = tp.initialTileSize;
+  const intervals: number[] = [];
+  let lastRaf = performance.now();
+  let tileSize = tp.initialTileSize;
 
-    const tick = (): void => {
-      if (hooks.signal?.aborted) {
-        const err = new BakeError('aborted by signal', 'bake');
-        err.name = 'AbortError';
-        reject(err);
-        return;
+  return runAnimationTask(() => {
+    if (ctxState.lost) throw new BakeError('webgl context lost during bake', 'context-loss');
+    const now = performance.now();
+    intervals.push(now - lastRaf);
+    if (intervals.length > 8) intervals.shift();
+    lastRaf = now;
+
+    if (tp.autoAdapt) {
+      const next = adaptiveTileSize(intervals, tileSize, tp);
+      if (next !== tileSize) {
+        console.warn(`[baker] adaptive throttle: tileSize ${tileSize} → ${next}`);
+        tileSize = next;
+        lightmapper.setTileSize(tileSize);
+        aoMapper.setTileSize(tileSize);
+        intervals.length = 0;
       }
+    }
 
-      if (ctxState.lost) {
-        reject(new BakeError('webgl context lost during bake', 'context-loss'));
-        return;
-      }
+    const lr = lightmapper.renderTiled(tp.maxFrameMs);
+    const ar = aoMapper.renderTiled(tp.maxFrameMs);
+    const minSamples = Math.min(lr.samples, ar.samples);
+    onProgress(targetSamples > 0 ? minSamples / targetSamples : 1);
 
-      const now = performance.now();
-      intervals.push(now - lastRaf);
-      if (intervals.length > 8) intervals.shift();
-      lastRaf = now;
-
-      if (tp.autoAdapt) {
-        const next = adaptiveTileSize(intervals, tileSize, tp);
-        if (next !== tileSize) {
-          console.warn(`[baker] adaptive throttle: tileSize ${tileSize} → ${next}`);
-          tileSize = next;
-          lightmapper.setTileSize(tileSize);
-          aoMapper.setTileSize(tileSize);
-          intervals.length = 0;
-        }
-      }
-
-      const lr = lightmapper.renderTiled(tp.maxFrameMs);
-      const ar = aoMapper.renderTiled(tp.maxFrameMs);
-      const minSamples = Math.min(lr.samples, ar.samples);
-      onProgress(targetSamples > 0 ? minSamples / targetSamples : 1);
-
-      // Refresh composite so the live preview reflects this frame's accumulator
-      // state, then fire onFrame with the live texture refs. The composite must
-      // refresh BEFORE onFrame so callers see the up-to-date pixels.
-      // Gate refresh on sample-boundary: accumulators only change when a full
-      // sample completes, so mid-sample RAFs would blit identical pixels.
-      const done = lr.done && ar.done;
-      if (lr.sampleComplete || ar.sampleComplete) composite.refresh();
-      const frame: BakeFrameInfo = {
-        groupIndex,
-        totalGroups,
-        bounceSamples: lr.samples,
-        aoSamples: ar.samples,
-        targetSamples,
-        done,
-        compositeTexture: composite.texture,
-        directTexture: lightmapper.textures.direct,
-        indirectTexture: lightmapper.textures.indirect,
-        aoTexture: aoMapper.texture,
-      };
-      hooks.onFrame?.(frame);
-
-      if (done) {
-        resolve();
-        return;
-      }
-      requestAnimationFrame(tick);
+    // Refresh composite so the live preview reflects this frame's accumulator
+    // state, then fire onFrame with the live texture refs. The composite must
+    // refresh BEFORE onFrame so callers see the up-to-date pixels.
+    // Gate refresh on sample-boundary: accumulators only change when a full
+    // sample completes, so mid-sample RAFs would blit identical pixels.
+    const done = lr.done && ar.done;
+    if (lr.sampleComplete || ar.sampleComplete) composite.refresh();
+    const frame: BakeFrameInfo = {
+      groupIndex,
+      totalGroups,
+      bounceSamples: lr.samples,
+      aoSamples: ar.samples,
+      targetSamples,
+      done,
+      compositeTexture: composite.texture,
+      directTexture: lightmapper.textures.direct,
+      indirectTexture: lightmapper.textures.indirect,
+      aoTexture: aoMapper.texture,
     };
-    requestAnimationFrame(tick);
-  });
+    hooks.onFrame?.(frame);
+
+    return done;
+  }, hooks.signal);
 }

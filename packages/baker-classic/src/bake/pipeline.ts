@@ -1,7 +1,8 @@
+import { isBakeVisible } from './visibility';
 import { Mesh, Object3D, Scene, Texture, WebGLRenderer } from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
 import { collectLightsFromScene, type PackedLight } from '../lightmap';
-import { generateAtlas, generateAtlases } from '../atlas/generateAtlas';
+import { generateAtlas } from '../atlas/generateAtlas';
 import {
   buildMaterialTextures,
   extractPerTriangleMaterials,
@@ -50,8 +51,7 @@ export function collectBakeMeshes(scene: Scene | Object3D): Mesh[] {
   const out: Mesh[] = [];
   scene.traverse((obj) => {
     if (!(obj as Mesh).isMesh) return;
-    if (!obj.visible) return;
-    if (obj.userData?.lightmapIgnore) return;
+    if (!isBakeVisible(obj)) return;
     const mesh = obj as Mesh;
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     if (mats.some((m) => m && (m as { isMeshStandardMaterial?: boolean }).isMeshStandardMaterial))
@@ -69,6 +69,7 @@ export type BakePipelineArgs = {
   t0: number;
   tp: Required<TimeoutProtectionOptions>;
   ctxState: ContextLossState;
+  sceneDispose?: () => void;
   checkAbort: (phase: BakeErrorPhase) => void;
 };
 
@@ -117,19 +118,13 @@ export async function runBakePipeline(args: BakePipelineArgs): Promise<LightmapB
   const tUV0 = performance.now();
   hooks.onProgress?.('uv-unwrap', 0);
   const meshesByGroup = [...groups.values()];
-  if (densityTexelsPerMeter > 0) {
-    // Density mode creates one render target per atlas group. Each group must
-    // receive its own full 0-1 UV2 layout, otherwise separate atlas targets
-    // still contain UVs from a global pack and density appears to do nothing.
-    await generateAtlases(meshesByGroup, {
-      resolution: opts.resolution,
-      texelsPerUnit: densityTexelsPerMeter,
+  for (const [key, meshes] of groups) {
+    await generateAtlas(meshes, {
+      resolution: groupResolution(key),
+      signal: hooks.signal,
+      texelsPerUnit: densityTexelsPerMeter > 0 ? densityTexelsPerMeter : undefined,
       perMeshScale,
     });
-  } else {
-    // Resolution mode preserves the legacy behavior: all non-excluded meshes
-    // sharing a resolution are unwrapped together.
-    await generateAtlas(meshesByGroup.flat());
   }
   hooks.onProgress?.('uv-unwrap', 1);
   checkAbort('unwrap');
@@ -140,116 +135,143 @@ export async function runBakePipeline(args: BakePipelineArgs): Promise<LightmapB
   hooks.onProgress?.('geometry', 0);
 
   // BVH is built from ALL meshes (including excluded) so they cast shadows / contribute GI.
-  const merged = mergeGeometry(allMeshes);
-  const bvh = new MeshBVH(merged); // mutates merged.index in place
-  hooks.onProgress?.('geometry', 0.5);
-
-  const perTri = extractPerTriangleMaterials(merged, allMeshes);
-  const matTex = buildMaterialTextures(renderer, perTri);
-  hooks.onProgress?.('geometry', 1);
-  checkAbort('geometry');
-  const tG1 = performance.now();
-
-  // --- 3. Build shared light list ---
-  // Every light - including the scene's default area light - now lives in
-  // the scene as a real THREE.Light, so `collectLightsFromScene` is the
-  // single source of truth. If the user deleted every light, the bake will
-  // be lit by sky GI alone.
-  const skyColor = toLinearColor(opts.gi.skyColor, 0xffffff);
-  const sceneLights: PackedLight[] = collectLightsFromScene(scene);
-
-  // --- 4. Per-group bake ---
-  const tB0 = performance.now();
-  const groupKeys = [...groups.keys()];
+  let matTex: ReturnType<typeof buildMaterialTextures> | undefined;
   const groupResults: GroupInternals[] = [];
-  const meshLightmaps = new Map<Mesh, Texture>();
-  const meshResolutions = new Map<Mesh, number>();
+  let returned = false;
+  const merged = mergeGeometry(allMeshes);
+  try {
+    const bvh = new MeshBVH(merged); // mutates merged.index in place
+    hooks.onProgress?.('geometry', 0.5);
 
-  // Track excluded meshes: they get no lightmap entry.
-  // (They're kept separate so callers know to handle them differently.)
-  void excluded; // intentionally unused beyond BVH; suppress lint
+    const perTri = extractPerTriangleMaterials(merged, allMeshes);
+    matTex = buildMaterialTextures(renderer, perTri);
+    hooks.onProgress?.('geometry', 1);
+    checkAbort('geometry');
+    const tG1 = performance.now();
 
-  const ctx: GroupBakeContext = {
-    renderer,
-    opts,
-    bvh,
-    sceneLights,
-    skyColor,
-    matTex,
-    tp,
-    ctxState,
-  };
-  for (let gi = 0; gi < groupKeys.length; gi++) {
-    const key = groupKeys[gi];
-    if (key === undefined) throw new Error('[baker] bake group key is missing');
-    const res = groupResolution(key);
-    const internalRes = res * opts.superSample;
-    const groupMeshes = groups.get(key);
-    if (!groupMeshes) throw new Error(`[baker] bake group ${key} is missing`);
+    // --- 3. Build shared light list ---
+    // Every light - including the scene's default area light - now lives in
+    // the scene as a real THREE.Light, so `collectLightsFromScene` is the
+    // single source of truth. If the user deleted every light, the bake will
+    // be lit by sky GI alone.
+    const skyColor = toLinearColor(opts.gi.skyColor, 0xffffff);
+    const sceneLights: PackedLight[] = collectLightsFromScene(scene);
 
-    const { group, finalTex } = await runGroupBake(
-      ctx,
-      gi,
-      groupKeys.length,
-      groupMeshes,
-      res,
-      internalRes,
-      hooks,
-      checkAbort,
-    );
-    groupResults.push(group);
+    if (sceneLights.length > renderer.capabilities.maxTextureSize)
+      throw new Error('Light count exceeds GPU texture capacity');
+    // --- 4. Per-group bake ---
+    const tB0 = performance.now();
+    const groupKeys = [...groups.keys()];
+    const meshLightmaps = new Map<Mesh, Texture>();
+    const meshResolutions = new Map<Mesh, number>();
 
-    for (const m of groupMeshes) {
-      meshLightmaps.set(m, finalTex);
-      meshResolutions.set(m, res);
+    // Track excluded meshes: they get no lightmap entry.
+    // (They're kept separate so callers know to handle them differently.)
+    void excluded; // intentionally unused beyond BVH; suppress lint
+
+    const ctx: GroupBakeContext = {
+      renderer,
+      opts,
+      bvh,
+      sceneLights,
+      skyColor,
+      matTex,
+      tp,
+      ctxState,
+    };
+    for (let gi = 0; gi < groupKeys.length; gi++) {
+      const key = groupKeys[gi];
+      if (key === undefined) throw new Error('[baker] bake group key is missing');
+      const res = groupResolution(key);
+      const internalRes = res * opts.superSample;
+      const groupMeshes = groups.get(key);
+      if (!groupMeshes) throw new Error(`[baker] bake group ${key} is missing`);
+
+      const { group, finalTex } = await runGroupBake(
+        ctx,
+        gi,
+        groupKeys.length,
+        groupMeshes,
+        res,
+        internalRes,
+        hooks,
+        checkAbort,
+      );
+      groupResults.push(group);
+
+      for (const m of groupMeshes) {
+        meshLightmaps.set(m, finalTex);
+        meshResolutions.set(m, res);
+      }
+    }
+    const tB1 = performance.now();
+
+    const tR0 = performance.now();
+    hooks.onProgress?.('refine', 1);
+    const tR1 = performance.now();
+
+    // GPU command-queue drain. The bake submits work asynchronously; by the time
+    // JS reaches here, the GPU is typically seconds behind processing queued
+    // tile/composite draws. If we return without draining, the FIRST post-bake
+    // `renderer.render(scene)` triggers an implicit drain - and on some drivers
+    // (NVIDIA D3D11 reproduced) that drain piles up enough pressure to TDR /
+    // drop the WebGL context. Force the drain HERE, where we can isolate it
+    // from scene rendering and any caller observation.
+    // Cost: blocks JS for the queue length (~3s observed at 1024² Production).
+    // That cost was happening anyway - this just makes it explicit.
+    const tDrain0 = performance.now();
+    renderer.getContext().finish();
+    const tDrain1 = performance.now();
+    if (import.meta.env.DEV) {
+      console.info(`[baker] GPU queue drain: ${(tDrain1 - tDrain0).toFixed(1)}ms`);
+    }
+
+    // Sum texels across all groups. In density mode every group bakes at
+    // `partition.resolution`; in resolution mode the key IS the resolution.
+    const totalTexels = groupKeys.reduce((s: number, k: number) => {
+      const r = groupResolution(k);
+      return s + r * r;
+    }, 0);
+    const stats: BakeStats = {
+      meshCount: meshesByGroup.flat().length,
+      texelCount: totalTexels,
+      raysTraced: opts.samples * opts.castsPerFrame * totalTexels,
+      duration: {
+        uvUnwrap: tUV1 - tUV0,
+        geometry: tG1 - tG0,
+        bake: tB1 - tB0,
+        refine: tR1 - tR0,
+        total: performance.now() - t0,
+      },
+    };
+
+    checkAbort('bake');
+    const ownedMatTex = matTex;
+    const result = new LightmapBakeResult(renderer, meshLightmaps, meshResolutions, stats, {
+      groups: groupResults,
+      bvh,
+      refinementOptions: opts.refinementOptions,
+      denoise: opts.denoise,
+      matTexDispose: () => {
+        ownedMatTex.dispose();
+        merged.dispose();
+      },
+      sceneDispose: args.sceneDispose,
+    });
+    returned = true;
+    return result;
+  } finally {
+    if (!returned) {
+      for (const g of groupResults) {
+        g.downscale?.dispose();
+        g.refinement?.dispose();
+        g.composite.dispose();
+        g.aoMapper.dispose();
+        g.lightmapper.dispose();
+        g.atlasDispose();
+      }
+      matTex?.dispose();
+      merged.dispose();
     }
   }
-  const tB1 = performance.now();
-
-  const tR0 = performance.now();
-  hooks.onProgress?.('refine', 1);
-  const tR1 = performance.now();
-
-  // GPU command-queue drain. The bake submits work asynchronously; by the time
-  // JS reaches here, the GPU is typically seconds behind processing queued
-  // tile/composite draws. If we return without draining, the FIRST post-bake
-  // `renderer.render(scene)` triggers an implicit drain - and on some drivers
-  // (NVIDIA D3D11 reproduced) that drain piles up enough pressure to TDR /
-  // drop the WebGL context. Force the drain HERE, where we can isolate it
-  // from scene rendering and any caller observation.
-  // Cost: blocks JS for the queue length (~3s observed at 1024² Production).
-  // That cost was happening anyway - this just makes it explicit.
-  const tDrain0 = performance.now();
-  renderer.getContext().finish();
-  const tDrain1 = performance.now();
-  if (import.meta.env.DEV) {
-    console.info(`[baker] GPU queue drain: ${(tDrain1 - tDrain0).toFixed(1)}ms`);
-  }
-
-  // Sum texels across all groups. In density mode every group bakes at
-  // `partition.resolution`; in resolution mode the key IS the resolution.
-  const totalTexels = groupKeys.reduce((s: number, k: number) => {
-    const r = groupResolution(k);
-    return s + r * r;
-  }, 0);
-  const stats: BakeStats = {
-    meshCount: meshesByGroup.flat().length,
-    texelCount: totalTexels,
-    raysTraced: opts.samples * opts.castsPerFrame * totalTexels,
-    duration: {
-      uvUnwrap: tUV1 - tUV0,
-      geometry: tG1 - tG0,
-      bake: tB1 - tB0,
-      refine: tR1 - tR0,
-      total: performance.now() - t0,
-    },
-  };
-
-  return new LightmapBakeResult(renderer, meshLightmaps, meshResolutions, stats, {
-    groups: groupResults,
-    bvh,
-    refinementOptions: opts.refinementOptions,
-    denoise: opts.denoise,
-    matTexDispose: () => matTex.dispose(),
-  });
 }

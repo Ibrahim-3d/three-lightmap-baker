@@ -1,4 +1,4 @@
-import { Color, GLSL3, Matrix4, ShaderMaterial, Texture } from 'three';
+import { Color, Vector4, GLSL3, Matrix4, ShaderMaterial, Texture } from 'three';
 import {
   MeshBVH,
   MeshBVHUniformStruct,
@@ -29,7 +29,7 @@ export type LightmapperMaterialOptions = {
   casts: number;
   bounces: number;
 
-  /** Multi-light DataTexture: 4 texels wide × lightCount tall, RGBA float. */
+  /** Multi-light DataTexture: 6 texels wide × lightCount tall, RGBA float. */
   lightsTex: Texture;
   /** Number of active lights in lightsTex. 0 = no direct lighting. */
   lightCount: number;
@@ -59,6 +59,11 @@ export class LightmapperMaterial extends ShaderMaterial {
     bvhUniformStruct.updateFrom(options.bvh);
     const castCount = Math.max(1, Math.min(256, options.casts | 0));
 
+    // Scalar uniforms in this shader read incorrectly on tested ANGLE/SwiftShader
+    // 148/153 builds after BVH traversal (notably bounces=1 reads as zero).
+    // Explicit vec4 records avoid that layout-sensitive path. Keep the public
+    // CPU uniforms below and synchronize their packed GPU representation per draw.
+    const settings = [new Vector4(), new Vector4()] as const;
     super({
       transparent: true,
       glslVersion: GLSL3,
@@ -67,6 +72,7 @@ export class LightmapperMaterial extends ShaderMaterial {
 
       uniforms: {
         bvh: { value: bvhUniformStruct },
+        bakeSettings: { value: settings },
         positions: { value: options.positions },
         normals: { value: options.normals },
         albedoTex: { value: options.albedoTex },
@@ -106,7 +112,7 @@ export class LightmapperMaterial extends ShaderMaterial {
                  *   positions / normals  : G-buffer textures keyed by lightmap UV
                  *   bvh                  : MeshBVH uniform struct of the merged scene
                  *   albedoTex/emissiveTex: per-triangle material lookup (W×W float)
-                 *   lightsTex            : 4-wide × lightCount-tall RGBA float texture
+                 *   lightsTex            : 6-wide × lightCount-tall RGBA float texture
                  *                         texel(0,i)=pos+type, (1,i)=dir+p0,
                  *                         (2,i)=color+p1, (3,i)=p2,p3,0,0
                  *
@@ -129,6 +135,7 @@ export class LightmapperMaterial extends ShaderMaterial {
                 ${shaderStructs}
                 ${shaderIntersectFunction}
 
+                uniform vec4 bakeSettings[2];
                 uniform mat4 invModelMatrix;
                 uniform sampler2D positions;
                 uniform sampler2D normals;
@@ -142,29 +149,29 @@ export class LightmapperMaterial extends ShaderMaterial {
                 uniform sampler2D mapTransform0Tex;
                 uniform sampler2D mapTransform1Tex;
                 uniform sampler2D albedoMapAtlas;
-                uniform float materialTextureSize;
+                #define materialTextureSize bakeSettings[0].z
 
                 #define MAX_BOUNCES 4
                 // Static upper cap on lights checked per shadow loop iteration.
                 // Runtime count is controlled by the lightCount uniform.
-                #define MAX_LIGHTS 16
+                #define MAX_LIGHTS ${Math.max(1, options.lightCount)}
                 // Cast count is compile-time on purpose. A uniform-bound cast
                 // loop produced NaNs on ANGLE when it wrapped texture/BVH calls.
                 #define CASTS ${castCount}
 
-                uniform int bounces;
+                #define bounces int(bakeSettings[0].x)
 
-                // Multi-light texture: 4 texels wide × lightCount tall, RGBA float.
+                // Multi-light texture: 6 texels wide × lightCount tall, RGBA float.
                 uniform sampler2D lightsTex;
-                uniform int lightCount;
+                #define lightCount int(bakeSettings[0].y)
 
                 uniform vec3 skyColor;
-                uniform float skyIntensity;
-                uniform int sampleIndex;
+                #define skyIntensity bakeSettings[0].w
+                #define sampleIndex int(bakeSettings[1].y)
 
-                uniform bool directLightEnabled;
-                uniform bool indirectLightEnabled;
-                uniform float opacity;
+                #define directLightEnabled (bakeSettings[1].z > 0.5)
+                #define indirectLightEnabled (bakeSettings[1].w > 0.5)
+                #define opacity bakeSettings[1].x
 
                 uniform BVH bvh;
                 in vec2 vUv;
@@ -220,8 +227,7 @@ export class LightmapperMaterial extends ShaderMaterial {
 
                 vec4 readTriangleData(sampler2D tex, uint triIdx) {
                     uint W = uint(materialTextureSize);
-                    vec2 uv = (vec2(triIdx % W, triIdx / W) + 0.5) / materialTextureSize;
-                    return texture(tex, uv);
+                    return texelFetch(tex, ivec2(triIdx % W, triIdx / W), 0);
                 }
 
                 float applyMapWrap(float value, float mode) {
@@ -248,19 +254,19 @@ export class LightmapperMaterial extends ShaderMaterial {
                     transformedUv.x = applyMapWrap(transformedUv.x, transform1.z);
                     transformedUv.y = applyMapWrap(transformedUv.y, transform1.w);
                     vec4 rect = readTriangleData(mapRectTex, triIdx);
-                    vec3 mapColor = texture(albedoMapAtlas, rect.xy + transformedUv * rect.zw).rgb;
+                    vec3 mapColor = textureLod(albedoMapAtlas, rect.xy + transformedUv * rect.zw, 0.0).rgb;
                     return baseColor * mapColor;
                 }
 
                 // ── Light texture access ─────────────────────────────────────────
 
                 /**
-                 * Read texel (slot, lightIdx) from the 4-wide light texture.
-                 * slot ∈ {0,1,2,3}. Guard: only call when lightCount > 0.
+                 * Read texel (slot, lightIdx) from the 6-wide light texture.
+                 * slot ∈ {0,1,2,3,4,5}. Guard: only call when lightCount > 0.
                  */
                 vec4 readLight(int lightIdx, int slot) {
                     vec2 uv = (vec2(float(slot), float(lightIdx)) + 0.5)
-                              / vec2(4.0, float(lightCount));
+                              / vec2(6.0, float(lightCount));
                     return texture(lightsTex, uv);
                 }
 
@@ -277,6 +283,11 @@ export class LightmapperMaterial extends ShaderMaterial {
                  * Directional jitter uses tan(angularSize) approximation - valid for
                  * small angles (sun disc ≲ 5°). Larger values over-bias the direction.
                  */
+                float punctualFalloff(float distance, float cutoff, float decay) {
+                    float result = 1.0 / max(pow(distance, decay), 0.01);
+                    if (cutoff > 0.0) result *= pow(clamp(1.0 - pow(distance / cutoff, 4.0), 0.0, 1.0), 2.0);
+                    return result;
+                }
                 LightSample sampleLight(int li, vec3 hitPos, vec3 hitNormal, vec2 rnd) {
                     vec4 t0 = readLight(li, 0);
                     vec4 t1 = readLight(li, 1);
@@ -299,7 +310,7 @@ export class LightmapperMaterial extends ShaderMaterial {
                         vec3 d = (lpos + jitter) - hitPos;
                         s.distance = max(length(d), 1.0e-5);
                         s.L        = d / s.distance;
-                        s.emission = lcolor;
+                        s.emission = lcolor * punctualFalloff(s.distance, t3.x, t3.y);
                     }
                     else if (ltype == 1) {
                         // Directional - effectively infinite distance.
@@ -318,21 +329,20 @@ export class LightmapperMaterial extends ShaderMaterial {
                         s.distance = max(length(d), 1.0e-5);
                         s.L = d / s.distance;
                         float cosAngle = dot(-s.L, ldir);
-                        float falloff  = clamp((cosAngle - p1) / max(p0 - p1, 1.0e-5), 0.0, 1.0);
-                        s.emission = lcolor * falloff;
+                        float falloff = p0 == p1 ? step(p1, cosAngle) : smoothstep(p1, p0, cosAngle);
+                        s.emission = lcolor * falloff * punctualFalloff(s.distance, t3.x, t3.y);
                     }
                     else {
                         // Area - rectangle centered at lpos, normal = ldir, width=p0, height=p1.
-                        vec3 up = abs(ldir.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
-                        vec3 tu = safeNormalize(cross(up, ldir), vec3(1.0, 0.0, 0.0));
-                        vec3 tv = cross(ldir, tu);
+                        vec3 tu = readLight(li, 4).xyz;
+                        vec3 tv = readLight(li, 5).xyz;
                         vec2 luv = rnd - 0.5;
                         vec3 sample_pos = lpos + tu * (luv.x * p0) + tv * (luv.y * p1);
                         vec3 d = sample_pos - hitPos;
                         s.distance = max(length(d), 1.0e-5);
                         s.L = d / s.distance;
-                        // One-sided emission: only emits in -ldir hemisphere.
-                        s.emission = lcolor * max(0.0, dot(-s.L, ldir));
+                        // One-sided emission: only emits into the ldir hemisphere.
+                        s.emission = lcolor * max(0.0, dot(-s.L, ldir)) * p0 * p1 / (s.distance * s.distance);
                     }
                     return s;
                 }
@@ -380,13 +390,13 @@ export class LightmapperMaterial extends ShaderMaterial {
                     vec3 radiance   = vec3(0.0);
                     float sideVal = 1.0;
 
-                    for (int b = 0; b < MAX_BOUNCES; b++) {
-                        if (b >= bounces) break;
+                    for (int b = 0; b <= MAX_BOUNCES; b++) {
                         if (!hit) {
-                            if (b == 0) radiance += throughput * skyColor * skyIntensity;
+                            radiance += throughput * skyColor * skyIntensity;
                             break;
                         }
 
+                        if (b >= bounces) break;
                         vec3 hitAlbedo   = readSurfaceAlbedo(fi.w, bary);
                         vec3 hitEmissive = readTriangleData(emissiveTex, fi.w).rgb;
                         vec3 hitPos      = ro + rd * fd;
@@ -397,7 +407,7 @@ export class LightmapperMaterial extends ShaderMaterial {
                         radiance += throughput * hitEmissive;
 
                         // (b) NEE - all lights, with surface albedo (GI bounce).
-                        radiance += throughput * sampleAllLightsNEE(hitOrigin, hitNormal, hitAlbedo);
+                        radiance += throughput * sampleAllLightsNEE(hitOrigin, hitNormal, hitAlbedo) / 3.141592653589793;
 
                         // (c) Throughput update - cosine/PDF cancel.
                         throughput *= hitAlbedo;
@@ -415,7 +425,7 @@ export class LightmapperMaterial extends ShaderMaterial {
                         fd  = 0.0;
                         hit = bvhIntersectFirstHit(bvh, ro, rd, fi, fn, bary, sideVal, fd);
                     }
-                    return radiance;
+                    return radiance * 3.141592653589793;
                 }
 
                 // ── Main ─────────────────────────────────────────────────────────
@@ -481,6 +491,22 @@ export class LightmapperMaterial extends ShaderMaterial {
             `,
     });
 
-    this.programKey = `LightmapperMaterial|glsl3|mrt2|casts=${castCount}`;
+    this.onBeforeRender = () => {
+      const value = (name: string): number => Number(this.uniforms[name]?.value ?? 0);
+      settings[0].set(
+        value('bounces'),
+        value('lightCount'),
+        value('materialTextureSize'),
+        value('skyIntensity'),
+      );
+      settings[1].set(
+        value('opacity'),
+        value('sampleIndex'),
+        value('directLightEnabled'),
+        value('indirectLightEnabled'),
+      );
+    };
+    this.addEventListener('dispose', () => bvhUniformStruct.dispose());
+    this.programKey = `LightmapperMaterial|glsl3|mrt2|params=vec4x2|casts=${castCount}|lights=${options.lightCount}`;
   }
 }

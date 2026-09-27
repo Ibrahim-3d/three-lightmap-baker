@@ -24,6 +24,8 @@ import {
 import { makeBoxProjectedEnvMapPatch } from './box-projected-env';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader';
+import dracoWasmUrl from 'three/examples/jsm/libs/draco/gltf/draco_decoder.wasm?url';
+import dracoWrapperUrl from 'three/examples/jsm/libs/draco/gltf/draco_wasm_wrapper.js?url';
 
 export type EslLightmapMode = 'ours' | 'theirs';
 
@@ -43,8 +45,8 @@ let _draco: DRACOLoader | null = null;
 function getDraco(): DRACOLoader {
   if (_draco) return _draco;
   const d = new DRACOLoader();
-  d.setDecoderConfig({ type: 'js' });
-  d.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
+  // Keep packaged scenes self-contained in development and production.
+  d.setDecoderPath({ js: dracoWrapperUrl, wasm: dracoWasmUrl });
   _draco = d;
   return d;
 }

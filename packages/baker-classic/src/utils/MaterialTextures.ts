@@ -246,6 +246,9 @@ function buildAlbedoMapAtlas(
         (cellSize - 1) / atlasSize,
       ]);
     }
+  } catch (error) {
+    target.dispose();
+    throw error;
   } finally {
     renderer.setRenderTarget(previousTarget);
     renderer.setViewport(previousViewport);

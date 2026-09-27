@@ -98,7 +98,14 @@ export function createDownscale(
   };
 
   // Initial blit so target has valid contents on return.
-  refresh();
+  try {
+    refresh();
+  } catch (error) {
+    target.dispose();
+    mat.dispose();
+    quad.geometry.dispose();
+    throw error;
+  }
 
   return {
     texture: target.texture,

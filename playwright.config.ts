@@ -33,7 +33,7 @@ export default defineConfig({
     baseURL: testBaseUrl,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    video: process.env.BAKER_E2E_VIDEO === 'off' ? 'off' : 'retain-on-failure',
   },
   projects: [
     {
@@ -41,6 +41,7 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         launchOptions: {
+          executablePath: process.env.BAKER_CHROMIUM_PATH,
           args: [
             '--enable-gpu',
             `--use-angle=${angleBackend}`,
@@ -54,7 +55,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `corepack pnpm exec vite --mode dev --host --port ${testPort}`,
+    command: `pnpm exec vite --mode dev --host 127.0.0.1 --port ${testPort}`,
     // Vite 2 returns 404 for a bare base-path readiness request without an
     // HTML Accept header. The explicit document is a stable health endpoint.
     url: `${testBaseUrl}index.html`,

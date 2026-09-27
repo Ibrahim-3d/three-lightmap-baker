@@ -1,11 +1,9 @@
+import { runAnimationTask, abortError } from './animationTask';
+import { createDownscale } from '../lightmap/Downscale';
+import { runComposite } from '../lightmap/Composite';
 import { Mesh, Texture, WebGLRenderer } from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
-import {
-  generateAOMapper,
-  runPostProcess,
-  type AORaycastOptions,
-  type PostProcessOptions,
-} from '../lightmap';
+import { generateAOMapper, runPostProcess, type PostProcessOptions } from '../lightmap';
 import { exportLightmap, type ExportFormat } from '../utils/exportLightmap';
 import { mountMeshLightmaps } from '../utils/LightmapMaterials';
 import { BakeError } from '../errors';
@@ -14,6 +12,8 @@ import type { GroupInternals } from './internals';
 
 /** Result of a successful bake. Owns the GPU resources - call `dispose()` to release. */
 export class LightmapBakeResult {
+  private disposed = false;
+  private aoJob: AbortController | null = null;
   private persistentMaterialMount: {
     restore: () => void;
     lightmaps: Map<Mesh, Texture>;
@@ -30,6 +30,7 @@ export class LightmapBakeResult {
       refinementOptions: PostProcessOptions;
       denoise: boolean;
       matTexDispose: () => void;
+      sceneDispose?: () => void;
     },
   ) {}
 
@@ -115,6 +116,7 @@ export class LightmapBakeResult {
 
   /** Mounts each mesh's atlas texture as `mat.lightMap` (channel = 2). */
   apply(): void {
+    if (this.disposed) throw new Error('Bake result is disposed');
     if (
       this.persistentMaterialMount &&
       mapsHaveSameEntries(this.persistentMaterialMount.lightmaps, this.meshLightmaps)
@@ -160,6 +162,9 @@ export class LightmapBakeResult {
   }
 
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.aoJob?.abort(abortError());
     this.persistentMaterialMount?.restore();
     this.persistentMaterialMount = null;
     for (const g of this.internals.groups) {
@@ -171,6 +176,10 @@ export class LightmapBakeResult {
       g.atlasDispose();
     }
     this.internals.matTexDispose();
+    this.internals.sceneDispose?.();
+    this.internals.groups.length = 0;
+    this.meshLightmaps.clear();
+    this.meshResolutions.clear();
   }
 
   /**
@@ -202,55 +211,143 @@ export class LightmapBakeResult {
     opts: { samples: number; distance: number; targetSamples: number },
     hooks: BakeHooks = {},
   ): Promise<void> {
-    const groups = this.internals.groups;
-    for (let gi = 0; gi < groups.length; gi++) {
-      const g = groups[gi];
-      if (!g) throw new Error(`[baker] missing bake group ${gi}`);
-      const aoOpts: AORaycastOptions = {
-        resolution: g.internalResolution,
-        aoSamples: opts.samples,
-        ambientDistance: opts.distance,
-        targetSamples: opts.targetSamples,
-      };
-      await rebakeAOForGroup(
-        this.renderer,
-        this.internals.bvh,
-        g,
-        aoOpts,
-        hooks,
-        gi,
-        groups.length,
-        (p) => hooks.onProgress?.('bake', (gi + p) / groups.length),
-      );
-
-      // Re-run refinement so denoise sees the new composite output.
-      if (g.refinement) {
-        g.refinement.dispose();
-        g.refinement = await runPostProcess(
+    if (this.disposed || this.aoJob)
+      throw new BakeError('Result is disposed or an AO rebake is already active', 'validation');
+    if (
+      !Number.isInteger(opts.samples) ||
+      opts.samples < 0 ||
+      opts.samples > 64 ||
+      !Number.isInteger(opts.targetSamples) ||
+      opts.targetSamples < 1 ||
+      opts.targetSamples > 4096 ||
+      !Number.isFinite(opts.distance) ||
+      opts.distance < 0
+    )
+      throw new BakeError('Invalid AO rebake options', 'validation');
+    const controller = new AbortController();
+    this.aoJob = controller;
+    const signal = hooks.signal;
+    const cancel = (): void => controller.abort(signal?.reason ?? abortError());
+    const lost = (): void =>
+      controller.abort(new BakeError('webgl context lost during AO rebake', 'context-loss'));
+    signal?.addEventListener('abort', cancel, { once: true });
+    this.renderer.domElement.addEventListener('webglcontextlost', lost);
+    if (signal?.aborted) cancel();
+    const staged: Array<{
+      group: GroupInternals;
+      ao: ReturnType<typeof generateAOMapper>;
+      composite: ReturnType<typeof runComposite>;
+      refinement: Awaited<ReturnType<typeof runPostProcess>> | null;
+      downscale: ReturnType<typeof createDownscale> | null;
+    }> = [];
+    let committed = false;
+    try {
+      const groups = this.internals.groups;
+      for (let gi = 0; gi < groups.length; gi++) {
+        if (controller.signal.aborted) throw controller.signal.reason;
+        const group = groups[gi];
+        if (!group) continue;
+        const ao = generateAOMapper(
           this.renderer,
-          g.composite.texture,
-          g.positionTex,
-          g.internalResolution,
-          this.internals.refinementOptions,
+          group.positionTex,
+          group.normalTex,
+          this.internals.bvh,
+          {
+            resolution: group.internalResolution,
+            aoSamples: opts.samples,
+            ambientDistance: opts.distance,
+            targetSamples: opts.targetSamples,
+          },
         );
-        // If supersampling, the downscale wraps refinement's NEW texture and
-        // its target ref stays stable - only the source pointer changes. Mesh
-        // bindings keep pointing at downscale.texture; no Map update needed.
-        // For SS=1, the refinement texture itself is the new ref → update Map.
-        if (g.downscale) {
-          g.downscale.setSource(g.refinement.texture);
-          g.downscale.refresh();
-        } else {
-          const finalTex = g.refinement.texture;
-          for (const [mesh, res] of this.meshResolutions) {
-            if (res === g.resolution) this.meshLightmaps.set(mesh, finalTex);
-          }
+        let composite: ReturnType<typeof runComposite>;
+        try {
+          composite = runComposite(
+            this.renderer,
+            {
+              direct: group.lightmapper.textures.direct,
+              indirect: group.lightmapper.textures.indirect,
+              ao: ao.texture,
+            },
+            group.internalResolution,
+            group.composite.getOptions(),
+          );
+        } catch (error) {
+          ao.dispose();
+          throw error;
         }
-      } else if (g.downscale) {
-        // No refinement - downscale source is composite.texture (stable ref);
-        // just re-blit so the new AO accumulator flows through.
-        g.downscale.refresh();
+        const entry = {
+          group,
+          ao,
+          composite,
+          refinement: null as Awaited<ReturnType<typeof runPostProcess>> | null,
+          downscale: null as ReturnType<typeof createDownscale> | null,
+        };
+        staged.push(entry);
+        await runAnimationTask(() => {
+          if (this.renderer.getContext().isContextLost())
+            throw new BakeError('webgl context lost', 'context-loss');
+          const result = ao.renderTiled(8);
+          if (result.sampleComplete) composite.refresh();
+          hooks.onProgress?.('bake', (gi + result.samples / opts.targetSamples) / groups.length);
+          hooks.onFrame?.({
+            groupIndex: gi,
+            totalGroups: groups.length,
+            bounceSamples: 0,
+            aoSamples: result.samples,
+            targetSamples: opts.targetSamples,
+            done: result.done,
+            compositeTexture: composite.texture,
+            directTexture: group.lightmapper.textures.direct,
+            indirectTexture: group.lightmapper.textures.indirect,
+            aoTexture: ao.texture,
+          });
+          return result.done;
+        }, controller.signal);
+        if (group.refinement)
+          entry.refinement = await runPostProcess(
+            this.renderer,
+            composite.texture,
+            group.positionTex,
+            group.internalResolution,
+            this.internals.refinementOptions,
+            undefined,
+            { signal: controller.signal, normals: group.normalTex },
+          );
+        if (group.downscale)
+          entry.downscale = createDownscale(
+            this.renderer,
+            entry.refinement?.texture ?? composite.texture,
+            group.resolution,
+          );
       }
+      if (controller.signal.aborted || this.disposed)
+        throw controller.signal.reason ?? abortError();
+      for (const entry of staged) {
+        const { group, ao, composite, refinement, downscale } = entry;
+        group.aoMapper.dispose();
+        group.composite.dispose();
+        group.refinement?.dispose();
+        group.downscale?.dispose();
+        group.aoMapper = ao;
+        group.composite = composite;
+        group.refinement = refinement;
+        group.downscale = downscale;
+        const texture = downscale?.texture ?? refinement?.texture ?? composite.texture;
+        for (const mesh of group.meshes) this.meshLightmaps.set(mesh, texture);
+      }
+      committed = true;
+      if (this.persistentMaterialMount) this.apply();
+    } finally {
+      if (!committed)
+        for (const entry of staged) {
+          entry.downscale?.dispose();
+          entry.refinement?.dispose();
+          entry.composite.dispose();
+          entry.ao.dispose();
+        }
+      signal?.removeEventListener('abort', cancel);
+      this.renderer.domElement.removeEventListener('webglcontextlost', lost);
+      this.aoJob = null;
     }
   }
 }
@@ -261,79 +358,4 @@ function mapsHaveSameEntries(left: Map<Mesh, Texture>, right: Map<Mesh, Texture>
     if (right.get(mesh) !== texture) return false;
   }
   return true;
-}
-
-/**
- * AO-only re-bake helper. Used by `LightmapBakeResult.rebakeAO()` to swap each
- * group's AO mapper without touching bounce/composite/refinement allocations
- * beyond the single texture rebind.
- *
- * Fires `hooks.onFrame` per RAF with the same `BakeFrameInfo` shape as a full
- * bake. `bounceSamples` is always 0 (we don't touch bounce); `directTexture`
- * and `indirectTexture` remain stable refs to the existing accumulators.
- *
- * Lives next to `LightmapBakeResult` (not in `pipeline.ts`) to avoid a cycle:
- * `pipeline.ts` already imports `LightmapBakeResult` from this file; putting
- * `rebakeAOForGroup` there would force `result.ts` to import from `pipeline.ts`
- * and the two modules would reach across each other.
- */
-function rebakeAOForGroup(
-  renderer: WebGLRenderer,
-  bvh: MeshBVH,
-  group: GroupInternals,
-  aoOpts: AORaycastOptions,
-  hooks: BakeHooks,
-  groupIndex: number,
-  totalGroups: number,
-  onProgress: (p: number) => void,
-): Promise<void> {
-  const newAO = generateAOMapper(renderer, group.positionTex, group.normalTex, bvh, aoOpts);
-  // Replace the old AO mapper.
-  group.aoMapper.dispose();
-  group.aoMapper = newAO;
-  // Rebind composite's AO source so per-RAF refreshes during accumulation
-  // already read the new texture (caller can mount composite.texture and watch
-  // the AO fade in live).
-  group.composite.refresh({ aoTex: newAO.texture });
-  return new Promise<void>((resolve, reject) => {
-    const tick = (): void => {
-      if (hooks.signal?.aborted) {
-        const err = new BakeError('aborted by signal', 'bake');
-        err.name = 'AbortError';
-        reject(err);
-        return;
-      }
-
-      // AO-only re-bake doesn't install its own context-loss guard - the
-      // caller (`LightmapBakeResult.rebakeAO`) is short enough that a lost
-      // context will surface as a draw-call failure on the next renderer
-      // call. Adding one would require threading the canvas through.
-      const r = newAO.render();
-      onProgress(aoOpts.targetSamples > 0 ? r.samples / aoOpts.targetSamples : 1);
-
-      // Refresh composite so live preview reflects this RAF's AO accumulator,
-      // then fire onFrame with the same shape as a full bake. Bounce textures
-      // are stable refs; bounceSamples is 0 (not touched by AO rebake).
-      group.composite.refresh();
-      hooks.onFrame?.({
-        groupIndex,
-        totalGroups,
-        bounceSamples: 0,
-        aoSamples: r.samples,
-        targetSamples: aoOpts.targetSamples,
-        done: r.done,
-        compositeTexture: group.composite.texture,
-        directTexture: group.lightmapper.textures.direct,
-        indirectTexture: group.lightmapper.textures.indirect,
-        aoTexture: newAO.texture,
-      });
-
-      if (r.done) {
-        resolve();
-        return;
-      }
-      requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  });
 }

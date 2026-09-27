@@ -25,6 +25,13 @@ export type CompositeResult = {
   texture: Texture;
   /** Re-render the composite, optionally overriding any uniform / swapping aoTex. */
   refresh: (overrides?: CompositeOverrides) => void;
+  getOptions: () => {
+    directIntensity: number;
+    giIntensity: number;
+    aoEnabled: boolean;
+    aoIntensity: number;
+    aoExponent: number;
+  };
   dispose: () => void;
 };
 
@@ -110,11 +117,25 @@ export const runComposite = (
   };
 
   // Initial render
-  refresh();
+  try {
+    refresh();
+  } catch (error) {
+    rt.dispose();
+    mat.dispose();
+    quad.geometry.dispose();
+    throw error;
+  }
 
   return {
     texture: rt.texture,
     refresh,
+    getOptions: () => ({
+      directIntensity: u.directIntensity?.value as number,
+      giIntensity: u.giIntensity?.value as number,
+      aoEnabled: u.aoEnabled?.value as boolean,
+      aoIntensity: u.aoIntensity?.value as number,
+      aoExponent: u.aoExponent?.value as number,
+    }),
     dispose: () => {
       rt.dispose();
       mat.dispose();

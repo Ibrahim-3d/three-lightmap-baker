@@ -91,11 +91,18 @@ export const generateAOMapper = (
   renderer.getClearColor(prevClearColor);
   const prevClearAlpha = renderer.getClearAlpha();
 
-  renderer.setRenderTarget(renderTarget);
-  renderer.setClearColor(0x000000, 0);
-  renderer.clear();
-  renderer.setRenderTarget(prevRT);
-  renderer.setClearColor(prevClearColor, prevClearAlpha);
+  try {
+    renderer.setRenderTarget(renderTarget);
+    renderer.setClearColor(0x000000, 0);
+    renderer.clear();
+  } catch (error) {
+    renderTarget.dispose();
+    material.dispose();
+    throw error;
+  } finally {
+    renderer.setRenderTarget(prevRT);
+    renderer.setClearColor(prevClearColor, prevClearAlpha);
+  }
 
   const quad = new Mesh(new PlaneGeometry(2, 2), material);
   const cam = new OrthographicCamera();
