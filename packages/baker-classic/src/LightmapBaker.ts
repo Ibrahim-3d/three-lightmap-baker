@@ -10,7 +10,11 @@ import type { BakeHooks, LightmapBakerOptions, ResolvedBakerOptions } from './ba
 import type { ContextLossState } from './bake/internals';
 import {
   createRendererAdapter,
+  getRendererBakeSupportIssue,
+  installRendererLossGuard,
   isLightmapRendererAdapter,
+  isRendererAdapterLost,
+  rendererLossMessage,
   type LightmapRendererAdapter,
 } from './rendererAdapter';
 
@@ -38,6 +42,7 @@ export type {
   LightmapContextLossTarget,
   LightmapRendererAdapter,
   LightmapRendererAdapterOptions,
+  LightmapRendererBackend,
 } from './rendererAdapter';
 
 export type LightmapBakerInitOptions = LightmapBakerOptions & {
@@ -204,10 +209,10 @@ export class LightmapBaker {
    * resources - call `result.dispose()` when done.
    *
    * This method owns three concerns the pipeline can't:
-   *   1. Mesh collection + EXT validation (must fail fast before pipeline setup).
+   *   1. Scene preflight plus renderer-backend validation before pipeline setup.
    *   2. GPU-capabilities-driven timeout-protection resolution (caller's
    *      `opts.timeoutProtection` overrides device-detected defaults).
-   *   3. Context-loss guard install + teardown (must release the listener even
+   *   3. Backend loss-guard install + teardown (must release the listener even
    *      if the pipeline throws - `try/finally` is the only safe shape).
    *
    * Everything else (partition → unwrap → BVH → lights → groups → drain →
@@ -237,14 +242,10 @@ export class LightmapBaker {
       throw new BakeError(errors.map((i) => `${i.object}: ${i.message}`).join('\n'), 'validation');
     for (const issue of issues)
       if (issue.severity === 'warning') console.warn(`[baker] ${issue.object}: ${issue.message}`);
-    const gl = renderer.getContext();
-    if (!gl.getExtension('EXT_color_buffer_float'))
-      throw new BakeError(
-        'EXT_color_buffer_float WebGL2 extension is unavailable; FloatType RTs cannot be allocated',
-        'validation',
-      );
+    const rendererIssue = getRendererBakeSupportIssue(rendererAdapter);
+    if (rendererIssue) throw new BakeError(rendererIssue, 'validation');
 
-    const caps = detectGPUCapabilities(renderer);
+    const caps = detectGPUCapabilities(rendererAdapter);
     const tp = resolveTimeoutProtection(this.opts.timeoutProtection, caps);
 
     const prepared = prepareBakeScene(scene, this.opts.perMesh);
@@ -258,22 +259,20 @@ export class LightmapBaker {
     const userSignal = hooks.signal;
     const onAbort = (): void => controller.abort(userSignal?.reason);
     hooks = { ...hooks, signal: controller.signal };
-    // Context-loss guard: shared mutable flag flipped by the canvas listener.
+    // Backend-loss guard: shared mutable flag flipped by the adapter.
     // Each tick of the mapper loop checks it before scheduling new work.
     const ctxState: ContextLossState = { lost: false };
-    const contextLossTarget = rendererAdapter?.contextLossTarget ?? renderer.domElement;
-    const onLost = (e: Event): void => {
-      e.preventDefault(); // Tells the browser we'll attempt recovery (we don't, but it's harmless).
+    const lossMessage = rendererLossMessage(rendererAdapter);
+    const onLost = (): void => {
       ctxState.lost = true;
-      controller.abort(new BakeError('webgl context lost', 'context-loss'));
-      console.error('[baker] webglcontextlost during bake - cancelling');
+      controller.abort(new BakeError(lossMessage, 'context-loss'));
+      console.error(`[baker] ${lossMessage} during bake - cancelling`);
     };
-    const releaseContextGuard = (): void => {
-      contextLossTarget.removeEventListener('webglcontextlost', onLost as EventListener, false);
-    };
+    const releaseContextGuard = installRendererLossGuard(rendererAdapter, onLost);
 
     const checkAbort = (phase: BakeErrorPhase): void => {
-      if (ctxState.lost) throw new BakeError('webgl context lost', 'context-loss');
+      if (ctxState.lost || isRendererAdapterLost(rendererAdapter))
+        throw new BakeError(lossMessage, 'context-loss');
       if (hooks.signal?.aborted) {
         const err = new BakeError('aborted by signal', phase);
         err.name = 'AbortError';
@@ -282,10 +281,10 @@ export class LightmapBaker {
     };
     try {
       userSignal?.addEventListener('abort', onAbort, { once: true });
-      contextLossTarget.addEventListener('webglcontextlost', onLost as EventListener, false);
       scene.updateMatrixWorld(true);
       return await runBakePipeline({
         renderer,
+        rendererAdapter,
         opts: { ...this.opts, perMesh: prepared.perMesh },
         sceneDispose: prepared.restore,
         scene,
