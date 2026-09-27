@@ -1,9 +1,6 @@
 import { isBakeVisible } from './visibility';
 import { Mesh, Object3D, Scene, Texture, WebGLRenderer } from 'three';
-import {
-  drainRendererAdapter,
-  type LightmapRendererAdapter,
-} from '../rendererAdapter';
+import { drainRendererAdapter, type LightmapRendererAdapter } from '../rendererAdapter';
 import { MeshBVH } from 'three-mesh-bvh';
 import { collectLightsFromScene, type PackedLight } from '../lightmap';
 import { generateAtlas } from '../atlas/generateAtlas';
@@ -85,8 +82,18 @@ export type BakePipelineArgs = {
  * through `checkAbort` and the `ctxState.lost` flag visible to inner loops.
  */
 export async function runBakePipeline(args: BakePipelineArgs): Promise<LightmapBakeResult> {
-  const { renderer, rendererAdapter, opts, scene, allMeshes, hooks, t0, tp, ctxState, checkAbort } =
-    args;
+  const {
+    renderer,
+    rendererAdapter,
+    opts,
+    scene,
+    allMeshes,
+    hooks,
+    t0,
+    tp,
+    ctxState,
+    checkAbort,
+  } = args;
 
   // Partition meshes - density mode if `texelsPerMeter` is set (groups keyed
   // by atlas index, all sharing `resolution`), else resolution mode (groups
