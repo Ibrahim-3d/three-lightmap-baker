@@ -221,7 +221,7 @@ export class LightmapBaker {
   async bake(scene: Scene | Object3D, hooks: BakeHooks = {}): Promise<LightmapBakeResult> {
     const rendererAdapter = this._rendererAdapter;
     const renderer = rendererAdapter?.renderer ?? null;
-    if (!renderer)
+    if (!rendererAdapter || !renderer)
       throw new BakeError(
         'renderer is required: use `new LightmapBaker(renderer, opts)`, `new LightmapBaker({ renderer, ...opts })`, `new LightmapBaker({ rendererAdapter, ...opts })`, `baker.setRenderer(renderer)`, or `baker.setRendererAdapter(adapter)`',
         'validation',
@@ -261,8 +261,8 @@ export class LightmapBaker {
     hooks = { ...hooks, signal: controller.signal };
     // Backend-loss guard: shared mutable flag flipped by the adapter.
     // Each tick of the mapper loop checks it before scheduling new work.
-    const ctxState: ContextLossState = { lost: false };
     const lossMessage = rendererLossMessage(rendererAdapter);
+    const ctxState: ContextLossState = { lost: false, message: lossMessage };
     const onLost = (): void => {
       ctxState.lost = true;
       controller.abort(new BakeError(lossMessage, 'context-loss'));
