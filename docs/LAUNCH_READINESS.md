@@ -22,7 +22,7 @@ Public v1.0.0 currently establishes:
 
 The [Changelog](../CHANGELOG.md) is the source of truth for changes after v1.0.0.
 
-## Next patch-release gate
+## Next release gate
 
 Before publishing the next patch release:
 
