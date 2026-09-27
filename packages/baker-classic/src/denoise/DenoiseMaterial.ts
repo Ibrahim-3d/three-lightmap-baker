@@ -1,100 +1,48 @@
-import { NoBlending, ShaderMaterial, Texture } from 'three';
-
+import { GLSL3, NoBlending, ShaderMaterial, type Texture } from 'three';
 export type DenoiseMaterialOptions = {
   map: Texture;
+  normals?: Texture;
   sigma?: number;
   threshold?: number;
   kSigma?: number;
 };
-
-/**
- * Bilateral denoiser (BrutPitt's smartDeNoise). GLSL 1.0 ES - kept on this version
- * deliberately because the algorithm uses `texture2D` and reads-on-loop that have
- * no measurable benefit from GLSL3 conversion, and Phase 7 fork preserves it.
- *
- * SAFETY: this material is the ONE exception to the project's GLSL3 rule; the rest
- * of the pipeline writes/reads via this shader using a standard Texture handoff.
- */
+/** Chart- and normal-guided bilateral filter in linear irradiance space. */
 export class DenoiseMaterial extends ShaderMaterial {
-  // USE_SLIDER define is always 0; sigma/threshold/kSigma are uniforms. GLSL1 (deliberate exception
-  // to project GLSL3 rule - see comment above). No per-instance GLSL variation. Renderer owns program.
-  override customProgramCacheKey(): string {
-    return 'DenoiseMaterial|glsl1|single-out';
-  }
-
   constructor(options: DenoiseMaterialOptions) {
     super({
+      glslVersion: GLSL3,
       blending: NoBlending,
-      transparent: false,
-      depthWrite: false,
       depthTest: false,
-      defines: {
-        USE_SLIDER: 0,
-      },
+      depthWrite: false,
       uniforms: {
-        sigma: { value: options.sigma ?? 5.0 },
-        threshold: { value: options.threshold ?? 0.03 },
-        kSigma: { value: options.kSigma ?? 1.0 },
         map: { value: options.map },
+        normals: { value: options.normals ?? options.map },
+        useNormals: { value: !!options.normals },
+        sigma: { value: options.sigma ?? 2.5 },
+        threshold: { value: options.threshold ?? 0.18 },
+        kSigma: { value: options.kSigma ?? 1 },
       },
-
-      vertexShader: /* glsl */ `
-				varying vec2 vUv;
-				void main() {
-					vUv = uv;
-					// NDC pass-through - matches DilationMaterial/CompositeMaterial.
-					// Using projectionMatrix * modelViewMatrix with the default
-					// OrthographicCamera (near=0.1) clips the z=0 quad and produces
-					// no output, silently bypassing denoise.
-					gl_Position = vec4( position, 1.0 );
-				}
-			`,
-
-      fragmentShader: /* glsl */ `
-				//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-				//  Copyright (c) 2018-2019 Michele Morrone
-				//  https://github.com/BrutPitt/glslSmartDeNoise/  (BSD 2-Clause)
-				//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-				uniform sampler2D map;
-				uniform float sigma;
-				uniform float threshold;
-				uniform float kSigma;
-				varying vec2 vUv;
-				#define INV_SQRT_OF_2PI 0.39894228040143267793994605993439
-				#define INV_PI 0.31830988618379067153776752674503
-				vec4 smartDeNoise( sampler2D tex, vec2 uv, float sigma, float kSigma, float threshold ) {
-					float radius = round( kSigma * sigma );
-					float radQ = radius * radius;
-					float invSigmaQx2 = 0.5 / ( sigma * sigma );
-					float invSigmaQx2PI = INV_PI * invSigmaQx2;
-					float invThresholdSqx2 = 0.5 / ( threshold * threshold );
-					float invThresholdSqrt2PI = INV_SQRT_OF_2PI / threshold;
-					vec4 centrPx = texture2D( tex, uv );
-					centrPx.rgb *= centrPx.a;
-					float zBuff = 0.0;
-					vec4 aBuff = vec4( 0.0 );
-					vec2 size = vec2( textureSize( tex, 0 ) );
-					vec2 d;
-					for ( d.x = - radius; d.x <= radius; d.x ++ ) {
-						float pt = sqrt( max( 0.0, radQ - d.x * d.x ) );
-						for ( d.y = - pt; d.y <= pt; d.y ++ ) {
-							float blurFactor = exp( - dot( d, d ) * invSigmaQx2 ) * invSigmaQx2PI;
-							vec4 walkPx = texture2D( tex, uv + d / size );
-							walkPx.rgb *= walkPx.a;
-							vec4 dC = walkPx - centrPx;
-							float deltaFactor = exp( - dot( dC.rgba, dC.rgba ) * invThresholdSqx2 ) * invThresholdSqrt2PI * blurFactor;
-							zBuff += deltaFactor;
-							aBuff += deltaFactor * walkPx;
-						}
-					}
-					return aBuff / max( zBuff, 1.0e-5 );
-				}
-				void main() {
-					// Internal RT pass: stay in linear space. Downstream MeshStandardMaterial.lightMap
-					// expects linear; tonemapping/encoding fragments would double-encode.
-					gl_FragColor = smartDeNoise( map, vec2( vUv.x, vUv.y ), sigma, kSigma, threshold );
-				}
-			`,
+      vertexShader: `out vec2 vUv; void main() { vUv=uv; gl_Position=vec4(position,1.0); }`,
+      fragmentShader: `
+        uniform sampler2D map, normals; uniform bool useNormals;
+        uniform float sigma, threshold, kSigma; in vec2 vUv; out vec4 fragColor;
+        void main() {
+          ivec2 size=textureSize(map,0), p=ivec2(gl_FragCoord.xy);
+          vec4 center=texelFetch(map,p,0); if(center.a<=0.0) {fragColor=vec4(0.0);return;}
+          vec3 n=texelFetch(normals,p,0).xyz;
+          int radius=int(clamp(ceil(kSigma*sigma),0.0,32.0));
+          vec3 sum=vec3(0.0); float weights=0.0;
+          for(int y=-radius;y<=radius;y++) for(int x=-radius;x<=radius;x++) {
+            ivec2 q=p+ivec2(x,y); if(any(lessThan(q,ivec2(0))) || any(greaterThanEqual(q,size))) continue;
+            vec4 value=texelFetch(map,q,0); if(abs(value.a-center.a)>.1) continue;
+            vec3 nn=texelFetch(normals,q,0).xyz;
+            if(useNormals && dot(n,n)>0.1 && dot(nn,nn)>0.1 && dot(normalize(n),normalize(nn))<.8) continue;
+            vec3 delta=value.rgb-center.rgb;
+            float weight=exp(-float(x*x+y*y)/max(2.0*sigma*sigma,1e-6)-dot(delta,delta)/max(2.0*threshold*threshold,1e-6));
+            sum+=value.rgb*weight; weights+=weight;
+          }
+          fragColor=vec4(sum/max(weights,1e-6),center.a);
+        }`,
     });
   }
 }

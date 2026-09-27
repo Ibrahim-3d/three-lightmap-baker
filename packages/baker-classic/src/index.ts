@@ -143,3 +143,5 @@ export type { GPUCapabilities, GPUTier } from './gpu/Capabilities';
 // --- Diagnostics (graphics-engineer instrumentation; remove when stable) ---
 export { Diagnostics } from './utils/Diagnostics';
 export type { DiagSnapshot } from './utils/Diagnostics';
+
+export { preflightBakeScene, type BakeSceneIssue } from './bake/preflight';

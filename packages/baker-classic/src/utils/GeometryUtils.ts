@@ -31,7 +31,11 @@ export const mergeGeometry = (meshes: Mesh[]): BufferGeometry => {
       if (!KEPT_ATTRIBUTES.has(name)) geometry.deleteAttribute(name);
     }
     geometry.applyMatrix4(mesh.matrixWorld);
-    if (geometry.index) geometry = geometry.toNonIndexed();
+    if (geometry.index) {
+      const indexed = geometry;
+      geometry = indexed.toNonIndexed();
+      indexed.dispose();
+    }
 
     const positions = geometry.getAttribute('position');
     if (!positions) {
@@ -41,6 +45,9 @@ export const mergeGeometry = (meshes: Mesh[]): BufferGeometry => {
       throw new BakeError('mesh geometry vertex count is not triangular', 'geometry', mesh.name);
     }
 
+    if (!geometry.hasAttribute('normal')) geometry.computeVertexNormals();
+    if (!geometry.hasAttribute('uv2'))
+      geometry.setAttribute('uv2', new BufferAttribute(new Float32Array(positions.count * 2), 2));
     const hadUv = geometry.hasAttribute('uv');
     const hadUv1 = geometry.hasAttribute('uv1');
     if (!hadUv)
@@ -64,10 +71,13 @@ export const mergeGeometry = (meshes: Mesh[]): BufferGeometry => {
     geometry.setAttribute(HAS_UV_ATTRIBUTE, new BufferAttribute(hasUvs, 1));
     geometry.setAttribute(HAS_UV1_ATTRIBUTE, new BufferAttribute(hasUv1s, 1));
 
-    return mergeVertices(geometry);
+    const indexed = mergeVertices(geometry);
+    geometry.dispose();
+    return indexed;
   });
 
   const merged = mergeGeometries(prepped);
+  prepped.forEach((g) => g.dispose());
   if (!merged) {
     const names = meshes.map((mesh, index) => mesh.name || `<unnamed#${index}>`).join(', ');
     throw new BakeError(

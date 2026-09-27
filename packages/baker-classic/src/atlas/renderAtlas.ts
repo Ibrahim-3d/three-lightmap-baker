@@ -1,3 +1,4 @@
+import { createChartIds } from './chartIds';
 import {
   Color,
   DataTexture,
@@ -70,6 +71,7 @@ const worldPositionMaterial = new ShaderMaterial({
 
 const normalVertexShader = /* glsl */ `
     in vec2 uv2;
+    in float bakeChart;
     uniform vec2 offset;
     out vec4 vNormal;
     void main() {
@@ -77,10 +79,8 @@ const normalVertexShader = /* glsl */ `
         // to correctly handle non-uniform scaling.
         mat3 worldNormalMatrix = transpose(inverse(mat3(modelMatrix)));
         vec3 worldNormal = normalize(worldNormalMatrix * normal);
-        // Alpha = 0.0 to match the prior modelMatrix * vec4(normal, 0.0) output.
-        // The fragment shader emits length-checked xyz and forwards w as the
-        // chart-mask convention; keeping it 0 matches the previous wire format.
-        vNormal = vec4(worldNormal, 0.0);
+        // Positive alpha identifies the UV chart; zero is atlas background.
+        vNormal = vec4(worldNormal, bakeChart);
         gl_Position = vec4((uv2 + offset) * 2.0 - 1.0, 0.0, 1.0);
     }
 `;
@@ -182,8 +182,13 @@ const dilationOffsets = [
   { x: 0, y: 0 },
 ];
 
+let nextChartId = 1;
 function makeAtlasMesh(mesh: Mesh, meshIndex: number): Mesh {
-  const clone = new Mesh(mesh.geometry, mesh.material);
+  const geometry = mesh.geometry.clone();
+  const charts = createChartIds(geometry, nextChartId);
+  nextChartId = charts.nextId;
+  geometry.setAttribute('bakeChart', charts.attribute);
+  const clone = new Mesh(geometry, mesh.material);
   clone.matrixAutoUpdate = false;
   clone.matrixWorldAutoUpdate = false;
   clone.matrix.copy(mesh.matrixWorld);
@@ -276,6 +281,7 @@ export function renderAtlas(
     }
 
     scene.clear();
+    nextChartId = 1;
     for (let index = 0; index < meshes.length; index++) {
       const mesh = meshes[index];
       if (mesh) scene.add(makeAtlasMesh(mesh, index));
@@ -294,11 +300,17 @@ export function renderAtlas(
     draw(worldPositionMaterial, posRT);
     draw(normalMaterial, normRT);
     draw(surfaceAlbedoMaterial, surfaceAlbedoRT);
+  } catch (error) {
+    posRT.dispose();
+    normRT.dispose();
+    surfaceAlbedoRT.dispose();
+    throw error;
   } finally {
     renderer.setRenderTarget(prevRT);
     renderer.autoClear = prevAutoClear;
     renderer.setClearColor(prevClearColor, prevClearAlpha);
     scene.overrideMaterial = null;
+    for (const child of scene.children) (child as Mesh).geometry.dispose();
     scene.clear();
   }
 
@@ -352,6 +364,7 @@ export function renderMeshToAtlas(
     renderer.setRenderTarget(prevRT);
     renderer.autoClear = prevAutoClear;
     scene.overrideMaterial = null;
+    for (const child of scene.children) (child as Mesh).geometry.dispose();
     scene.clear();
   }
 }

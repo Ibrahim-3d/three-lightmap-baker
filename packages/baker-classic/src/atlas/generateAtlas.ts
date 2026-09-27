@@ -1,3 +1,5 @@
+import { BakeError } from '../errors';
+import { abortError } from '../bake/animationTask';
 import { BufferAttribute, type BufferGeometry, Mesh, Vector3 } from 'three';
 import { UVUnwrapper } from 'xatlas-three';
 import xatlasScriptUrl from 'xatlasjs/dist/xatlas.js?url';
@@ -13,6 +15,8 @@ const MAX_DENSITY_PACK_ATTEMPTS = 6;
 let xatlasLoadPromise: Promise<void> | null = null;
 
 export type GenerateAtlasOptions = {
+  padding?: number;
+  signal?: AbortSignal;
   /** Actual lightmap side length. Used by xatlas when texel density is active. */
   resolution?: number;
   /** Target texels per world unit. When omitted, legacy fill-the-atlas packing is used. */
@@ -156,15 +160,14 @@ export const loadXAtlasThree = async (options: LoadXAtlasThreeOptions = {}): Pro
  * MUST be serial (await between calls). For multi-atlas pipelines, see
  * `generateAtlases` below.
  */
-export const generateAtlas = async (
-  meshs: Mesh[],
-  options: GenerateAtlasOptions = {},
-): Promise<void> => {
+const packAtlas = async (meshs: Mesh[], options: GenerateAtlasOptions = {}): Promise<void> => {
+  if (options.signal?.aborted) throw abortError();
   await loadXAtlasThree();
+  if (options.signal?.aborted) throw abortError();
 
   const geometry = meshs.map((mesh) => mesh.geometry);
   const densityMode = options.texelsPerUnit !== undefined && options.texelsPerUnit > 0;
-  const packResolution = densityMode ? (options.resolution ?? 1024) : 4096;
+  const packResolution = options.resolution ?? 1024;
   let texelsPerUnit = options.texelsPerUnit ?? 0;
 
   if (densityMode) {
@@ -184,7 +187,7 @@ export const generateAtlas = async (
 
   // Crucial: xatlas defaults are padding=0. renderAtlas adds a +/-2 pixel
   // G-buffer halo, so keep roughly four lightmap pixels between charts.
-  unwrapper.packOptions.padding = Math.max(4, Math.ceil(packResolution / 256));
+  unwrapper.packOptions.padding = Math.max(6, options.padding ?? 6);
   unwrapper.packOptions.resolution = packResolution;
   setPackTexelsPerUnit(densityMode, texelsPerUnit);
 
@@ -192,6 +195,7 @@ export const generateAtlas = async (
     ? meshs.map((mesh) => mesh.geometry.userData.worldScale as unknown)
     : [];
 
+  const snapshots = geometry.map(snapshotGeometry);
   try {
     if (densityMode) {
       for (const mesh of meshs) {
@@ -211,7 +215,6 @@ export const generateAtlas = async (
     // downstream renderer expects each bake group to be one 0-1 atlas target,
     // so retry with a lower resolved density until xatlas agrees.
     const maxAttempts = densityMode ? MAX_DENSITY_PACK_ATTEMPTS : 1;
-    const snapshots = densityMode ? geometry.map(snapshotGeometry) : [];
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       if (attempt > 0) {
         for (let i = 0; i < geometry.length; i++) {
@@ -221,9 +224,11 @@ export const generateAtlas = async (
         }
       }
       setPackTexelsPerUnit(densityMode, texelsPerUnit);
+      if (options.signal?.aborted) throw abortError();
       const atlas = await unwrapper.packAtlas(geometry, 'uv2', 'uv');
+      if (options.signal?.aborted) throw abortError();
       const uvBounds = getUv2Bounds(meshs);
-      if (!densityMode || (atlas.atlasCount <= 1 && uvBounds.valid)) break;
+      if (atlas.atlasCount === 1 && uvBounds.valid) break;
 
       const canRetry = attempt + 1 < maxAttempts;
       const reason =
@@ -236,11 +241,18 @@ export const generateAtlas = async (
           `[baker] xatlas produced ${reason} for one ${packResolution}x${packResolution} bake group; retrying at ${texelsPerUnit.toFixed(2)} texels/m`,
         );
       } else {
-        console.warn(
-          `[baker] xatlas still produced ${reason}; this bake group may show unmapped black areas`,
+        throw new BakeError(
+          `Atlas packing failed: ${reason}. Increase resolution or split the group.`,
+          'unwrap',
         );
       }
     }
+  } catch (error) {
+    geometry.forEach((g, i) => {
+      const snapshot = snapshots[i];
+      if (snapshot) restoreGeometry(g, snapshot);
+    });
+    throw error;
   } finally {
     if (densityMode) {
       for (let i = 0; i < meshs.length; i++) {
@@ -278,5 +290,22 @@ export const generateAtlases = async (
     if (DEBUG)
       console.info(`[baker] xatlas bin ${i + 1}/${meshesByBin.length}: ${bin.length} meshes`);
     await generateAtlas(bin, options);
+  }
+};
+
+let packing = false;
+export const generateAtlas = async (
+  meshes: Mesh[],
+  options: GenerateAtlasOptions = {},
+): Promise<void> => {
+  if (packing) throw new BakeError('xatlas is busy; await the previous operation', 'unwrap');
+  if (!meshes.length) return;
+  if (new Set(meshes.map((m) => m.geometry)).size !== meshes.length)
+    throw new BakeError('Atlas meshes require unique geometries', 'unwrap');
+  packing = true;
+  try {
+    await packAtlas(meshes, options);
+  } finally {
+    packing = false;
   }
 };

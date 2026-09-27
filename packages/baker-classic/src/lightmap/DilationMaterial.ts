@@ -1,96 +1,47 @@
-import { GLSL3, NoBlending, ShaderMaterial, Texture } from 'three';
-
-/*
- * Dilation Pass - GLSL3 fragment shader.
- *
- * Input  : `map` (current lightmap), `positions` (G-buffer; alpha=1 inside UV charts).
- * Output : `fragColor` (RGBA float) - same texel filled in for chart interiors;
- *          chart-exterior texels get the average of their non-empty 3x3 neighbours.
- *
- * Purpose: trilinear filtering at chart borders would otherwise sample pure black.
- * Run iteratively (default 4x) on ping-pong RTs.
- */
-
+import { GLSL3, NoBlending, ShaderMaterial, type Texture } from 'three';
+/** Propagate one chart's color/owner into each empty texel, without mixing charts. */
 export class DilationMaterial extends ShaderMaterial {
-  // resolution and DILATION_EMPTY_EPS are uniform/hardcoded - no per-instance GLSL variation.
-  // Renderer owns the compiled WebGLProgram; dispose() is unaffected.
-  override customProgramCacheKey(): string {
-    return 'DilationMaterial|glsl3|single-out';
-  }
-
-  constructor(opts: { map?: Texture; positions?: Texture; resolution?: number } = {}) {
+  constructor(
+    opts: {
+      map?: Texture;
+      positions?: Texture;
+      owners?: Texture;
+      resolution?: number;
+      fill?: boolean;
+    } = {},
+  ) {
     super({
       glslVersion: GLSL3,
       blending: NoBlending,
-      transparent: false,
-      depthWrite: false,
       depthTest: false,
+      depthWrite: false,
       uniforms: {
-        map: { value: opts.map ?? null },
-        positions: { value: opts.positions ?? null },
+        map: { value: opts.map },
+        positions: { value: opts.owners ?? opts.positions },
         resolution: { value: opts.resolution ?? 1024 },
         useSourceAlpha: { value: false },
+        fill: { value: opts.fill ?? true },
       },
-      vertexShader: /* glsl */ `
-                out vec2 vUv;
-                void main() {
-                    vUv = uv;
-                    gl_Position = vec4(position, 1.0);
-                }
-            `,
-      fragmentShader: /* glsl */ `
-                #define DILATION_EMPTY_EPS 1.0e-6
-
-                uniform sampler2D map;
-                uniform sampler2D positions;
-                uniform float resolution;
-                uniform bool useSourceAlpha;
-                in vec2 vUv;
-                out vec4 fragColor;
-
-                void main() {
-                    vec4 here = texture(map, vUv);
-                    float chart = texture(positions, vUv).a;
-
-                    // Inside a chart - pass through.
-                    if (chart > DILATION_EMPTY_EPS) {
-                        fragColor = vec4(here.rgb, 1.0);
-                        return;
-                    }
-
-                    // Outside chart: average non-empty 3x3 neighbours.
-                    float texel = 1.0 / max(resolution, 1.0);
-                    vec3 sum = vec3(0.0);
-                    float n = 0.0;
-                    for (int dy = -1; dy <= 1; dy++) {
-                        for (int dx = -1; dx <= 1; dx++) {
-                            if (dx == 0 && dy == 0) continue;
-                            vec2 uv2 = vUv + vec2(float(dx), float(dy)) * texel;
-                            vec4 s = texture(map, uv2);
-                            float chartNeighbour = texture(positions, uv2).a;
-                            // First pass ignores source alpha because legacy/raw inputs may
-                            // be opaque in empty atlas space. Later passes use the alpha mask
-                            // written by this shader so black valid texels keep propagating.
-                            float priorFill = useSourceAlpha
-                                ? step(DILATION_EMPTY_EPS, s.a)
-                                : 0.0;
-                            float brightFill = step(
-                                DILATION_EMPTY_EPS,
-                                dot(max(s.rgb, vec3(0.0)), vec3(1.0))
-                            );
-                            float w = max(
-                                step(DILATION_EMPTY_EPS, chartNeighbour),
-                                max(priorFill, brightFill)
-                            );
-                            sum += s.rgb * w;
-                            n   += w;
-                        }
-                    }
-                    fragColor = n > 0.0
-                        ? vec4(sum / n, 1.0)
-                        : vec4(0.0);
-                }
-            `,
+      vertexShader: `out vec2 vUv; void main() { vUv=uv; gl_Position=vec4(position,1.0); }`,
+      fragmentShader: `
+        uniform sampler2D map, positions;
+        uniform bool useSourceAlpha, fill;
+        uniform float resolution;
+        in vec2 vUv; out vec4 fragColor;
+        float owner(ivec2 p) { return useSourceAlpha ? texelFetch(map,p,0).a : texelFetch(positions,p,0).a; }
+        void main() {
+          ivec2 size=textureSize(map,0), p=ivec2(gl_FragCoord.xy);
+          float id=owner(p); vec3 color=texelFetch(map,p,0).rgb;
+          if(id>0.0) { fragColor=vec4(color,id); return; }
+          fragColor=vec4(0.0); if(!fill) return;
+          float best=10.0;
+          for(int y=-1;y<=1;y++) for(int x=-1;x<=1;x++) {
+            ivec2 q=p+ivec2(x,y);
+            if(any(lessThan(q,ivec2(0))) || any(greaterThanEqual(q,size))) continue;
+            float candidate=owner(q), distance=float(x*x+y*y);
+            if(candidate>0.0 && distance<best) { best=distance; fragColor=vec4(texelFetch(map,q,0).rgb,candidate); }
+          }
+        }`,
     });
   }
 }

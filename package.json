@@ -98,7 +98,8 @@
     "test:api-import": "node scripts/clean-package.mjs && vite build --config vite.lib.config.js && tsc -p tsconfig.lib.json && node tests/api-import-smoke.mjs",
     "release:check": "tsc --noEmit && tsc -p tsconfig.examples.json && eslint packages/ apps/ && prettier --check packages/ apps/ examples/ && pnpm run test:release && vite build && node scripts/check-bundle-budget.mjs && node scripts/clean-package.mjs && vite build --config vite.lib.config.js && tsc -p tsconfig.lib.json && node tests/api-import-smoke.mjs && npm publish --dry-run --access public",
     "capture:launch": "node scripts/capture-launch-assets.mjs",
-    "check:launch-benchmarks": "node scripts/check-runtime-budget.mjs"
+    "check:launch-benchmarks": "node scripts/check-runtime-budget.mjs",
+    "test:correctness": "playwright test --config playwright.correctness.config.ts"
   },
   "dependencies": {
     "@types/three": "^0.185.4",

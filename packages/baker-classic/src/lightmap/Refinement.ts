@@ -4,39 +4,23 @@ import {
   Mesh,
   OrthographicCamera,
   PlaneGeometry,
-  ShaderMaterial,
-  Texture,
-  WebGLRenderer,
+  type ShaderMaterial,
+  type Texture,
+  type WebGLRenderer,
   WebGLRenderTarget,
 } from 'three';
 import { DilationMaterial } from './DilationMaterial';
 import { DenoiseMaterial } from '../denoise/DenoiseMaterial';
-
+import { runAnimationTask, abortError } from '../bake/animationTask';
 export type PostProcessOptions = {
-  dilationIterations: number; // Task 5 spec: 4
+  dilationIterations: number;
   denoiseEnabled: boolean;
-  denoiseSigma: number; // bilateral spatial sigma
-  denoiseThreshold: number; // bilateral range sigma (edge sharpness)
-  denoiseKSigma: number; // kernel radius multiplier
+  denoiseSigma: number;
+  denoiseThreshold: number;
+  denoiseKSigma: number;
 };
-
-export type PostProcessResult = {
-  /** Final post-processed lightmap texture (consume as MeshStandardMaterial.lightMap). */
-  texture: Texture;
-  /** Call to release the ping-pong RTs when bake is replaced. */
-  dispose: () => void;
-};
-
-const fsQuad = new Mesh(new PlaneGeometry(2, 2));
-const fsCam = new OrthographicCamera();
-
-/**
- * Run dilation N times, then optional bilateral denoise once. Returns the final RT's texture.
- *
- * Pipeline:  src --(dilate)x N --> A --(denoise?)--> B --> result
- *
- * Two RTs are allocated and ping-ponged. Caller owns disposal via the returned handle.
- */
+export type PostProcessResult = { texture: Texture; dispose: () => void };
+/** Own all temporary render resources until the result is handed to the caller. */
 export const runPostProcess = async (
   renderer: WebGLRenderer,
   src: Texture,
@@ -44,117 +28,85 @@ export const runPostProcess = async (
   resolution: number,
   opts: PostProcessOptions,
   onProgress?: (percent: number) => void,
+  controls: { signal?: AbortSignal; normals?: Texture } = {},
 ): Promise<PostProcessResult> => {
-  const makeRT = (): WebGLRenderTarget =>
-    new WebGLRenderTarget(resolution, resolution, {
-      type: FloatType,
-      minFilter: LinearFilter,
-      magFilter: LinearFilter,
-      generateMipmaps: false,
-    });
-  const rtA = makeRT();
-  const rtB = makeRT();
-
-  const draw = (mat: ShaderMaterial, target: WebGLRenderTarget): void => {
-    const prevRT = renderer.getRenderTarget();
-    try {
-      fsQuad.material = mat;
-      renderer.setRenderTarget(target);
-      renderer.render(fsQuad, fsCam);
-    } finally {
-      renderer.setRenderTarget(prevRT);
-    }
-  };
-
-  const dilate = new DilationMaterial({ positions, resolution });
-
-  let read: WebGLRenderTarget = rtA; // tracks "where is the latest result"
-  let write: WebGLRenderTarget = rtB;
-  let input: Texture = src;
-
-  const totalPasses = Math.max(0, opts.dilationIterations) + (opts.denoiseEnabled ? 1 : 0);
-  let completedPasses = 0;
-
-  // SAFETY: `map` uniform is constructed in DilationMaterial; presence is invariant.
-  const dilateMapU = dilate.uniforms.map;
-  if (!dilateMapU) throw new Error('[baker] DilationMaterial missing `map` uniform');
-  const dilateUseSourceAlphaU = dilate.uniforms.useSourceAlpha;
-  if (!dilateUseSourceAlphaU)
-    throw new Error('[baker] DilationMaterial missing `useSourceAlpha` uniform');
-
-  for (let i = 0; i < Math.max(0, opts.dilationIterations); i++) {
-    dilateMapU.value = input;
-    dilateUseSourceAlphaU.value = i > 0;
-    draw(dilate, write);
-    input = write.texture;
-    // swap
-    const tmp = read;
-    read = write;
-    write = tmp;
-
-    completedPasses++;
-    onProgress?.(completedPasses / totalPasses);
-    // Allow UI to repaint
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-  }
-
-  if (opts.denoiseEnabled) {
-    const denoise = new DenoiseMaterial({
-      map: input,
-      sigma: opts.denoiseSigma,
-      threshold: opts.denoiseThreshold,
-      kSigma: opts.denoiseKSigma,
-    });
-    draw(denoise, write);
-    input = write.texture;
-    denoise.dispose();
-    const tmp = read;
-    read = write;
-    write = tmp;
-
-    completedPasses++;
-    onProgress?.(completedPasses / totalPasses);
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-  }
-
-  dilate.dispose();
-
-  // `read` now holds the unused RT; the result is in the *other* one (last `write` before swap).
-  // After the swap the just-written RT is `read`. So `read.texture` is correct iff at least one
-  // pass ran. If zero passes ran, we just return src directly.
-  const ranAny = opts.dilationIterations > 0 || opts.denoiseEnabled;
-  const result = ranAny ? read.texture : src;
-
-  // Sentinel: read a 4x4 center patch and log the avg so the user can confirm
-  // refinement actually changed pixel values (vs. silently passing through or clearing).
-  // One readback per refinement run - negligible cost, runs once post-bake.
-  if (ranAny) {
-    const x = Math.max(0, Math.floor(resolution / 2) - 2);
-    const buf = new Float32Array(4 * 4 * 4);
-    renderer.readRenderTargetPixels(read, x, x, 4, 4, buf);
-    let r = 0,
-      g = 0,
-      b = 0;
-    for (let i = 0; i < 16; i++) {
-      r += buf[i * 4] ?? 0;
-      g += buf[i * 4 + 1] ?? 0;
-      b += buf[i * 4 + 2] ?? 0;
-    }
-    if (import.meta.env.DEV) {
-      const fmt = (n: number): string => (n / 16).toFixed(4);
-      console.info(
-        `[baker] refinement: dilations=${opts.dilationIterations}, denoise=${opts.denoiseEnabled ? 'on' : 'off'} ` +
-          `(sigma=${opts.denoiseSigma}, threshold=${opts.denoiseThreshold}, kSigma=${opts.denoiseKSigma}) - ` +
-          `center 4x4 avg rgb = (${fmt(r)}, ${fmt(g)}, ${fmt(b)})`,
-      );
-    }
-  }
-
-  return {
-    texture: result,
-    dispose: () => {
+  if (controls.signal?.aborted) throw controls.signal.reason ?? abortError();
+  if (!opts.dilationIterations && !opts.denoiseEnabled)
+    return { texture: src, dispose: (): void => {} };
+  const rtA = new WebGLRenderTarget(resolution, resolution, {
+    type: FloatType,
+    minFilter: LinearFilter,
+    magFilter: LinearFilter,
+    depthBuffer: false,
+    generateMipmaps: false,
+  });
+  const rtB = rtA.clone();
+  const quad = new Mesh(new PlaneGeometry(2, 2));
+  const camera = new OrthographicCamera();
+  const dilate = new DilationMaterial({
+    positions,
+    owners: controls.normals,
+    resolution,
+    fill: opts.dilationIterations > 0,
+  });
+  let denoise: DenoiseMaterial | undefined;
+  let input = src,
+    write = rtA;
+  let returned = false;
+  try {
+    const passes = Math.max(1, opts.dilationIterations),
+      total = passes + Number(opts.denoiseEnabled);
+    let pass = 0;
+    await runAnimationTask(() => {
+      if (renderer.getContext().isContextLost())
+        throw new Error('WebGL context lost during refinement');
+      let material: ShaderMaterial;
+      if (pass < passes) {
+        const map = dilate.uniforms.map,
+          alpha = dilate.uniforms.useSourceAlpha;
+        if (!map || !alpha) throw new Error('Missing dilation uniforms');
+        map.value = input;
+        alpha.value = pass > 0;
+        material = dilate;
+      } else {
+        denoise = new DenoiseMaterial({
+          map: input,
+          normals: controls.normals,
+          sigma: opts.denoiseSigma,
+          threshold: opts.denoiseThreshold,
+          kSigma: opts.denoiseKSigma,
+        });
+        material = denoise;
+      }
+      const previous = renderer.getRenderTarget();
+      try {
+        quad.material = material;
+        renderer.setRenderTarget(write);
+        renderer.render(quad, camera);
+      } finally {
+        renderer.setRenderTarget(previous);
+      }
+      input = write.texture;
+      write = write === rtA ? rtB : rtA;
+      pass++;
+      onProgress?.(pass / total);
+      return pass === total;
+    }, controls.signal);
+    returned = true;
+    return {
+      texture: input,
+      dispose: (): void => {
+        rtA.dispose();
+        rtB.dispose();
+      },
+    };
+  } finally {
+    dilate.dispose();
+    denoise?.dispose();
+    quad.geometry.dispose();
+    if (!returned) {
       rtA.dispose();
       rtB.dispose();
-    },
-  };
+    }
+  }
 };

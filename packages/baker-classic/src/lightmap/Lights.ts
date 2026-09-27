@@ -1,7 +1,7 @@
 /**
  * Lights.ts - multi-light packing for the lightmap bake pipeline.
  *
- * Lights are stored in a 4-wide DataTexture (RGBA float), one row per light:
+ * Lights are stored in a 6-wide DataTexture (RGBA float), one row per light:
  *   texel (0, i): vec4(pos.xyz,   typeEncoded)  - position + type [0..3]
  *   texel (1, i): vec4(dir.xyz,   params.x)     - direction + param0
  *   texel (2, i): vec4(color.rgb, params.y)     - color + param1
@@ -9,11 +9,11 @@
  *
  * Type encoding: point=0, directional=1, spot=2, area=3.
  *
- * Intensity convention: baked intensity is a unitless scalar multiplier.
- * PointLight/SpotLight.intensity is in candela in Three.js; we treat it
- * as a dimensionless scale factor matching the bake's baseline convention.
+ * Outputs are linear diffuse irradiance. Punctual lights use Three.js range
+ * and decay; rectangles integrate radiance over their emitting area.
  */
 
+import { isBakeVisible } from '../bake/visibility';
 import {
   ClampToEdgeWrapping,
   Color,
@@ -41,16 +41,18 @@ export interface PackedLight {
   color: Color;
   /**
    * Type-specific params:
-   *   point:       [softRadius, 0, 0, 0]
+   *   point:       [softRadius, 0, distance, decay]
    *   directional: [angularSizeRad, 0, 0, 0]
-   *   spot:        [innerAngleCos, outerAngleCos, 0, 0]
+   *   spot:        [innerAngleCos, outerAngleCos, distance, decay]
    *   area:        [width, height, 0, 0]
    */
   params: [number, number, number, number];
+  tangent?: Vector3;
+  bitangent?: Vector3;
 }
 
 const TYPE_INT: Record<LightType, number> = { point: 0, directional: 1, spot: 2, area: 3 };
-export const LIGHT_TEX_WIDTH = 4;
+export const LIGHT_TEX_WIDTH = 6;
 
 /**
  * Walk the scene tree and convert Three.js lights to PackedLight.
@@ -66,18 +68,17 @@ export const LIGHT_TEX_WIDTH = 4;
 export function collectLightsFromScene(scene: Object3D): PackedLight[] {
   const out: PackedLight[] = [];
   scene.traverse((obj) => {
-    if (!obj.visible) return;
-    if (obj.userData?.lightmapIgnore) return;
+    if (!isBakeVisible(obj)) return;
     if (obj instanceof PointLight) {
       out.push({
         type: 'point',
         position: obj.getWorldPosition(new Vector3()),
         direction: new Vector3(0, -1, 0),
         color: obj.color.clone().multiplyScalar(obj.intensity),
-        params: [0, 0, 0, 0],
+        params: [0, 0, obj.distance, obj.decay],
       });
     } else if (obj instanceof DirectionalLight) {
-      const dir = new Vector3(0, 0, -1).transformDirection(obj.matrixWorld).normalize();
+      const dir = targetDirection(obj);
       out.push({
         type: 'directional',
         position: obj.getWorldPosition(new Vector3()),
@@ -86,13 +87,18 @@ export function collectLightsFromScene(scene: Object3D): PackedLight[] {
         params: [0, 0, 0, 0],
       });
     } else if (obj instanceof SpotLight) {
-      const dir = new Vector3(0, 0, -1).transformDirection(obj.matrixWorld).normalize();
+      const dir = targetDirection(obj);
       out.push({
         type: 'spot',
         position: obj.getWorldPosition(new Vector3()),
         direction: dir,
         color: obj.color.clone().multiplyScalar(obj.intensity),
-        params: [Math.cos(obj.angle * (1 - obj.penumbra)), Math.cos(obj.angle), 0, 0],
+        params: [
+          Math.cos(obj.angle * (1 - obj.penumbra)),
+          Math.cos(obj.angle),
+          obj.distance,
+          obj.decay,
+        ],
       });
     } else if (obj instanceof RectAreaLight) {
       const dir = new Vector3(0, 0, -1).transformDirection(obj.matrixWorld).normalize();
@@ -102,6 +108,8 @@ export function collectLightsFromScene(scene: Object3D): PackedLight[] {
         direction: dir,
         color: obj.color.clone().multiplyScalar(obj.intensity),
         params: [obj.width, obj.height, 0, 0],
+        tangent: new Vector3(1, 0, 0).transformDirection(obj.matrixWorld),
+        bitangent: new Vector3(0, 1, 0).transformDirection(obj.matrixWorld),
       });
     }
   });
@@ -113,8 +121,31 @@ export function buildLightTexture(lights: PackedLight[]): {
   count: number;
   capacity: number;
 } {
+  for (const light of lights) {
+    const values = [
+      ...light.position.toArray(),
+      ...light.direction.toArray(),
+      light.color.r,
+      light.color.g,
+      light.color.b,
+      ...light.params,
+      ...(light.tangent?.toArray() ?? []),
+      ...(light.bitangent?.toArray() ?? []),
+    ];
+    if (!values.every(Number.isFinite) || Math.min(light.color.r, light.color.g, light.color.b) < 0)
+      throw new Error('Lights must contain finite values and non-negative radiance');
+    if (
+      (light.type === 'point' || light.type === 'spot') &&
+      (light.params[2] < 0 || light.params[3] < 0)
+    )
+      throw new Error('Light distance and decay must be non-negative');
+    if (light.type === 'area' && (light.params[0] <= 0 || light.params[1] <= 0))
+      throw new Error('Area light dimensions must be positive');
+    if (light.type !== 'point' && light.direction.lengthSq() < 1e-12)
+      throw new Error('Light direction must be nonzero; check the light target');
+  }
   const capacity = Math.max(1, lights.length);
-  // 4 texels wide × capacity tall, RGBA float.
+  // 6 texels wide × capacity tall, RGBA float.
   const data = new Float32Array(LIGHT_TEX_WIDTH * capacity * 4);
 
   for (let i = 0; i < lights.length; i++) {
@@ -141,6 +172,12 @@ export function buildLightTexture(lights: PackedLight[]): {
     data[base + 13] = l.params[3];
     data[base + 14] = 0;
     data[base + 15] = 0;
+    const direction = l.direction.clone().normalize();
+    const up = Math.abs(direction.y) < 0.999 ? new Vector3(0, 1, 0) : new Vector3(1, 0, 0);
+    const tangent = l.tangent ?? up.cross(direction).normalize();
+    const bitangent = l.bitangent ?? direction.clone().cross(tangent);
+    tangent.toArray(data, base + 16);
+    bitangent.toArray(data, base + 20);
   }
 
   const tex = new DataTexture(data, LIGHT_TEX_WIDTH, capacity, RGBAFormat, FloatType);
@@ -156,4 +193,12 @@ export function buildLightTexture(lights: PackedLight[]): {
 
 export function disposeLightTexture(tex: DataTexture): void {
   tex.dispose();
+}
+
+function targetDirection(light: DirectionalLight | SpotLight): Vector3 {
+  light.target.updateWorldMatrix(true, false);
+  return light.target
+    .getWorldPosition(new Vector3())
+    .sub(light.getWorldPosition(new Vector3()))
+    .normalize();
 }

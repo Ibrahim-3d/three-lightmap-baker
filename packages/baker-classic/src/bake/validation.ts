@@ -9,7 +9,7 @@ import type { LightmapBakerOptions, TimeoutProtectionOptions } from './types';
 // testable in isolation.
 
 export const toLinearColor = (c: Color | string | number | undefined, fallback: number): Color =>
-  new Color(c ?? fallback).convertSRGBToLinear();
+  new Color(c ?? fallback);
 
 export const isPowerOfTwo = (n: number): boolean => n > 0 && (n & (n - 1)) === 0;
 
@@ -47,8 +47,8 @@ export function validateOptions(opts: LightmapBakerOptions): void {
     throw new BakeError(`ao.samples must be 0-64, got ${aoSamples}`, 'validation');
 
   const bounces = opts.bounces ?? 1;
-  if (!Number.isInteger(bounces) || bounces < 0 || bounces > 8)
-    throw new BakeError(`bounces must be integer 0-8, got ${bounces}`, 'validation');
+  if (!Number.isInteger(bounces) || bounces < 0 || bounces > 4)
+    throw new BakeError(`bounces must be integer 0-4, got ${bounces}`, 'validation');
 
   const resolution = opts.resolution ?? 1024;
   if (!Number.isFinite(resolution) || resolution < 16 || resolution > 4096)
@@ -81,6 +81,21 @@ export function validateOptions(opts: LightmapBakerOptions): void {
   if (aoOptions?.distance !== undefined && aoOptions.distance < 0)
     throw new BakeError(`ao.distance must be >= 0, got ${aoOptions.distance}`, 'validation');
 
+  const refinement = opts.refinementOptions;
+  if (refinement) {
+    if (
+      refinement.dilationIterations !== undefined &&
+      (!Number.isInteger(refinement.dilationIterations) ||
+        refinement.dilationIterations < 0 ||
+        refinement.dilationIterations > 32)
+    )
+      throw new BakeError('dilationIterations must be integer 0-32', 'validation');
+    for (const key of ['denoiseSigma', 'denoiseThreshold', 'denoiseKSigma'] as const) {
+      const value = refinement[key];
+      if (value !== undefined && (!Number.isFinite(value) || value <= 0))
+        throw new BakeError(`${key} must be finite and positive`, 'validation');
+    }
+  }
   // Validate top-level density (Phase 1 - density-aware multi-atlas).
   if (opts.texelsPerMeter !== undefined) {
     const tpm = opts.texelsPerMeter;

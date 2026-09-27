@@ -1,9 +1,11 @@
+import { preflightBakeScene } from './bake/preflight';
+import { prepareBakeScene } from './bake/prepareScene';
 import { Object3D, Scene, Vector3, WebGLRenderer } from 'three';
 import { BakeError, type BakeErrorPhase } from './errors';
 import { detectGPUCapabilities } from './gpu/Capabilities';
 import { DEFAULT_REFINEMENT, resolveTimeoutProtection, validateOptions } from './bake/validation';
 import { LightmapBakeResult } from './bake/result';
-import { collectBakeMeshes, runBakePipeline } from './bake/pipeline';
+import { runBakePipeline } from './bake/pipeline';
 import type { BakeHooks, LightmapBakerOptions, ResolvedBakerOptions } from './bake/types';
 import type { ContextLossState } from './bake/internals';
 import {
@@ -109,12 +111,14 @@ function resolveAOOptions(
  *  2. `result.lightmaps` returns a `Map<Mesh, Texture>` where each mesh maps to its
  *     group's atlas texture. With `perMesh` grouping, meshes in different resolution
  *     groups get different textures. Without `perMesh`, all entries share one texture.
- *  3. `bounces` [1,4] controls GI path depth. Clamped on construction. Russian Roulette
+ *  3. `bounces` [0,4] controls GI surface path depth. Zero still samples sky. Russian Roulette
  *     terminates low-throughput paths after bounce 2 for performance.
  *  4. `result.export(path, ...)` triggers a browser download. The `path` argument is
  *     interpreted as a filename hint (last path segment); browsers can't write to
  *     directories. With per-mesh grouping each group is exported as a separate file.
  */
+let activeBake = false;
+
 export class LightmapBaker {
   private _rendererAdapter: LightmapRendererAdapter | null = null;
   private opts: ResolvedBakerOptions;
@@ -150,7 +154,7 @@ export class LightmapBaker {
     this.opts = {
       samples: rawOptions.samples ?? 96,
       castsPerFrame: rawOptions.castsPerFrame ?? 5,
-      bounces: Math.min(4, Math.max(1, rawOptions.bounces ?? 1)),
+      bounces: rawOptions.bounces ?? 1,
       resolution: rawOptions.resolution ?? 1024,
       superSample: rawOptions.superSample ?? 1,
       denoise: rawOptions.denoise ?? true,
@@ -220,13 +224,19 @@ export class LightmapBaker {
 
     const t0 = performance.now();
 
-    const allMeshes = collectBakeMeshes(scene);
-    if (!allMeshes.length)
+    if (activeBake)
       throw new BakeError(
-        'no bake-eligible meshes in scene (need Mesh + MeshStandardMaterial-like)',
+        'Another bake is active; await it before starting a new bake',
         'validation',
       );
-
+    if (hooks.signal?.aborted)
+      throw hooks.signal.reason ?? new DOMException('Aborted', 'AbortError');
+    const issues = preflightBakeScene(scene);
+    const errors = issues.filter((i) => i.severity === 'error');
+    if (errors.length)
+      throw new BakeError(errors.map((i) => `${i.object}: ${i.message}`).join('\n'), 'validation');
+    for (const issue of issues)
+      if (issue.severity === 'warning') console.warn(`[baker] ${issue.object}: ${issue.message}`);
     const gl = renderer.getContext();
     if (!gl.getExtension('EXT_color_buffer_float'))
       throw new BakeError(
@@ -237,6 +247,17 @@ export class LightmapBaker {
     const caps = detectGPUCapabilities(renderer);
     const tp = resolveTimeoutProtection(this.opts.timeoutProtection, caps);
 
+    const prepared = prepareBakeScene(scene, this.opts.perMesh);
+    const allMeshes = prepared.meshes;
+    if (!allMeshes.length) {
+      prepared.restore();
+      throw new BakeError('No bake-eligible meshes', 'validation');
+    }
+    activeBake = true;
+    const controller = new AbortController();
+    const userSignal = hooks.signal;
+    const onAbort = (): void => controller.abort(userSignal?.reason);
+    hooks = { ...hooks, signal: controller.signal };
     // Context-loss guard: shared mutable flag flipped by the canvas listener.
     // Each tick of the mapper loop checks it before scheduling new work.
     const ctxState: ContextLossState = { lost: false };
@@ -244,27 +265,29 @@ export class LightmapBaker {
     const onLost = (e: Event): void => {
       e.preventDefault(); // Tells the browser we'll attempt recovery (we don't, but it's harmless).
       ctxState.lost = true;
+      controller.abort(new BakeError('webgl context lost', 'context-loss'));
       console.error('[baker] webglcontextlost during bake - cancelling');
     };
-    contextLossTarget.addEventListener('webglcontextlost', onLost as EventListener, false);
     const releaseContextGuard = (): void => {
       contextLossTarget.removeEventListener('webglcontextlost', onLost as EventListener, false);
     };
 
-    scene.updateMatrixWorld(true);
-
     const checkAbort = (phase: BakeErrorPhase): void => {
+      if (ctxState.lost) throw new BakeError('webgl context lost', 'context-loss');
       if (hooks.signal?.aborted) {
         const err = new BakeError('aborted by signal', phase);
         err.name = 'AbortError';
         throw err;
       }
-      if (ctxState.lost) throw new BakeError('webgl context lost', 'context-loss');
     };
     try {
+      userSignal?.addEventListener('abort', onAbort, { once: true });
+      contextLossTarget.addEventListener('webglcontextlost', onLost as EventListener, false);
+      scene.updateMatrixWorld(true);
       return await runBakePipeline({
         renderer,
-        opts: this.opts,
+        opts: { ...this.opts, perMesh: prepared.perMesh },
+        sceneDispose: prepared.restore,
         scene,
         allMeshes,
         hooks,
@@ -273,7 +296,12 @@ export class LightmapBaker {
         ctxState,
         checkAbort,
       });
+    } catch (error) {
+      prepared.restore();
+      throw error;
     } finally {
+      activeBake = false;
+      userSignal?.removeEventListener('abort', onAbort);
       releaseContextGuard();
     }
   }

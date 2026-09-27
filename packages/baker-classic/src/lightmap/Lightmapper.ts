@@ -154,11 +154,19 @@ export const generateLightmapper = (
   renderer.getClearColor(prevClearColor);
   const prevClearAlpha = renderer.getClearAlpha();
 
-  renderer.setRenderTarget(renderTarget);
-  renderer.setClearColor(0x000000, 0);
-  renderer.clear();
-  renderer.setRenderTarget(prevRT);
-  renderer.setClearColor(prevClearColor, prevClearAlpha);
+  try {
+    renderer.setRenderTarget(renderTarget);
+    renderer.setClearColor(0x000000, 0);
+    renderer.clear();
+  } catch (error) {
+    renderTarget.dispose();
+    raycastMaterial.dispose();
+    disposeLightTexture(lightTexture);
+    throw error;
+  } finally {
+    renderer.setRenderTarget(prevRT);
+    renderer.setClearColor(prevClearColor, prevClearAlpha);
+  }
 
   const raycastMesh = new Mesh(new PlaneGeometry(2, 2), raycastMaterial);
   const orthographicCamera = new OrthographicCamera();

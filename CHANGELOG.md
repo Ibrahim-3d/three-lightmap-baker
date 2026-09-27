@@ -2,6 +2,15 @@
 
 All notable public changes to `lightmap-baker` are documented here.
 
+## Unreleased
+
+- Correct transformed light targets, distance/decay attenuation, rectangular emitter sampling, and light counts above 16.
+- Define zero-to-four GI surface bounces and account for sky misses at secondary path depths.
+- Add scene preflight, ancestor visibility, isolated bake geometry, and static instance expansion with restoration on disposal.
+- Pack at the requested atlas resolution, reject invalid packing, and prevent denoising across chart boundaries.
+- Handle animation callback failures and cancellation, dispose temporary GPU resources, and stage AO rebakes before replacing existing results.
+- Add numerical transport, filtering, and lifecycle regressions. This work is not release-qualified: see `docs/BAKE_CORRECTNESS_REVIEW.md` for open compatibility and worker-lifecycle issues.
+
 ## lightmap-baker v1.0.0 — 2026-08-13
 
 First public npm release.
