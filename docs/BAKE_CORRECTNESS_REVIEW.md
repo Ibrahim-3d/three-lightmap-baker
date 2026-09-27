@@ -1,6 +1,6 @@
 # Bake correctness review — 2026-09-27
 
-Status: correctness fixes implemented; hardware qualification remains outstanding. Keep the PR in draft until the hardware gate passes.
+Status: correctness fixes implemented and hardware-qualified on 2026-09-27.
 
 The branch corrects light targets, attenuation, area sampling and light-count handling; validates and isolates scene geometry; restores static instances; separates chart filtering; and stages AO rebakes so failed work preserves existing output.
 
@@ -35,13 +35,14 @@ The current xatlasjs wrapper uses 16-bit indices internally. Inputs and remapped
 | Focused correctness suite, Chromium 148 SwiftShader | 14 passed |
 | Focused correctness suite, Chromium 153 SwiftShader | 14 passed |
 | Full release suite, Chromium 148 SwiftShader | Initial run: 46 passed, 1 failed, 1 skipped. Sole failure fixed; affected preset suite: 4/4 passed on rerun |
-| Hardware GPU gate | Unavailable: this environment exposes SwiftShader and no GPU device |
+| Hardware focused correctness gate | 14 passed |
+| Hardware full release suite — NVIDIA GeForce RTX 3090 / ANGLE D3D11 | 47 passed, 1 intentional opt-in benchmark skipped, 0 failed |
 
-The release failure was an existing external Draco-decoder fetch in the packaged Gym/Desert/Backrooms presets. Those presets now use the decoder assets shipped with Three.js; all four scene-preset tests pass after that fix. The skipped test is the opt-in `BAKER_MEASURE_PROBE_SHOWCASE` density/capture benchmark. The full suite was not repeated after the isolated decoder fix.
+The earlier software release failure was an external Draco-decoder fetch in the packaged Gym/Desert/Backrooms presets. Those presets now use the decoder assets shipped with Three.js. The subsequent hardware gate completed the full release suite successfully; the only skip is the existing opt-in `BAKER_MEASURE_PROBE_SHOWCASE` density/capture benchmark.
 
 The focused suite covers numerical transport, targets/visibility/instancing, invalid scenes/options, callback exceptions and cancellation, script/WASM/RPC/timeout recovery, mid-pack abort followed by successful reuse, low-resolution rejection, six-chart boxes, very thin charts, dense packing rejection/restoration, index overflow, chart filtering, 2× supersampling, and bake/AO resource restoration. Worker fault tests leave zero live workers; GPU lifecycle tests return texture allocations to baseline.
 
-## Reproduction and remaining gate
+## Reproduction
 
 Software compatibility run:
 
@@ -58,7 +59,7 @@ pnpm exec playwright install chromium
 pnpm run test:release:hardware
 ```
 
-The hardware command checks the actual WebGL renderer, rejects software fallbacks, and runs both the focused numerical suite and the full release suite. Clear any software-specific `BAKER_E2E_ANGLE` override first. Passing software tests is not a hardware or visual production certification. Representative production scenes still need visual review on supported devices.
+The hardware command checks the actual WebGL renderer, rejects software fallbacks, and runs both the focused numerical suite and the full release suite. Clear any software-specific `BAKER_E2E_ANGLE` override first. Passing software tests alone is not hardware qualification; the 2026-09-27 gate passed on the hardware path described above. Representative production scenes should still receive visual review for product-specific quality.
 
 ## Behavioral constraints
 
