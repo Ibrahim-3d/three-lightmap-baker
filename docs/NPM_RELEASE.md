@@ -25,12 +25,15 @@ three >=0.185.1 <0.186.0
 
 Run hardware-sensitive rendering checks on a real supported GPU, not a software/headless CI renderer.
 
-At minimum validate:
+Run the hardware gate:
 
 ```bash
-pnpm run test:release:hardware -- --headed tests/e2e/material-gi.spec.ts
-pnpm run test:release:hardware -- --headed tests/e2e/scene-presets.spec.ts -g "bake-cornell-draft survives a preset switch"
+pnpm run test:release:hardware
 ```
+
+The gate rejects software WebGL fallbacks, runs the focused numerical
+correctness suite, then runs the full release suite on the hardware-backed
+browser path.
 
 The local hardware command uses installed Google Chrome and lets ANGLE select
 the native backend (normally D3D11 on Windows). Set `BAKER_E2E_ANGLE` only for
