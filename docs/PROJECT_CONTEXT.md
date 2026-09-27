@@ -138,8 +138,9 @@ Already implemented:
 - Launch screenshot and benchmark capture scripts.
 - Runtime and bundle budget scripts.
 
-Local package artifacts and import checks exist, but public npm publication is
-not approved and must remain gated on Ibrahim's explicit approval.
+At the time of this archived handoff, local package artifacts and import checks
+existed but public npm publication had not yet been approved. That historical
+gate was later cleared: `lightmap-baker@1.0.0` shipped on 2026-08-13.
 
 ## 4. What the debug system still needs
 
