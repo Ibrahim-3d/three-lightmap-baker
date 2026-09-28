@@ -180,7 +180,7 @@ export function validatePortableNodePasses() {
     const initialComposite = read(renderer, composite.texture);
     const initialOptions = composite.getOptions();
 
-    composite.refresh({ giIntensity: 0, aoEnabled: false });
+    composite.refresh({ directIntensity: 0.5, giIntensity: 0, aoEnabled: false });
     const refreshedComposite = read(renderer, composite.texture);
     const refreshedOptions = composite.getOptions();
 
