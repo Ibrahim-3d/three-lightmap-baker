@@ -15,6 +15,11 @@ import {
 } from '../lightmap/Refinement';
 import { exportLightmap as exportWebGLLightmap, type ExportFormat } from '../utils/exportLightmap';
 import {
+  buildMaterialTextures as buildWebGLMaterialTextures,
+  type MaterialTextures,
+} from '../utils/MaterialTextures';
+import type { PerTriangleMaterials } from '../utils/GeometryUtils';
+import {
   getRendererBackend,
   type LightmapRendererAdapter,
   type LightmapRendererBackend,
@@ -42,6 +47,7 @@ export type LightmapPassBackend = {
     options: LightmapCompositeOptions,
   ): CompositeResult;
   createDownscale(source: Texture, targetResolution: number): DownscaleResult;
+  buildMaterialTextures(perTriangle: PerTriangleMaterials): MaterialTextures;
   runPostProcess(
     source: Texture,
     positions: Texture,
@@ -73,6 +79,7 @@ export function createWebGLPassBackend(renderer: WebGLRenderer): LightmapPassBac
       runWebGLComposite(renderer, inputs, resolution, options),
     createDownscale: (source, targetResolution) =>
       createWebGLDownscale(renderer, source, targetResolution),
+    buildMaterialTextures: (perTriangle) => buildWebGLMaterialTextures(renderer, perTriangle),
     runPostProcess: (source, positions, resolution, options, onProgress, controls) =>
       runWebGLPostProcess(renderer, source, positions, resolution, options, onProgress, controls),
     exportLightmap: (source, resolution, filename, format) =>
@@ -103,6 +110,8 @@ export type {
   CompositeResult,
   DownscaleResult,
   ExportFormat,
+  MaterialTextures,
+  PerTriangleMaterials,
   PostProcessOptions,
   PostProcessResult,
 };
