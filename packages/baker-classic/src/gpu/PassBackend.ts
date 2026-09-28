@@ -83,13 +83,13 @@ export function createWebGLPassBackend(renderer: WebGLRenderer): LightmapPassBac
 /**
  * Resolve the utility-pass implementation for the active renderer backend.
  *
- * WebGPU is intentionally rejected here until its pass implementation exists.
- * The higher-level baker already blocks unsupported WebGPU baking, but keeping
- * the guard at this seam prevents accidental partial-backend execution later.
+ * The async shape is intentional: the future WebGPU branch can dynamically
+ * import its TSL/WebGPU implementation only when selected, so WebGL users do
+ * not pay the WebGPU bundle cost. WebGPU is rejected until that module exists.
  */
-export function resolveLightmapPassBackend(
+export async function resolveLightmapPassBackend(
   adapter: LightmapRendererAdapter,
-): LightmapPassBackend {
+): Promise<LightmapPassBackend> {
   const backend = getRendererBackend(adapter);
   if (backend === 'webgl') return createWebGLPassBackend(adapter.renderer);
 
