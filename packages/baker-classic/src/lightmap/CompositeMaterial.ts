@@ -1,4 +1,14 @@
-import { GLSL3, ShaderMaterial, Texture } from 'three';
+import { NoBlending, type Texture } from 'three';
+import { NodeMaterial } from 'three/webgpu';
+import {
+  float,
+  mix,
+  positionGeometry,
+  texture,
+  uniform,
+  vec3,
+  vec4,
+} from 'three/tsl';
 
 export type CompositeMaterialOptions = {
   directTex: Texture;
@@ -18,86 +28,97 @@ export type CompositeMaterialOptions = {
 };
 
 /**
- * Full-screen GLSL3 quad shader that sums Direct*directIntensity + Indirect*giIntensity, multiplied by AO.
- * Writes to an internal float RT - NO tonemapping, stays linear.
- * Phase A.3: giIntensity and directIntensity are applied here at view time.
+ * Backend-portable TSL composite material.
+ *
+ * The same node graph can be compiled to GLSL by WebGLRenderer's r185
+ * compatibility node handler today and to WGSL by WebGPURenderer later.
  */
-export class CompositeMaterial extends ShaderMaterial {
-  // All inputs are uniforms; GLSL source is identical across instances. Renderer owns WebGLProgram.
-  override customProgramCacheKey(): string {
-    return 'CompositeMaterial|glsl3|single-out';
-  }
+export class CompositeMaterial extends NodeMaterial {
+  readonly directTextureNode;
+  readonly indirectTextureNode;
+  readonly aoTextureNode;
+  readonly directIntensityNode;
+  readonly giIntensityNode;
+  readonly aoEnabledNode;
+  readonly aoIntensityNode;
+  readonly aoExponentNode;
 
   constructor(opts: CompositeMaterialOptions) {
-    super({
-      glslVersion: GLSL3,
-      transparent: false,
-      depthWrite: false,
-      depthTest: false,
+    super();
 
-      uniforms: {
-        directTex: { value: opts.directTex },
-        indirectTex: { value: opts.indirectTex },
-        aoTex: { value: opts.aoTex },
-        directIntensity: { value: opts.directIntensity },
-        giIntensity: { value: opts.giIntensity },
-        aoEnabled: { value: opts.aoEnabled },
-        aoIntensity: { value: opts.aoIntensity },
-        aoExponent: { value: opts.aoExponent },
-      },
+    this.blending = NoBlending;
+    this.depthWrite = false;
+    this.depthTest = false;
+    this.fog = false;
+    this.toneMapped = false;
 
-      vertexShader: /* glsl */ `
-                out vec2 vUv;
-                void main() {
-                    gl_Position = vec4(position, 1.0);
-                    vUv = uv;
-                }
-            `,
+    this.directTextureNode = texture(opts.directTex);
+    this.indirectTextureNode = texture(opts.indirectTex);
+    this.aoTextureNode = texture(opts.aoTex);
+    this.directIntensityNode = uniform(opts.directIntensity);
+    this.giIntensityNode = uniform(opts.giIntensity);
+    this.aoEnabledNode = uniform(opts.aoEnabled ? 1 : 0);
+    this.aoIntensityNode = uniform(opts.aoIntensity);
+    this.aoExponentNode = uniform(opts.aoExponent);
 
-      fragmentShader: /* glsl */ `
-                precision highp float;
-                precision highp sampler2D;
+    const directSample = this.directTextureNode;
+    const indirectSample = this.indirectTextureNode;
+    const aoSample = this.aoTextureNode.rgb.clamp(0, 1);
 
-                uniform sampler2D directTex;
-                uniform sampler2D indirectTex;
-                uniform sampler2D aoTex;
-                uniform float directIntensity;
-                uniform float giIntensity;
-                uniform bool  aoEnabled;
-                uniform float aoIntensity;
-                uniform float aoExponent;
+    const direct = directSample.rgb.mul(this.directIntensityNode);
+    const indirect = indirectSample.rgb.mul(this.giIntensityNode);
 
-                in vec2 vUv;
-                out vec4 outColor;
+    const one = vec3(1);
+    const occlusion = one.sub(aoSample.pow(this.aoExponentNode));
+    const remappedAO = one.sub(occlusion.mul(this.aoIntensityNode).clamp(0, 1));
+    const ao = mix(one, remappedAO, this.aoEnabledNode);
 
-                void main() {
-                    vec4 directSample = texture(directTex,   vUv);
-                    vec4 indirectSample = texture(indirectTex, vUv);
-                    vec3 d = directSample.rgb * directIntensity;
-                    vec3 i = indirectSample.rgb * giIntensity;
-                    float lightmapMask = max(directSample.a, indirectSample.a);
+    const lit = direct.add(indirect).mul(ao);
+    const displayAdjusted = lit.max(0).pow(float(1 / 1.1));
+    const lightmapMask = directSample.a.max(indirectSample.a);
 
-                    // AO remap (view-time): aoTex stores raw normalized visibility
-                    // t ∈ [0,1]. Apply exponent + intensity here so tweaking those
-                    // sliders does not require re-baking AO.
-                    // At intensity=1, exponent=1 the formula collapses to identity.
-                    vec3 a = vec3(1.0);
-                    if (aoEnabled) {
-                        vec3 t = clamp(texture(aoTex, vUv).rgb, vec3(0.0), vec3(1.0));
-                        vec3 occ = vec3(1.0) - pow(t, vec3(aoExponent));
-                        a = vec3(1.0) - clamp(occ * aoIntensity, vec3(0.0), vec3(1.0));
-                    }
+    // Preserve the old full-screen NDC behavior and bypass camera transforms.
+    this.vertexNode = vec4(positionGeometry.xy, 0, 1);
+    this.fragmentNode = vec4(displayAdjusted, lightmapMask);
+  }
 
-                    vec3 lit = (d + i) * a;
+  setAOTexture(source: Texture): void {
+    this.aoTextureNode.value = source;
+  }
 
-                    // Subtle contrast boost / gamma correction
-                    // This prevents the "washed out" look of pure linear float textures.
-                    // Guard against negative inputs that would make pow() return NaN.
-                    lit = pow(max(lit, vec3(0.0)), vec3(1.0 / 1.1));
+  setDirectIntensity(value: number): void {
+    this.directIntensityNode.value = value;
+  }
 
-                    outColor = vec4(lit, lightmapMask);
-                }
-            `,
-    });
+  setGIIntensity(value: number): void {
+    this.giIntensityNode.value = value;
+  }
+
+  setAOEnabled(value: boolean): void {
+    this.aoEnabledNode.value = value ? 1 : 0;
+  }
+
+  setAOIntensity(value: number): void {
+    this.aoIntensityNode.value = value;
+  }
+
+  setAOExponent(value: number): void {
+    this.aoExponentNode.value = value;
+  }
+
+  getOptions(): {
+    directIntensity: number;
+    giIntensity: number;
+    aoEnabled: boolean;
+    aoIntensity: number;
+    aoExponent: number;
+  } {
+    return {
+      directIntensity: Number(this.directIntensityNode.value),
+      giIntensity: Number(this.giIntensityNode.value),
+      aoEnabled: Number(this.aoEnabledNode.value) > 0.5,
+      aoIntensity: Number(this.aoIntensityNode.value),
+      aoExponent: Number(this.aoExponentNode.value),
+    };
   }
 }
