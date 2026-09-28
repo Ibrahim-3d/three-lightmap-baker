@@ -14,10 +14,11 @@ All notable public changes to `lightmap-baker` are documented here.
 - Renderer adapters now identify their backend and own WebGL bake validation,
   GPU identity/limits, loss monitoring and explicit queue completion. The
   shipping bake path remains WebGL-only and preserves existing output behavior.
-- Composite, refinement, downscale and export are now invoked through an
-  internal utility-pass backend. The current implementation still delegates to
-  the unchanged WebGL passes, creating a WebGPU extension point without adding
-  WebGPU/TSL runtime weight to existing WebGL users.
+- Composite, refinement, downscale, material-texture atlas construction and
+  export are now invoked through an internal utility-pass backend. The current
+  implementation still delegates to the unchanged WebGL passes, creating a
+  WebGPU extension point without adding WebGPU/TSL runtime weight to existing
+  WebGL users.
 
 ## lightmap-baker v1.1.0 — 2026-09-27
 
