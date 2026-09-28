@@ -8,6 +8,8 @@ All notable public changes to `lightmap-baker` are documented here.
 
 - Runtime capability reporting now exposes WebGPU availability separately from
   the backend currently selected for baking.
+- Experimental TSL/WebGPURenderer portable blit/downscale primitives for the W2
+  migration track. These are not used by the shipping WebGL bake path yet.
 
 ### Changed
 
