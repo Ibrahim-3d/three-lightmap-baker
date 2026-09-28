@@ -48,21 +48,18 @@ test('portable node passes preserve composite math and live updates', async ({ p
     aoExponent: 1,
   });
 
-  const expectedRefresh = [1, 0.5, 0.25].map((v) => Math.pow(v, 1 / 1.1));
+  const expectedRefresh = [0.5, 0.25, 0.125].map((v) => Math.pow(v, 1 / 1.1));
   expect(r.refreshedComposite[0]).toBeCloseTo(expectedRefresh[0]!, 3);
   expect(r.refreshedComposite[1]).toBeCloseTo(expectedRefresh[1]!, 3);
   expect(r.refreshedComposite[2]).toBeCloseTo(expectedRefresh[2]!, 3);
+  expect(r.refreshedOptions.directIntensity).toBe(0.5);
   expect(r.refreshedOptions.giIntensity).toBe(0);
   expect(r.refreshedOptions.aoEnabled).toBe(false);
 
-  expect(r.downscaleA.slice(0, 4)).toEqual(
-    expect.arrayContaining([
-      expect.closeTo(0.25, 3),
-      expect.closeTo(0.5, 3),
-      expect.closeTo(0.75, 3),
-      expect.closeTo(1, 3),
-    ]),
-  );
+  expect(r.downscaleA[0]).toBeCloseTo(0.25, 3);
+  expect(r.downscaleA[1]).toBeCloseTo(0.5, 3);
+  expect(r.downscaleA[2]).toBeCloseTo(0.75, 3);
+  expect(r.downscaleA[3]).toBeCloseTo(1, 3);
   expect(r.downscaleB[0]).toBeCloseTo(0.75, 3);
   expect(r.downscaleB[1]).toBeCloseTo(0.25, 3);
   expect(r.downscaleB[2]).toBeCloseTo(0.5, 3);
