@@ -13,10 +13,7 @@ import {
   type PostProcessOptions,
   type PostProcessResult,
 } from '../lightmap/Refinement';
-import {
-  exportLightmap as exportWebGLLightmap,
-  type ExportFormat,
-} from '../utils/exportLightmap';
+import { exportLightmap as exportWebGLLightmap, type ExportFormat } from '../utils/exportLightmap';
 import {
   getRendererBackend,
   type LightmapRendererAdapter,
@@ -77,15 +74,7 @@ export function createWebGLPassBackend(renderer: WebGLRenderer): LightmapPassBac
     createDownscale: (source, targetResolution) =>
       createWebGLDownscale(renderer, source, targetResolution),
     runPostProcess: (source, positions, resolution, options, onProgress, controls) =>
-      runWebGLPostProcess(
-        renderer,
-        source,
-        positions,
-        resolution,
-        options,
-        onProgress,
-        controls,
-      ),
+      runWebGLPostProcess(renderer, source, positions, resolution, options, onProgress, controls),
     exportLightmap: (source, resolution, filename, format) =>
       exportWebGLLightmap(renderer, source, resolution, filename, format),
   };
