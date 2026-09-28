@@ -6,13 +6,13 @@ import { MeshBVH } from 'three-mesh-bvh';
 import { collectLightsFromScene, type PackedLight } from '../lightmap';
 import { generateAtlas } from '../atlas/generateAtlas';
 import {
-  buildMaterialTextures,
   extractPerTriangleMaterials,
   mergeGeometry,
   partitionByDensity,
   partitionByResolution,
 } from '../utils';
 import { resolveDensityTexelsPerMeter } from '../utils/Packing';
+import type { MaterialTextures } from '../utils/MaterialTextures';
 import type { BakeErrorPhase } from '../errors';
 import {
   LightmapBakeResult,
@@ -140,7 +140,7 @@ export async function runBakePipeline(args: BakePipelineArgs): Promise<LightmapB
   hooks.onProgress?.('geometry', 0);
 
   // BVH is built from ALL meshes (including excluded) so they cast shadows / contribute GI.
-  let matTex: ReturnType<typeof buildMaterialTextures> | undefined;
+  let matTex: MaterialTextures | undefined;
   const groupResults: GroupInternals[] = [];
   let returned = false;
   const merged = mergeGeometry(allMeshes);
@@ -149,7 +149,7 @@ export async function runBakePipeline(args: BakePipelineArgs): Promise<LightmapB
     hooks.onProgress?.('geometry', 0.5);
 
     const perTri = extractPerTriangleMaterials(merged, allMeshes);
-    matTex = buildMaterialTextures(renderer, perTri);
+    matTex = passBackend.buildMaterialTextures(perTri);
     hooks.onProgress?.('geometry', 1);
     checkAbort('geometry');
     const tG1 = performance.now();
