@@ -9,7 +9,6 @@ import {
   WebGLRenderTarget,
 } from 'three';
 import { CompositeMaterial } from './CompositeMaterial';
-import { ensureWebGLNodeMaterialSupport } from '../gpu/NodePassSupport';
 
 export type CompositeOverrides = Partial<{
   directIntensity: number;
@@ -68,8 +67,6 @@ export const runComposite = (
   // ~65k dynamic range - plenty for HDR composite output.
   // No mipmaps: composite refresh runs per-RAF during bake; chain regen on
   // 1024² is wasted GPU.
-  ensureWebGLNodeMaterialSupport(renderer);
-
   const rt = new WebGLRenderTarget(resolution, resolution, {
     type: HalfFloatType,
     minFilter: LinearFilter,
@@ -91,14 +88,20 @@ export const runComposite = (
   const quad = new Mesh(new PlaneGeometry(2, 2), mat);
   const cam = new OrthographicCamera();
 
+  // SAFETY: uniforms are constructed in CompositeMaterial; presence is invariant.
+  const u = mat.uniforms;
+
   const refresh = (overrides?: CompositeOverrides): void => {
-    if (overrides?.directIntensity !== undefined)
-      mat.setDirectIntensity(overrides.directIntensity);
-    if (overrides?.giIntensity !== undefined) mat.setGIIntensity(overrides.giIntensity);
-    if (overrides?.aoEnabled !== undefined) mat.setAOEnabled(overrides.aoEnabled);
-    if (overrides?.aoIntensity !== undefined) mat.setAOIntensity(overrides.aoIntensity);
-    if (overrides?.aoExponent !== undefined) mat.setAOExponent(overrides.aoExponent);
-    if (overrides?.aoTex !== undefined) mat.setAOTexture(overrides.aoTex);
+    if (overrides?.directIntensity !== undefined && u.directIntensity)
+      u.directIntensity.value = overrides.directIntensity;
+    if (overrides?.giIntensity !== undefined && u.giIntensity)
+      u.giIntensity.value = overrides.giIntensity;
+    if (overrides?.aoEnabled !== undefined && u.aoEnabled) u.aoEnabled.value = overrides.aoEnabled;
+    if (overrides?.aoIntensity !== undefined && u.aoIntensity)
+      u.aoIntensity.value = overrides.aoIntensity;
+    if (overrides?.aoExponent !== undefined && u.aoExponent)
+      u.aoExponent.value = overrides.aoExponent;
+    if (overrides?.aoTex !== undefined && u.aoTex) u.aoTex.value = overrides.aoTex;
 
     const prev = renderer.getRenderTarget();
     const autoClear = renderer.autoClear;
@@ -126,7 +129,13 @@ export const runComposite = (
   return {
     texture: rt.texture,
     refresh,
-    getOptions: () => mat.getOptions(),
+    getOptions: () => ({
+      directIntensity: u.directIntensity?.value as number,
+      giIntensity: u.giIntensity?.value as number,
+      aoEnabled: u.aoEnabled?.value as boolean,
+      aoIntensity: u.aoIntensity?.value as number,
+      aoExponent: u.aoExponent?.value as number,
+    }),
     dispose: () => {
       rt.dispose();
       mat.dispose();
