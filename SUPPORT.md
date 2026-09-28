@@ -45,7 +45,6 @@ Check:
 - [Getting Started](./docs/GETTING_STARTED.md)
 - [API Status](./docs/API_STATUS.md)
 - [Light Probes](./docs/LIGHT_PROBES.md)
-- [Roadmap](./docs/ROADMAP.md)
 - [Changelog](./CHANGELOG.md)
 
 The live demo is useful for determining whether a problem is package-specific or

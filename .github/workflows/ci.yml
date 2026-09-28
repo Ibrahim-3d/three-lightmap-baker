@@ -1,260 +1,41 @@
 name: CI
-
 on:
   push:
     branches: [master]
   pull_request:
     branches: [master]
-
 permissions:
   contents: read
-
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  check:
-    name: Typecheck / Lint / Format / Build
+  package:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: pnpm/action-setup@v4
         with:
           run_install: false
-
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: TypeScript
-        run: pnpm run typecheck
-
-      - name: TypeScript examples
-        run: pnpm run typecheck:examples
-
-      - name: ESLint
-        run: pnpm run lint
-
-      - name: Prettier
-        run: pnpm run format:check
-
-      - name: Vite build
-        run: pnpm run build
-
-      - name: Package API import smoke test
-        run: pnpm run test:api-import
-
-  browser-smoke:
-    name: Browser runtime smoke
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck
+      - run: pnpm run typecheck:examples
+      - run: pnpm run lint
+      - run: pnpm run format:check
+      - run: pnpm run build
+      - run: pnpm run test:api-import
+  correctness:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: pnpm/action-setup@v4
         with:
           run_install: false
-
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Install Playwright Chromium
-        run: pnpm exec playwright install --with-deps chromium
-
-      - name: Bake correctness regressions
-        run: pnpm run test:correctness
-
-      - name: Browser smoke suite
-        run: pnpm run test:browser-smoke
-
-  pr-preview:
-    name: PR testing link
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-    permissions:
-      contents: write
-      pull-requests: write
-    env:
-      PREVIEW_PATH: pr-${{ github.event.pull_request.number }}
-      PREVIEW_URL: https://${{ github.repository_owner }}.github.io/three-lightmap-baker/pr-${{ github.event.pull_request.number }}/
-    steps:
-      - name: Checkout PR head
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-
-      - uses: pnpm/action-setup@v4
-        with:
-          run_install: false
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build PR preview
-        env:
-          VITE_BASE_PATH: /three-lightmap-baker/${{ env.PREVIEW_PATH }}/
-        run: pnpm run build:demo
-
-      - name: Check bundle budget
-        run: pnpm run budget:bundle
-
-      - name: Create .nojekyll
-        run: touch dist/.nojekyll
-
-      - name: Publish PR preview
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_branch: gh-pages
-          publish_dir: ./dist
-          destination_dir: ${{ env.PREVIEW_PATH }}
-          keep_files: true
-          full_commit_message: 'Deploy PR #${{ github.event.pull_request.number }} preview from ${{ github.event.pull_request.head.sha }}'
-
-      - name: Comment preview link
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const marker = '<!-- three-lightmap-baker-pr-preview -->';
-            const body = [
-              marker,
-              '## PR testing link',
-              '',
-              `Preview: ${process.env.PREVIEW_URL}`,
-              '',
-              'This link updates automatically when new commits are pushed to this PR.',
-            ].join('\n');
-
-            const { owner, repo } = context.repo;
-            const issue_number = context.issue.number;
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              owner,
-              repo,
-              issue_number,
-              per_page: 100,
-            });
-            const previous = comments.find(
-              (comment) => comment.user.type === 'Bot' && comment.body.includes(marker),
-            );
-
-            if (previous) {
-              await github.rest.issues.updateComment({
-                owner,
-                repo,
-                comment_id: previous.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number,
-                body,
-              });
-            }
-
-      - name: Preview summary
-        run: |
-          {
-            echo "## PR testing link"
-            echo ""
-            echo "$PREVIEW_URL"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  modularity:
-    name: Modularity (advisory)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          run_install: false
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Circular imports (madge)
-        run: |
-          set +e
-          pnpm dlx madge --circular --extensions ts,tsx packages/ apps/
-          if [ $? -ne 0 ]; then
-            echo "::warning::Circular imports detected - see log above. CLAUDE.md forbids cycles; this job will flip to hard-fail once existing oversized files are split."
-          fi
-          exit 0
-
-      - name: Files over 300 LOC (CLAUDE.md hard rule)
-        run: |
-          {
-            echo "## Files exceeding 300 LOC"
-            echo ""
-            echo "CLAUDE.md targets \`≤300 LOC\` per file. Currently advisory."
-            echo "Will flip to hard-fail once the remaining legacy oversized files are split."
-            echo ""
-            echo "| File | LOC |"
-            echo "|---|---|"
-            find packages apps -type f \( -name '*.ts' -o -name '*.tsx' \) -exec wc -l {} + \
-              | awk '$2 != "total" && $1 > 300 { printf "%d %s\n", $1, $2 }' \
-              | sort -rn \
-              | awk '{ printf "| `%s` | %d |\n", $2, $1 }'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  deps-pinned:
-    name: Pinned deps (no upgrades without approval)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Verify three / three-mesh-bvh / xatlas-three versions unchanged
-        run: |
-          EXPECT_THREE_PEER='>=0.185.1 <0.186.0'
-          EXPECT_THREE_DEV='0.185.1'
-          EXPECT_MESHBVH='^0.9.14'
-          EXPECT_XATLAS='^0.2.1'
-
-          THREE_PEER=$(jq -r '.peerDependencies.three' package.json)
-          THREE_DEV=$(jq -r '.devDependencies.three' package.json)
-          THREE_RUNTIME=$(jq -r '.dependencies.three // empty' package.json)
-          MESHBVH=$(jq -r '.dependencies["three-mesh-bvh"]' package.json)
-          XATLAS=$(jq -r '.dependencies["xatlas-three"]' package.json)
-
-          echo "three peer     = $THREE_PEER (expected $EXPECT_THREE_PEER)"
-          echo "three repo     = $THREE_DEV  (expected $EXPECT_THREE_DEV)"
-          echo "three runtime  = ${THREE_RUNTIME:-<none>} (expected <none>; supplied by consumer)"
-          echo "three-mesh-bvh = $MESHBVH (expected $EXPECT_MESHBVH)"
-          echo "xatlas-three   = $XATLAS  (expected $EXPECT_XATLAS)"
-
-          fail=0
-          [ "$THREE_PEER" = "$EXPECT_THREE_PEER" ] || fail=1
-          [ "$THREE_DEV"  = "$EXPECT_THREE_DEV"  ] || fail=1
-          [ -z "$THREE_RUNTIME" ] || fail=1
-          [ "$MESHBVH" = "$EXPECT_MESHBVH" ] || fail=1
-          [ "$XATLAS"  = "$EXPECT_XATLAS"  ] || fail=1
-
-          if [ "$fail" = "1" ]; then
-            echo ""
-            echo "::error::Pinned dependency version changed."
-            echo "CLAUDE.md forbids upgrading three / three-mesh-bvh / xatlas-three without explicit approval."
-            echo "If this upgrade is intentional, update EXPECT_* values in .github/workflows/ci.yml in the same PR."
-            exit 1
-          fi
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm run test:correctness

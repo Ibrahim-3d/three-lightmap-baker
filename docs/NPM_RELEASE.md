@@ -85,7 +85,7 @@ Confirm the tarball contains only intended public material, especially:
 - `docs/GETTING_STARTED.md`;
 - `docs/API_STATUS.md`;
 - `docs/LIGHT_PROBES.md`;
-- `docs/ROADMAP.md`.
+- `docs/architecture.md`.
 
 Confirm the package does not ship playground/editor source or Preact UI runtime dependencies.
 

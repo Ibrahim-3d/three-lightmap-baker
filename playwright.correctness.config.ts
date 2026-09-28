@@ -25,7 +25,7 @@ export default defineConfig({
   },
   webServer: {
     command: 'pnpm exec vite --force --host 127.0.0.1',
-    url: 'http://localhost:5173/three-lightmap-baker/index.html',
+    url: 'http://localhost:5173/tests/browser/correctness.html',
     reuseExistingServer: true,
     timeout: 60000,
   },
