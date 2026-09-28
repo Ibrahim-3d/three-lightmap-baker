@@ -266,6 +266,16 @@ Exit condition:
 
 ### W2 — portable utility passes
 
+Implementation note (2026-09-28): an initial experiment made the current
+WebGL path execute TSL/node materials through Three r185's
+`WebGLNodesHandler`. It worked as a migration proof, but added roughly 65 KiB
+gzip to the default demo bundle before WebGPU provided user value. That approach
+was rejected rather than raising the bundle budget.
+
+W2 therefore uses an internal `LightmapPassBackend` seam: existing WebGL passes
+stay lean and unchanged, while a future WebGPU pass implementation can be
+selected/lazy-loaded only when that backend is active.
+
 Port the low-risk passes first:
 
 1. downscale;
