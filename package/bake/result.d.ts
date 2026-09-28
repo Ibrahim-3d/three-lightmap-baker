@@ -1,15 +1,12 @@
-import { Mesh, Texture } from 'three';
+import { Mesh, Texture, WebGLRenderer } from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
 import { type PostProcessOptions } from '../lightmap';
-import type { LightmapPassBackend } from '../gpu/PassBackend';
-import type { ExportFormat } from '../utils/exportLightmap';
+import { type ExportFormat } from '../utils/exportLightmap';
 import type { BakeHooks, BakeStats, BakeGroupView } from './types';
 import type { GroupInternals } from './internals';
-import { type LightmapRendererAdapter } from '../rendererAdapter';
 /** Result of a successful bake. Owns the GPU resources - call `dispose()` to release. */
 export declare class LightmapBakeResult {
-    private readonly rendererAdapter;
-    private readonly passBackend;
+    private readonly renderer;
     private readonly meshLightmaps;
     private readonly meshResolutions;
     readonly stats: BakeStats;
@@ -17,7 +14,7 @@ export declare class LightmapBakeResult {
     private disposed;
     private aoJob;
     private persistentMaterialMount;
-    constructor(rendererAdapter: LightmapRendererAdapter, passBackend: LightmapPassBackend, meshLightmaps: Map<Mesh, Texture>, meshResolutions: Map<Mesh, number>, stats: BakeStats, internals: {
+    constructor(renderer: WebGLRenderer, meshLightmaps: Map<Mesh, Texture>, meshResolutions: Map<Mesh, number>, stats: BakeStats, internals: {
         groups: GroupInternals[];
         bvh: MeshBVH;
         refinementOptions: PostProcessOptions;
@@ -25,7 +22,6 @@ export declare class LightmapBakeResult {
         matTexDispose: () => void;
         sceneDispose?: () => void;
     });
-    private get renderer();
     /**
      * Returns the per-mesh lightmap textures. Meshes in the same resolution group
      * share a texture. Excluded meshes are not present in the map.

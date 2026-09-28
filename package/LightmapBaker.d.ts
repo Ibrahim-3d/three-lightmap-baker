@@ -4,7 +4,7 @@ import type { BakeHooks, LightmapBakerOptions } from './bake/types';
 import { type LightmapRendererAdapter } from './rendererAdapter';
 export { LightmapBakeResult } from './bake/result';
 export type { BakePhase, BakeFrameInfo, BakeHooks, BakeStats, LightmapBakerOptions, TimeoutProtectionOptions, LightOptions, PackedLight, GIOptions, AOOptions, BakeGroupView, } from './bake/types';
-export type { LightmapContextLossTarget, LightmapRendererAdapter, LightmapRendererAdapterOptions, LightmapRendererBackend, } from './rendererAdapter';
+export type { LightmapContextLossTarget, LightmapRendererAdapter, LightmapRendererAdapterOptions, } from './rendererAdapter';
 export type LightmapBakerInitOptions = LightmapBakerOptions & {
     /**
      * Optional renderer for clean constructor usage:
@@ -35,10 +35,10 @@ export declare class LightmapBaker {
      * resources - call `result.dispose()` when done.
      *
      * This method owns three concerns the pipeline can't:
-     *   1. Scene preflight plus renderer-backend validation before pipeline setup.
+     *   1. Mesh collection + EXT validation (must fail fast before pipeline setup).
      *   2. GPU-capabilities-driven timeout-protection resolution (caller's
      *      `opts.timeoutProtection` overrides device-detected defaults).
-     *   3. Backend loss-guard install + teardown (must release the listener even
+     *   3. Context-loss guard install + teardown (must release the listener even
      *      if the pipeline throws - `try/finally` is the only safe shape).
      *
      * Everything else (partition → unwrap → BVH → lights → groups → drain →
