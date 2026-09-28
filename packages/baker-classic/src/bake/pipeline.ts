@@ -260,14 +260,14 @@ export async function runBakePipeline(args: BakePipelineArgs): Promise<LightmapB
       meshResolutions,
       stats,
       {
-      groups: groupResults,
-      bvh,
-      refinementOptions: opts.refinementOptions,
-      denoise: opts.denoise,
-      matTexDispose: () => {
-        ownedMatTex.dispose();
-        merged.dispose();
-      },
+        groups: groupResults,
+        bvh,
+        refinementOptions: opts.refinementOptions,
+        denoise: opts.denoise,
+        matTexDispose: () => {
+          ownedMatTex.dispose();
+          merged.dispose();
+        },
         sceneDispose: args.sceneDispose,
       },
     );
