@@ -11,19 +11,17 @@
  */
 
 import {
+  GLSL3,
   HalfFloatType,
   LinearFilter,
   Mesh,
-  NoBlending,
   OrthographicCamera,
   PlaneGeometry,
+  ShaderMaterial,
   Texture,
   WebGLRenderer,
   WebGLRenderTarget,
 } from 'three';
-import { NodeMaterial } from 'three/webgpu';
-import { positionGeometry, texture, vec4 } from 'three/tsl';
-import { ensureWebGLNodeMaterialSupport } from '../gpu/NodePassSupport';
 
 export type DownscaleResult = {
   /** Stable target-resolution texture ref. Bind to `mesh.lightMap`. */
@@ -36,25 +34,33 @@ export type DownscaleResult = {
   dispose: () => void;
 };
 
-/** Backend-portable passthrough node used for supersample resolution reduction. */
-class PassthroughMaterial extends NodeMaterial {
-  readonly sourceNode;
-
+class PassthroughMaterial extends ShaderMaterial {
   constructor(source: Texture) {
-    super();
-    this.blending = NoBlending;
-    this.depthTest = false;
-    this.depthWrite = false;
-    this.fog = false;
-    this.toneMapped = false;
-
-    this.sourceNode = texture(source);
-    this.vertexNode = vec4(positionGeometry.xy, 0, 1);
-    this.fragmentNode = this.sourceNode;
+    super({
+      glslVersion: GLSL3,
+      uniforms: { tSource: { value: source } },
+      vertexShader: `
+        out vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = vec4(position.xy, 0.0, 1.0);
+        }
+      `,
+      fragmentShader: `
+        precision highp float;
+        in vec2 vUv;
+        uniform sampler2D tSource;
+        out vec4 fragColor;
+        void main() {
+          fragColor = texture(tSource, vUv);
+        }
+      `,
+    });
   }
 
-  setSource(source: Texture): void {
-    this.sourceNode.value = source;
+  // Shared program cache key - passthrough GLSL is invariant across instances.
+  override customProgramCacheKey(): string {
+    return 'DownscaleMaterial|glsl3|single-out';
   }
 }
 
@@ -65,8 +71,6 @@ export function createDownscale(
   source: Texture,
   targetResolution: number,
 ): DownscaleResult {
-  ensureWebGLNodeMaterialSupport(renderer);
-
   const target = new WebGLRenderTarget(targetResolution, targetResolution, {
     type: HalfFloatType,
     minFilter: LinearFilter,
@@ -88,7 +92,9 @@ export function createDownscale(
   };
 
   const setSource = (s: Texture): void => {
-    mat.setSource(s);
+    const u = mat.uniforms.tSource;
+    if (!u) throw new Error('[baker] DownscaleMaterial missing tSource uniform');
+    u.value = s;
   };
 
   // Initial blit so target has valid contents on return.
