@@ -3510,8 +3510,24 @@ function or(e, t, n) {
 	};
 }
 //#endregion
+//#region packages/baker-classic/src/gpu/PassBackend.ts
+function sr(e) {
+	return {
+		backend: "webgl",
+		createComposite: (t, n, r) => Ge(e, t, n, r),
+		createDownscale: (t, n) => or(e, t, n),
+		runPostProcess: (t, n, r, i, a, o) => Je(e, t, n, r, i, a, o),
+		exportLightmap: (t, n, r, i) => xt(e, t, n, r, i)
+	};
+}
+async function cr(e) {
+	let t = $(e);
+	if (t === "webgl") return sr(e.renderer);
+	throw Error(`${t} utility-pass backend is not implemented yet`);
+}
+//#endregion
 //#region packages/baker-classic/src/utils/Partition.ts
-function sr(e, t, n) {
+function lr(e, t, n) {
 	let r = [], i = /* @__PURE__ */ new Map();
 	for (let a of e) {
 		let e = t[a.uuid] ?? {};
@@ -3528,7 +3544,7 @@ function sr(e, t, n) {
 		resolution: n
 	};
 }
-function cr(e, t, n, r) {
+function ur(e, t, n, r) {
 	let i = [], a = [];
 	for (let n of e) t[n.uuid]?.exclude === !0 ? i.push(n) : a.push(n);
 	let o = {};
@@ -3561,8 +3577,9 @@ function cr(e, t, n, r) {
 }
 //#endregion
 //#region packages/baker-classic/src/bake/result.ts
-var lr = class {
+var dr = class {
 	rendererAdapter;
+	passBackend;
 	meshLightmaps;
 	meshResolutions;
 	stats;
@@ -3570,8 +3587,8 @@ var lr = class {
 	disposed = !1;
 	aoJob = null;
 	persistentMaterialMount = null;
-	constructor(e, t, n, r, i) {
-		this.rendererAdapter = e, this.meshLightmaps = t, this.meshResolutions = n, this.stats = r, this.internals = i;
+	constructor(e, t, n, r, i, a) {
+		this.rendererAdapter = e, this.passBackend = t, this.meshLightmaps = n, this.meshResolutions = r, this.stats = i, this.internals = a;
 	}
 	get renderer() {
 		return this.rendererAdapter.renderer;
@@ -3623,7 +3640,7 @@ var lr = class {
 	}
 	apply() {
 		if (this.disposed) throw Error("Bake result is disposed");
-		if (this.persistentMaterialMount && ur(this.persistentMaterialMount.lightmaps, this.meshLightmaps)) return;
+		if (this.persistentMaterialMount && fr(this.persistentMaterialMount.lightmaps, this.meshLightmaps)) return;
 		this.persistentMaterialMount?.restore(), this.persistentMaterialMount = null;
 		let e = new Map(this.meshLightmaps), t = en([...e].map(([e, t]) => ({
 			mesh: e,
@@ -3640,7 +3657,7 @@ var lr = class {
 			let t = i[e];
 			if (!t) throw Error(`[baker] missing bake group ${e}`);
 			let a = t.downscale?.texture ?? t.refinement?.texture ?? t.composite.texture, o = i.length > 1 ? `${r}_group${e}` : r;
-			await xt(this.renderer, a, t.resolution, o, n);
+			await this.passBackend.exportLightmap(a, t.resolution, o, n);
 		}
 	}
 	dispose() {
@@ -3677,7 +3694,7 @@ var lr = class {
 					targetSamples: e.targetSamples
 				}), s;
 				try {
-					s = Ge(this.renderer, {
+					s = this.passBackend.createComposite({
 						direct: i.lightmapper.textures.direct,
 						indirect: i.lightmapper.textures.indirect,
 						ao: o.texture
@@ -3707,10 +3724,10 @@ var lr = class {
 						indirectTexture: i.lightmapper.textures.indirect,
 						aoTexture: o.texture
 					}), n.done;
-				}, n.signal), i.refinement && (l.refinement = await Je(this.renderer, s.texture, i.positionTex, i.internalResolution, this.internals.refinementOptions, void 0, {
+				}, n.signal), i.refinement && (l.refinement = await this.passBackend.runPostProcess(s.texture, i.positionTex, i.internalResolution, this.internals.refinementOptions, void 0, {
 					signal: n.signal,
 					normals: i.normalTex
-				})), i.downscale && (l.downscale = or(this.renderer, l.refinement?.texture ?? s.texture, i.resolution));
+				})), i.downscale && (l.downscale = this.passBackend.createDownscale(l.refinement?.texture ?? s.texture, i.resolution));
 			}
 			if (n.signal.aborted || this.disposed) throw n.signal.reason ?? H();
 			for (let e of c) {
@@ -3726,15 +3743,15 @@ var lr = class {
 		}
 	}
 };
-function ur(e, t) {
+function fr(e, t) {
 	if (e.size !== t.size) return !1;
 	for (let [n, r] of e) if (t.get(n) !== r) return !1;
 	return !0;
 }
 //#endregion
 //#region packages/baker-classic/src/bake/groups.ts
-var dr = 64;
-function fr(e, t, n, r, i, a) {
+var pr = 64;
+function mr(e, t, n, r, i, a) {
 	return {
 		resolution: t,
 		casts: e.castsPerFrame,
@@ -3758,7 +3775,7 @@ function fr(e, t, n, r, i, a) {
 		tileSize: a.initialTileSize
 	};
 }
-function pr(e, t, n) {
+function hr(e, t, n) {
 	return {
 		resolution: t,
 		aoSamples: e.ao.samples,
@@ -3767,62 +3784,62 @@ function pr(e, t, n) {
 		tileSize: n.initialTileSize
 	};
 }
-async function mr(e, t, n, r, i, a, o, s) {
-	let { renderer: c, opts: l, bvh: u, sceneLights: d, skyColor: f, matTex: p, tp: m, ctxState: h } = e;
+async function gr(e, t, n, r, i, a, o, s) {
+	let { renderer: c, opts: l, bvh: u, sceneLights: d, skyColor: f, matTex: p, tp: m, ctxState: h, passBackend: g } = e;
 	o.onProgress?.("bake", t / n), s("bake");
-	let g = null, _ = null, v = null, y = null, b = null, x = null, S = !1;
+	let _ = null, v = null, y = null, b = null, x = null, S = null, C = !1;
 	try {
-		g = Ne(c, r, a, !0);
-		let e = fr(l, a, d, f, p, m), C = pr(l, a, m);
-		_ = Ve(c, g.positionTexture, g.normalTexture, u, e), v = Ue(c, g.positionTexture, g.normalTexture, u, C), y = Ge(c, {
-			direct: _.textures.direct,
-			indirect: _.textures.indirect,
-			ao: v.texture
+		_ = Ne(c, r, a, !0);
+		let e = mr(l, a, d, f, p, m), w = hr(l, a, m);
+		v = Ve(c, _.positionTexture, _.normalTexture, u, e), y = Ue(c, _.positionTexture, _.normalTexture, u, w), b = g.createComposite({
+			direct: v.textures.direct,
+			indirect: v.textures.indirect,
+			ao: y.texture
 		}, a, {
 			directIntensity: 1,
 			giIntensity: l.gi.intensity,
 			aoEnabled: l.ao.enabled,
 			aoIntensity: l.ao.intensity,
 			aoExponent: l.ao.exponent
-		}), await gr(_, v, y, l.samples, o, h, m, t, n, (e) => o.onProgress?.("bake", (t + e) / n)), s("bake"), (l.denoise || l.refinementOptions.dilationIterations > 0) && (b = await Je(c, y.texture, g.positionTexture, a, l.refinementOptions, void 0, {
+		}), await vr(v, y, b, l.samples, o, h, m, t, n, (e) => o.onProgress?.("bake", (t + e) / n)), s("bake"), (l.denoise || l.refinementOptions.dilationIterations > 0) && (x = await g.runPostProcess(b.texture, _.positionTexture, a, l.refinementOptions, void 0, {
 			signal: o.signal,
-			normals: g.normalTexture
+			normals: _.normalTexture
 		}));
-		let w = b?.texture ?? y.texture;
-		x = l.superSample > 1 ? or(c, w, i) : null;
-		let T = x?.texture ?? w, E = g;
-		if (!E) throw new V("atlas render did not complete", "bake");
-		return s("bake"), S = !0, {
+		let T = x?.texture ?? b.texture;
+		S = l.superSample > 1 ? g.createDownscale(T, i) : null;
+		let E = S?.texture ?? T, D = _;
+		if (!D) throw new V("atlas render did not complete", "bake");
+		return s("bake"), C = !0, {
 			group: {
-				lightmapper: _,
-				aoMapper: v,
-				composite: y,
-				refinement: b,
-				atlasDispose: () => E.dispose(),
+				lightmapper: v,
+				aoMapper: y,
+				composite: b,
+				refinement: x,
+				atlasDispose: () => D.dispose(),
 				resolution: i,
 				internalResolution: a,
-				downscale: x,
+				downscale: S,
 				meshes: r,
-				positionTex: E.positionTexture,
-				normalTex: E.normalTexture,
-				surfaceAlbedoTex: E.surfaceAlbedoTexture
+				positionTex: D.positionTexture,
+				normalTex: D.normalTexture,
+				surfaceAlbedoTex: D.surfaceAlbedoTexture
 			},
-			finalTex: T
+			finalTex: E
 		};
 	} finally {
-		S || (x?.dispose(), b?.dispose(), y?.dispose(), v?.dispose(), _?.dispose(), g?.dispose());
+		C || (S?.dispose(), x?.dispose(), b?.dispose(), y?.dispose(), v?.dispose(), _?.dispose());
 	}
 }
-function hr(e, t, n) {
-	return e.length < 4 ? t : e.slice(-4).filter((e) => e > n.maxFrameMs * 1.5).length >= 3 ? Math.max(dr, t >> 1) : t;
+function _r(e, t, n) {
+	return e.length < 4 ? t : e.slice(-4).filter((e) => e > n.maxFrameMs * 1.5).length >= 3 ? Math.max(pr, t >> 1) : t;
 }
-function gr(e, t, n, r, i, a, o, s, c, l) {
+function vr(e, t, n, r, i, a, o, s, c, l) {
 	let u = [], d = performance.now(), f = o.initialTileSize;
 	return U(() => {
 		if (a.lost) throw new V(a.message, "context-loss");
 		let p = performance.now();
 		if (u.push(p - d), u.length > 8 && u.shift(), d = p, o.autoAdapt) {
-			let n = hr(u, f, o);
+			let n = _r(u, f, o);
 			n !== f && (console.warn(`[baker] adaptive throttle: tileSize ${f} → ${n}`), f = n, e.setTileSize(f), t.setTileSize(f), u.length = 0);
 		}
 		let m = e.renderTiled(o.maxFrameMs), h = t.renderTiled(o.maxFrameMs), g = Math.min(m.samples, h.samples);
@@ -3846,91 +3863,92 @@ function gr(e, t, n, r, i, a, o, s, c, l) {
 }
 //#endregion
 //#region packages/baker-classic/src/bake/pipeline.ts
-async function _r(e) {
-	let { renderer: t, rendererAdapter: n, opts: r, scene: i, allMeshes: a } = e, { hooks: o, t0: s, tp: c, ctxState: l, checkAbort: u } = e, d = r.texelsPerMeter, f = {};
-	for (let [e, t] of Object.entries(r.perMesh)) t.density !== void 0 && (f[e] = t.density);
-	let p = d > 0 ? le(a.filter((e) => r.perMesh[e.uuid]?.exclude !== !0), {
+async function yr(e) {
+	let { renderer: t, rendererAdapter: n, opts: r, scene: i, allMeshes: a } = e, { hooks: o, t0: s, tp: c, ctxState: l, checkAbort: u } = e, d = await cr(n), f = r.texelsPerMeter, p = {};
+	for (let [e, t] of Object.entries(r.perMesh)) t.density !== void 0 && (p[e] = t.density);
+	let m = f > 0 ? le(a.filter((e) => r.perMesh[e.uuid]?.exclude !== !0), {
 		atlasResolution: r.resolution,
-		densityMultiplier: d,
-		perMeshScale: f
-	}) : 0, m = p > 0 ? cr(a, r.perMesh, r.resolution, p) : sr(a, r.perMesh, r.resolution), { excluded: h, groups: g } = m, _ = (e) => p > 0 ? m.resolution : e, v = performance.now();
+		densityMultiplier: f,
+		perMeshScale: p
+	}) : 0, h = m > 0 ? ur(a, r.perMesh, r.resolution, m) : lr(a, r.perMesh, r.resolution), { excluded: g, groups: _ } = h, v = (e) => m > 0 ? h.resolution : e, y = performance.now();
 	o.onProgress?.("uv-unwrap", 0);
-	let y = [...g.values()];
-	for (let [e, t] of g) await Se(t, {
-		resolution: _(e),
+	let b = [..._.values()];
+	for (let [e, t] of _) await Se(t, {
+		resolution: v(e),
 		signal: o.signal,
-		texelsPerUnit: p > 0 ? p : void 0,
-		perMeshScale: f
+		texelsPerUnit: m > 0 ? m : void 0,
+		perMeshScale: p
 	});
 	o.onProgress?.("uv-unwrap", 1), u("unwrap");
-	let b = performance.now(), x = performance.now();
+	let x = performance.now(), S = performance.now();
 	o.onProgress?.("geometry", 0);
-	let S, C = [], w = !1, T = et(a);
+	let C, w = [], T = !1, E = et(a);
 	try {
-		let d = new F(T);
-		o.onProgress?.("geometry", .5), S = ut(t, ot(T, a)), o.onProgress?.("geometry", 1), u("geometry");
-		let f = performance.now(), p = $n(r.gi.skyColor, 16777215), m = Le(i);
-		if (m.length > t.capabilities.maxTextureSize) throw Error("Light count exceeds GPU texture capacity");
-		let h = performance.now(), E = [...g.keys()], D = /* @__PURE__ */ new Map(), O = /* @__PURE__ */ new Map(), k = {
+		let f = new F(E);
+		o.onProgress?.("geometry", .5), C = ut(t, ot(E, a)), o.onProgress?.("geometry", 1), u("geometry");
+		let p = performance.now(), m = $n(r.gi.skyColor, 16777215), h = Le(i);
+		if (h.length > t.capabilities.maxTextureSize) throw Error("Light count exceeds GPU texture capacity");
+		let g = performance.now(), D = [..._.keys()], O = /* @__PURE__ */ new Map(), k = /* @__PURE__ */ new Map(), A = {
 			renderer: t,
 			opts: r,
-			bvh: d,
-			sceneLights: m,
-			skyColor: p,
-			matTex: S,
+			bvh: f,
+			sceneLights: h,
+			skyColor: m,
+			matTex: C,
 			tp: c,
-			ctxState: l
+			ctxState: l,
+			passBackend: d
 		};
-		for (let e = 0; e < E.length; e++) {
-			let t = E[e];
+		for (let e = 0; e < D.length; e++) {
+			let t = D[e];
 			if (t === void 0) throw Error("[baker] bake group key is missing");
-			let n = _(t), i = n * r.superSample, a = g.get(t);
+			let n = v(t), i = n * r.superSample, a = _.get(t);
 			if (!a) throw Error(`[baker] bake group ${t} is missing`);
-			let { group: s, finalTex: c } = await mr(k, e, E.length, a, n, i, o, u);
-			C.push(s);
-			for (let e of a) D.set(e, c), O.set(e, n);
+			let { group: s, finalTex: c } = await gr(A, e, D.length, a, n, i, o, u);
+			w.push(s);
+			for (let e of a) O.set(e, c), k.set(e, n);
 		}
-		let A = performance.now(), j = performance.now();
+		let j = performance.now(), M = performance.now();
 		o.onProgress?.("refine", 1);
-		let M = performance.now();
+		let N = performance.now();
 		performance.now(), await qn(n), performance.now();
-		let N = E.reduce((e, t) => {
-			let n = _(t);
+		let P = D.reduce((e, t) => {
+			let n = v(t);
 			return e + n * n;
-		}, 0), P = {
-			meshCount: y.flat().length,
-			texelCount: N,
-			raysTraced: r.samples * r.castsPerFrame * N,
+		}, 0), I = {
+			meshCount: b.flat().length,
+			texelCount: P,
+			raysTraced: r.samples * r.castsPerFrame * P,
 			duration: {
-				uvUnwrap: b - v,
-				geometry: f - x,
-				bake: A - h,
-				refine: M - j,
+				uvUnwrap: x - y,
+				geometry: p - S,
+				bake: j - g,
+				refine: N - M,
 				total: performance.now() - s
 			}
 		};
 		u("bake");
-		let I = S, L = new lr(n, D, O, P, {
-			groups: C,
-			bvh: d,
+		let L = C, R = new dr(n, d, O, k, I, {
+			groups: w,
+			bvh: f,
 			refinementOptions: r.refinementOptions,
 			denoise: r.denoise,
 			matTexDispose: () => {
-				I.dispose(), T.dispose();
+				L.dispose(), E.dispose();
 			},
 			sceneDispose: e.sceneDispose
 		});
-		return w = !0, L;
+		return T = !0, R;
 	} finally {
-		if (!w) {
-			for (let e of C) e.downscale?.dispose(), e.refinement?.dispose(), e.composite.dispose(), e.aoMapper.dispose(), e.lightmapper.dispose(), e.atlasDispose();
-			S?.dispose(), T.dispose();
+		if (!T) {
+			for (let e of w) e.downscale?.dispose(), e.refinement?.dispose(), e.composite.dispose(), e.aoMapper.dispose(), e.lightmapper.dispose(), e.atlasDispose();
+			C?.dispose(), E.dispose();
 		}
 	}
 }
 //#endregion
 //#region packages/baker-classic/src/LightmapBaker.ts
-function vr(e) {
+function br(e) {
 	return typeof e == "boolean" ? {
 		enabled: e,
 		intensity: 1,
@@ -3943,7 +3961,7 @@ function vr(e) {
 		skyIntensity: e?.skyIntensity ?? 0
 	};
 }
-function yr(e, t) {
+function xr(e, t) {
 	return typeof e == "boolean" ? {
 		enabled: e,
 		distance: .5,
@@ -3958,7 +3976,7 @@ function yr(e, t) {
 		samples: e?.samples ?? t ?? 5
 	};
 }
-var br = !1, xr = class {
+var Sr = !1, Cr = class {
 	_rendererAdapter = null;
 	opts;
 	constructor(e = {}, t = {}) {
@@ -3991,8 +4009,8 @@ var br = !1, xr = class {
 				size: n.light?.size ?? 1,
 				enabled: n.light?.enabled ?? !0
 			},
-			gi: vr(n.gi),
-			ao: yr(n.ao, n.castsPerFrame),
+			gi: br(n.gi),
+			ao: xr(n.ao, n.castsPerFrame),
 			refinementOptions: {
 				...tr,
 				...n.refinementOptions ?? {},
@@ -4017,7 +4035,7 @@ var br = !1, xr = class {
 		let n = this._rendererAdapter, r = n?.renderer ?? null;
 		if (!n || !r) throw new V("renderer is required: use `new LightmapBaker(renderer, opts)`, `new LightmapBaker({ renderer, ...opts })`, `new LightmapBaker({ rendererAdapter, ...opts })`, `baker.setRenderer(renderer)`, or `baker.setRendererAdapter(adapter)`", "validation");
 		let i = performance.now();
-		if (br) throw new V("Another bake is active; await it before starting a new bake", "validation");
+		if (Sr) throw new V("Another bake is active; await it before starting a new bake", "validation");
 		if (t.signal?.aborted) throw t.signal.reason ?? new DOMException("Aborted", "AbortError");
 		let a = zn(e), o = a.filter((e) => e.severity === "error");
 		if (o.length) throw new V(o.map((e) => `${e.object}: ${e.message}`).join("\n"), "validation");
@@ -4026,7 +4044,7 @@ var br = !1, xr = class {
 		if (s) throw new V(s, "validation");
 		let c = Qn(n), l = rr(this.opts.timeoutProtection, c), u = Bn(e, this.opts.perMesh), d = u.meshes;
 		if (!d.length) throw u.restore(), new V("No bake-eligible meshes", "validation");
-		br = !0;
+		Sr = !0;
 		let f = new AbortController(), p = t.signal, m = () => f.abort(p?.reason);
 		t = {
 			...t,
@@ -4045,7 +4063,7 @@ var br = !1, xr = class {
 			}
 		};
 		try {
-			return p?.addEventListener("abort", m, { once: !0 }), v = Kn(n, _), e.updateMatrixWorld(!0), await _r({
+			return p?.addEventListener("abort", m, { once: !0 }), v = Kn(n, _), e.updateMatrixWorld(!0), await yr({
 				renderer: r,
 				rendererAdapter: n,
 				opts: {
@@ -4064,25 +4082,25 @@ var br = !1, xr = class {
 		} catch (e) {
 			throw u.restore(), e;
 		} finally {
-			br = !1, p?.removeEventListener("abort", m), v();
+			Sr = !1, p?.removeEventListener("abort", m), v();
 		}
 	}
 };
 //#endregion
 //#region packages/baker-classic/src/runtimeCapabilities.ts
-function Sr() {
+function wr() {
 	return globalThis;
 }
-function Cr(e) {
+function Tr(e) {
 	return typeof e.process?.versions?.node == "string";
 }
-function wr(e) {
+function Er(e) {
 	return e.window !== void 0 && e.document !== void 0;
 }
-function Tr(e) {
-	return wr(e) ? "browser" : typeof e.OffscreenCanvas == "function" ? "offscreen-browser" : Cr(e) ? "node" : "unknown";
+function Dr(e) {
+	return Er(e) ? "browser" : typeof e.OffscreenCanvas == "function" ? "offscreen-browser" : Tr(e) ? "node" : "unknown";
 }
-function Er(e) {
+function Or(e) {
 	if (typeof e.WebGL2RenderingContext != "function") return "unavailable";
 	if (typeof e.document?.createElement != "function") return "available";
 	try {
@@ -4091,7 +4109,7 @@ function Er(e) {
 		return "unavailable";
 	}
 }
-function Dr(e) {
+function kr(e) {
 	if (typeof e.OffscreenCanvas != "function") return "unavailable";
 	try {
 		return new e.OffscreenCanvas(1, 1).getContext?.("webgl2") ? "available" : "unavailable";
@@ -4099,11 +4117,11 @@ function Dr(e) {
 		return "unavailable";
 	}
 }
-function Or(e) {
+function Ar(e) {
 	return e.navigator?.gpu ? "available" : "unavailable";
 }
-function kr(e = Sr()) {
-	let t = Tr(e), n = typeof e.OffscreenCanvas == "function" ? "available" : "unavailable", r = typeof e.requestAnimationFrame == "function" ? "available" : "unavailable", i = t === "offscreen-browser" ? Dr(e) : Er(e), a = Or(e), o = (t === "browser" || t === "offscreen-browser") && i !== "unavailable" && r === "available", s = [];
+function jr(e = wr()) {
+	let t = Dr(e), n = typeof e.OffscreenCanvas == "function" ? "available" : "unavailable", r = typeof e.requestAnimationFrame == "function" ? "available" : "unavailable", i = t === "offscreen-browser" ? kr(e) : Or(e), a = Ar(e), o = (t === "browser" || t === "offscreen-browser") && i !== "unavailable" && r === "available", s = [];
 	return t === "node" && s.push("True Node.js headless baking is not implemented yet.", "The current bake pipeline still requires a browser WebGL2 renderer and RAF-driven progressive passes."), a === "available" && s.push("WebGPU is available in this runtime, but WebGPU baking is not implemented yet; the shipping baker still selects WebGL."), {
 		runtime: t,
 		canBake: o,
@@ -4128,7 +4146,7 @@ function kr(e = Sr()) {
 }
 //#endregion
 //#region packages/baker-classic/src/utils/Diagnostics.ts
-var Ar = {
+var Mr = {
 	0: "NO_ERROR",
 	1280: "INVALID_ENUM",
 	1281: "INVALID_VALUE",
@@ -4138,7 +4156,7 @@ var Ar = {
 	1285: "OUT_OF_MEMORY",
 	1286: "INVALID_FRAMEBUFFER_OPERATION",
 	37442: "CONTEXT_LOST_WEBGL"
-}, jr = class {
+}, Nr = class {
 	renderer;
 	start = performance.now();
 	snapshots = [];
@@ -4180,7 +4198,7 @@ var Ar = {
 		let c = {
 			label: e,
 			t: performance.now() - this.start,
-			glError: Ar[n] ?? `0x${n.toString(16)}`,
+			glError: Mr[n] ?? `0x${n.toString(16)}`,
 			threejs: {
 				geometries: i.memory.geometries,
 				textures: i.memory.textures,
@@ -4200,7 +4218,7 @@ var Ar = {
 		do
 			s = n.getError(), s !== 0 && (o = s);
 		while (s !== 0);
-		return console.log(`[diag] MEASURE ${e}: ${a.toFixed(1)}ms gl=${Ar[o] ?? `0x${o.toString(16)}`}`), i;
+		return console.log(`[diag] MEASURE ${e}: ${a.toFixed(1)}ms gl=${Mr[o] ?? `0x${o.toString(16)}`}`), i;
 	}
 	contextLossInfo() {
 		let e = this.renderer.getContext(), t = e.getExtension("WEBGL_lose_context");
@@ -4216,4 +4234,4 @@ var Ar = {
 	}
 };
 //#endregion
-export { St as AtlasViewer, V as BakeError, jr as Diagnostics, lr as LightmapBakeResult, xr as LightmapBaker, Mn as ProbeDebugView, Fn as ProbeLightingBinding, Tt as ProbeVolume, Ct as TexelDensityMaterial, pn as bakeProbeIrradianceFromLightmaps, ue as binPackMeshes, In as bindProbeLighting, Re as buildLightTexture, ut as buildMaterialTextures, nn as captureLightmappedProbeGrid, rn as captureLightmappedProbeGridFromJSON, Bt as captureNativeLightProbeGrid, Vt as captureNativeLightProbeGridFromJSON, Zn as classifyRenderer, Le as collectLightsFromScene, G as computeMeshSurfaceArea, Nn as createProbeDebugView, Hn as createRendererAdapter, Qn as detectGPUCapabilities, ze as disposeLightTexture, yt as exportEXR, xt as exportLightmap, vt as exportPNG, bt as exportRaw, ot as extractPerTriangleMaterials, Ue as generateAOMapper, Se as generateAtlas, be as generateAtlases, Ve as generateLightmapper, At as generateProbeGrid, jn as generateProbeVolume, kr as getLightmapRuntimeCapabilities, Yn as isLightmapRendererAdapter, ve as loadXAtlasThree, nt as materialSlotForTriangle, et as mergeGeometry, zn as preflightBakeScene, Ne as renderAtlas, le as resolveDensityTexelsPerMeter, Ge as runComposite, Je as runRefinement };
+export { St as AtlasViewer, V as BakeError, Nr as Diagnostics, dr as LightmapBakeResult, Cr as LightmapBaker, Mn as ProbeDebugView, Fn as ProbeLightingBinding, Tt as ProbeVolume, Ct as TexelDensityMaterial, pn as bakeProbeIrradianceFromLightmaps, ue as binPackMeshes, In as bindProbeLighting, Re as buildLightTexture, ut as buildMaterialTextures, nn as captureLightmappedProbeGrid, rn as captureLightmappedProbeGridFromJSON, Bt as captureNativeLightProbeGrid, Vt as captureNativeLightProbeGridFromJSON, Zn as classifyRenderer, Le as collectLightsFromScene, G as computeMeshSurfaceArea, Nn as createProbeDebugView, Hn as createRendererAdapter, Qn as detectGPUCapabilities, ze as disposeLightTexture, yt as exportEXR, xt as exportLightmap, vt as exportPNG, bt as exportRaw, ot as extractPerTriangleMaterials, Ue as generateAOMapper, Se as generateAtlas, be as generateAtlases, Ve as generateLightmapper, At as generateProbeGrid, jn as generateProbeVolume, jr as getLightmapRuntimeCapabilities, Yn as isLightmapRendererAdapter, ve as loadXAtlasThree, nt as materialSlotForTriangle, et as mergeGeometry, zn as preflightBakeScene, Ne as renderAtlas, le as resolveDensityTexelsPerMeter, Ge as runComposite, Je as runRefinement };

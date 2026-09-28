@@ -1,6 +1,7 @@
 import { Color, Mesh, Texture, WebGLRenderer } from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
 import { type AORaycastOptions, type PackedLight, type RaycastOptions } from '../lightmap';
+import type { LightmapPassBackend } from '../gpu/PassBackend';
 import { type BakeErrorPhase } from '../errors';
 import type { BakeHooks, ResolvedBakerOptions, TimeoutProtectionOptions } from './types';
 import type { ContextLossState, GroupInternals } from './internals';
@@ -19,6 +20,7 @@ export type GroupBakeContext = {
     matTex: MaterialTextures;
     tp: Required<TimeoutProtectionOptions>;
     ctxState: ContextLossState;
+    passBackend: LightmapPassBackend;
 };
 export type GroupBakeOutput = {
     group: GroupInternals;
