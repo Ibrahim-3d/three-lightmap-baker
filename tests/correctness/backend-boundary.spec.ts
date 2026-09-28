@@ -114,10 +114,10 @@ test('runtime reports WebGPU availability without selecting unsupported WebGPU b
 });
 
 
-test('utility pass backend resolves WebGL and rejects unsupported WebGPU execution', () => {
+test('utility pass backend resolves WebGL and rejects unsupported WebGPU execution', async () => {
   const fake = fakeWebGLRenderer();
   const webgl = createRendererAdapter(fake.renderer);
-  const passBackend = resolveLightmapPassBackend(webgl);
+  const passBackend = await resolveLightmapPassBackend(webgl);
 
   expect(passBackend.backend).toBe('webgl');
   expect(typeof passBackend.createComposite).toBe('function');
@@ -125,10 +125,10 @@ test('utility pass backend resolves WebGL and rejects unsupported WebGPU executi
   expect(typeof passBackend.runPostProcess).toBe('function');
   expect(typeof passBackend.exportLightmap).toBe('function');
 
-  expect(() =>
+  await expect(
     resolveLightmapPassBackend({
       ...webgl,
       backend: 'webgpu',
     }),
-  ).toThrow('webgpu utility-pass backend is not implemented yet');
+  ).rejects.toThrow('webgpu utility-pass backend is not implemented yet');
 });
