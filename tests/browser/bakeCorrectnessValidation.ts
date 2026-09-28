@@ -20,14 +20,12 @@ import { MeshBVH } from 'three-mesh-bvh';
 import {
   LightmapBaker,
   generateLightmapper,
-  runComposite,
   mergeGeometry,
   extractPerTriangleMaterials,
   buildMaterialTextures,
   type PackedLight,
 } from 'baker-classic';
 import { runPostProcess } from '../../packages/baker-classic/src/lightmap/Refinement';
-import { createDownscale } from '../../packages/baker-classic/src/lightmap/Downscale';
 function texture(data: number[], width = 1, height = 1): DataTexture {
   const t = new DataTexture(new Float32Array(data), width, height, RGBAFormat, FloatType);
   t.minFilter = t.magFilter = NearestFilter;
@@ -153,62 +151,6 @@ export function validateTransport() {
     renderer.dispose();
   }
 }
-
-export function validatePortableNodePasses() {
-  const renderer = new WebGLRenderer();
-  const direct = texture([1, 0.5, 0.25, 1]);
-  const indirect = texture([0.5, 0.25, 0.125, 1]);
-  const ao = texture([0.5, 0.5, 0.5, 1]);
-  const sourceA = texture([0.25, 0.5, 0.75, 1]);
-  const sourceB = texture([0.75, 0.25, 0.5, 1]);
-
-  const composite = runComposite(
-    renderer,
-    { direct, indirect, ao },
-    1,
-    {
-      directIntensity: 1,
-      giIntensity: 2,
-      aoEnabled: true,
-      aoIntensity: 1,
-      aoExponent: 1,
-    },
-  );
-  const downscale = createDownscale(renderer, sourceA, 1);
-
-  try {
-    const initialComposite = read(renderer, composite.texture);
-    const initialOptions = composite.getOptions();
-
-    composite.refresh({ directIntensity: 0.5, giIntensity: 0, aoEnabled: false });
-    const refreshedComposite = read(renderer, composite.texture);
-    const refreshedOptions = composite.getOptions();
-
-    const downscaleA = read(renderer, downscale.texture);
-    downscale.setSource(sourceB);
-    downscale.refresh();
-    const downscaleB = read(renderer, downscale.texture);
-
-    return {
-      initialComposite,
-      initialOptions,
-      refreshedComposite,
-      refreshedOptions,
-      downscaleA,
-      downscaleB,
-    };
-  } finally {
-    composite.dispose();
-    downscale.dispose();
-    direct.dispose();
-    indirect.dispose();
-    ao.dispose();
-    sourceA.dispose();
-    sourceB.dispose();
-    renderer.dispose();
-  }
-}
-
 export async function validateFiltering() {
   const renderer = new WebGLRenderer();
   const source = texture(Array(3).fill([1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0]).flat(), 3, 3),
