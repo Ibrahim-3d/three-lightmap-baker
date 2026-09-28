@@ -142,6 +142,12 @@ export type {
 export { detectGPUCapabilities, classifyRenderer } from './gpu/Capabilities';
 export type { GPUCapabilities, GPUTier } from './gpu/Capabilities';
 
+// --- Experimental WebGPU/TSL portability work (W2; not used by shipping bake yet) ---
+export { createPortableBlit } from './portable/PortableBlit';
+export type { PortableBlitOptions, PortableBlitResult } from './portable/PortableBlit';
+export { createPortableDownscale } from './portable/PortableDownscale';
+export type { PortableDownscaleResult } from './portable/PortableDownscale';
+
 // --- Diagnostics (graphics-engineer instrumentation; remove when stable) ---
 export { Diagnostics } from './utils/Diagnostics';
 export type { DiagSnapshot } from './utils/Diagnostics';
