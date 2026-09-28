@@ -1,10 +1,14 @@
 import { runAnimationTask, abortError } from './animationTask';
-import { createDownscale } from '../lightmap/Downscale';
-import { runComposite } from '../lightmap/Composite';
 import { Mesh, Texture, type WebGLRenderer } from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
-import { generateAOMapper, runPostProcess, type PostProcessOptions } from '../lightmap';
-import { exportLightmap, type ExportFormat } from '../utils/exportLightmap';
+import { generateAOMapper, type PostProcessOptions } from '../lightmap';
+import type {
+  CompositeResult,
+  DownscaleResult,
+  LightmapPassBackend,
+  PostProcessResult,
+} from '../gpu/PassBackend';
+import type { ExportFormat } from '../utils/exportLightmap';
 import { mountMeshLightmaps } from '../utils/LightmapMaterials';
 import { BakeError } from '../errors';
 import type { BakeHooks, BakeStats, BakeGroupView } from './types';
@@ -27,6 +31,7 @@ export class LightmapBakeResult {
 
   constructor(
     private readonly rendererAdapter: LightmapRendererAdapter,
+    private readonly passBackend: LightmapPassBackend,
     private readonly meshLightmaps: Map<Mesh, Texture>,
     private readonly meshResolutions: Map<Mesh, number>,
     public readonly stats: BakeStats,
@@ -167,7 +172,7 @@ export class LightmapBakeResult {
       // resolution and would otherwise read past the end of the buffer.
       const finalTex = g.downscale?.texture ?? g.refinement?.texture ?? g.composite.texture;
       const name = groups.length > 1 ? `${base}_group${i}` : base;
-      await exportLightmap(this.renderer, finalTex, g.resolution, name, fmt);
+      await this.passBackend.exportLightmap(finalTex, g.resolution, name, fmt);
     }
   }
 
@@ -245,9 +250,9 @@ export class LightmapBakeResult {
     const staged: Array<{
       group: GroupInternals;
       ao: ReturnType<typeof generateAOMapper>;
-      composite: ReturnType<typeof runComposite>;
-      refinement: Awaited<ReturnType<typeof runPostProcess>> | null;
-      downscale: ReturnType<typeof createDownscale> | null;
+      composite: CompositeResult;
+      refinement: PostProcessResult | null;
+      downscale: DownscaleResult | null;
     }> = [];
     let committed = false;
     try {
@@ -271,10 +276,9 @@ export class LightmapBakeResult {
             targetSamples: opts.targetSamples,
           },
         );
-        let composite: ReturnType<typeof runComposite>;
+        let composite: CompositeResult;
         try {
-          composite = runComposite(
-            this.renderer,
+          composite = this.passBackend.createComposite(
             {
               direct: group.lightmapper.textures.direct,
               indirect: group.lightmapper.textures.indirect,
@@ -291,8 +295,8 @@ export class LightmapBakeResult {
           group,
           ao,
           composite,
-          refinement: null as Awaited<ReturnType<typeof runPostProcess>> | null,
-          downscale: null as ReturnType<typeof createDownscale> | null,
+          refinement: null as PostProcessResult | null,
+          downscale: null as DownscaleResult | null,
         };
         staged.push(entry);
         await runAnimationTask(() => {
@@ -316,8 +320,7 @@ export class LightmapBakeResult {
           return result.done;
         }, controller.signal);
         if (group.refinement)
-          entry.refinement = await runPostProcess(
-            this.renderer,
+          entry.refinement = await this.passBackend.runPostProcess(
             composite.texture,
             group.positionTex,
             group.internalResolution,
@@ -326,8 +329,7 @@ export class LightmapBakeResult {
             { signal: controller.signal, normals: group.normalTex },
           );
         if (group.downscale)
-          entry.downscale = createDownscale(
-            this.renderer,
+          entry.downscale = this.passBackend.createDownscale(
             entry.refinement?.texture ?? composite.texture,
             group.resolution,
           );

@@ -1,6 +1,7 @@
 import { isBakeVisible } from './visibility';
 import { Mesh, Object3D, Scene, Texture, WebGLRenderer } from 'three';
 import { drainRendererAdapter, type LightmapRendererAdapter } from '../rendererAdapter';
+import { resolveLightmapPassBackend } from '../gpu/PassBackend';
 import { MeshBVH } from 'three-mesh-bvh';
 import { collectLightsFromScene, type PackedLight } from '../lightmap';
 import { generateAtlas } from '../atlas/generateAtlas';
@@ -84,6 +85,7 @@ export type BakePipelineArgs = {
 export async function runBakePipeline(args: BakePipelineArgs): Promise<LightmapBakeResult> {
   const { renderer, rendererAdapter, opts, scene, allMeshes } = args;
   const { hooks, t0, tp, ctxState, checkAbort } = args;
+  const passBackend = await resolveLightmapPassBackend(rendererAdapter);
 
   // Partition meshes - density mode if `texelsPerMeter` is set (groups keyed
   // by atlas index, all sharing `resolution`), else resolution mode (groups
@@ -181,6 +183,7 @@ export async function runBakePipeline(args: BakePipelineArgs): Promise<LightmapB
       matTex,
       tp,
       ctxState,
+      passBackend,
     };
     for (let gi = 0; gi < groupKeys.length; gi++) {
       const key = groupKeys[gi];
@@ -250,17 +253,24 @@ export async function runBakePipeline(args: BakePipelineArgs): Promise<LightmapB
 
     checkAbort('bake');
     const ownedMatTex = matTex;
-    const result = new LightmapBakeResult(rendererAdapter, meshLightmaps, meshResolutions, stats, {
-      groups: groupResults,
-      bvh,
-      refinementOptions: opts.refinementOptions,
-      denoise: opts.denoise,
-      matTexDispose: () => {
-        ownedMatTex.dispose();
-        merged.dispose();
+    const result = new LightmapBakeResult(
+      rendererAdapter,
+      passBackend,
+      meshLightmaps,
+      meshResolutions,
+      stats,
+      {
+        groups: groupResults,
+        bvh,
+        refinementOptions: opts.refinementOptions,
+        denoise: opts.denoise,
+        matTexDispose: () => {
+          ownedMatTex.dispose();
+          merged.dispose();
+        },
+        sceneDispose: args.sceneDispose,
       },
-      sceneDispose: args.sceneDispose,
-    });
+    );
     returned = true;
     return result;
   } finally {

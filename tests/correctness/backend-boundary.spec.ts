@@ -10,6 +10,7 @@ import {
 } from '../../packages/baker-classic/src/rendererAdapter';
 import { getLightmapRuntimeCapabilities } from '../../packages/baker-classic/src/runtimeCapabilities';
 import { detectGPUCapabilities } from '../../packages/baker-classic/src/gpu/Capabilities';
+import { resolveLightmapPassBackend } from '../../packages/baker-classic/src/gpu/PassBackend';
 
 function fakeWebGLRenderer() {
   let finishCalls = 0;
@@ -110,4 +111,24 @@ test('runtime reports WebGPU availability without selecting unsupported WebGPU b
   expect(caps.limitations.some((line) => line.includes('WebGPU baking is not implemented'))).toBe(
     true,
   );
+});
+
+
+test('utility pass backend resolves WebGL and rejects unsupported WebGPU execution', async () => {
+  const fake = fakeWebGLRenderer();
+  const webgl = createRendererAdapter(fake.renderer);
+  const passBackend = await resolveLightmapPassBackend(webgl);
+
+  expect(passBackend.backend).toBe('webgl');
+  expect(typeof passBackend.createComposite).toBe('function');
+  expect(typeof passBackend.createDownscale).toBe('function');
+  expect(typeof passBackend.runPostProcess).toBe('function');
+  expect(typeof passBackend.exportLightmap).toBe('function');
+
+  await expect(
+    resolveLightmapPassBackend({
+      ...webgl,
+      backend: 'webgpu',
+    }),
+  ).rejects.toThrow('webgpu utility-pass backend is not implemented yet');
 });

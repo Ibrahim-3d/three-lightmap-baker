@@ -15,7 +15,7 @@ packages/baker-classic/src/         Classic lightmap baker library
   bake/                             Pipeline orchestration + result lifecycle
   atlas/                            UV2 generation + UV-space rasterization
   lightmap/                         Path-traced passes, AO, composite, refinement
-  gpu/                              Capability detection + timeout defaults
+  gpu/                              Capability detection, backend lifecycle + utility-pass seam
   utils/                            Geometry/material extraction + export helpers
 packages/pt-renderer/src/           Real-time path-tracing preview renderer
 packages/pt-baker/src/              Experimental path-traced bake path
@@ -47,6 +47,9 @@ docs/                               Product docs, status, roadmap
    - Dilation and optional bilateral denoise.
 7. **Result assembly**
    - Stable `LightmapBakeResult` with `apply/export/dispose`, AO refresh/rebake hooks, and group internals.
+   - Composite, refinement, downscale and export flow through the internal
+     `LightmapPassBackend`; the shipping backend delegates to the existing
+     WebGL implementations.
 
 ## Critical invariants (do not regress)
 
@@ -71,6 +74,9 @@ docs/                               Product docs, status, roadmap
      lost backend cancels the bake instead of leaking resources.
 5. **Resource lifecycle ownership**
    - `LightmapBakeResult` owns generated textures, render targets, atlas internals, AO/composite outputs, and the shared BVH view returned from the bake.
+   - Utility passes must be reached through the resolved pass backend from
+     high-level bake/result orchestration; do not reintroduce direct WebGL pass
+     calls there.
    - Callers may apply the textures to scene materials, but cleanup still flows through `result.dispose()`. New passes must either attach disposable resources to the result/group views or dispose them before returning.
 6. **Public material/light extraction boundary**
 

@@ -4,8 +4,6 @@ import { MeshBVH } from 'three-mesh-bvh';
 import {
   generateAOMapper,
   generateLightmapper,
-  runComposite,
-  runPostProcess,
   type AORaycastOptions,
   type CompositeResult,
   type Lightmapper,
@@ -15,7 +13,8 @@ import {
   type RaycastOptions,
 } from '../lightmap';
 import { renderAtlas } from '../atlas/renderAtlas';
-import { createDownscale } from '../lightmap/Downscale';
+import type { DownscaleResult } from '../lightmap/Downscale';
+import type { LightmapPassBackend } from '../gpu/PassBackend';
 import { BakeError, type BakeErrorPhase } from '../errors';
 import type {
   BakeFrameInfo,
@@ -52,6 +51,7 @@ export type GroupBakeContext = {
   matTex: MaterialTextures;
   tp: Required<TimeoutProtectionOptions>;
   ctxState: ContextLossState;
+  passBackend: LightmapPassBackend;
 };
 
 export type GroupBakeOutput = {
@@ -123,7 +123,7 @@ export async function runGroupBake(
   hooks: BakeHooks,
   checkAbort: (phase: BakeErrorPhase) => void,
 ): Promise<GroupBakeOutput> {
-  const { renderer, opts, bvh, sceneLights, skyColor, matTex, tp, ctxState } = ctx;
+  const { renderer, opts, bvh, sceneLights, skyColor, matTex, tp, ctxState, passBackend } = ctx;
 
   hooks.onProgress?.('bake', groupIndex / totalGroups);
   checkAbort('bake');
@@ -133,7 +133,7 @@ export async function runGroupBake(
   let aoMapper: AOMapper | null = null;
   let composite: CompositeResult | null = null;
   let refinement: PostProcessResult | null = null;
-  let downscale: ReturnType<typeof createDownscale> | null = null;
+  let downscale: DownscaleResult | null = null;
   let returned = false;
 
   try {
@@ -162,8 +162,7 @@ export async function runGroupBake(
     // accumulation - callers can mount `composite.texture` on materials
     // immediately and watch it fade in via per-RAF refreshes inside the tile
     // loop. Drives the `onFrame` hook contract.
-    composite = runComposite(
-      renderer,
+    composite = passBackend.createComposite(
       {
         direct: lightmapper.textures.direct,
         indirect: lightmapper.textures.indirect,
@@ -194,8 +193,7 @@ export async function runGroupBake(
 
     checkAbort('bake');
     if (opts.denoise || opts.refinementOptions.dilationIterations > 0) {
-      refinement = await runPostProcess(
-        renderer,
+      refinement = await passBackend.runPostProcess(
         composite.texture,
         atlas.positionTexture,
         internalResolution,
@@ -211,7 +209,7 @@ export async function runGroupBake(
     // binds to. Hardware bilinear (source LinearFilter) does the anti-aliasing.
     const finalInternalTex = refinement?.texture ?? composite.texture;
     downscale =
-      opts.superSample > 1 ? createDownscale(renderer, finalInternalTex, resolution) : null;
+      opts.superSample > 1 ? passBackend.createDownscale(finalInternalTex, resolution) : null;
     const finalTex = downscale?.texture ?? finalInternalTex;
 
     const completedAtlas = atlas;
