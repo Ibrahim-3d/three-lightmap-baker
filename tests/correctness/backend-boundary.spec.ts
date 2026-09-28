@@ -122,6 +122,7 @@ test('utility pass backend resolves WebGL and rejects unsupported WebGPU executi
   expect(passBackend.backend).toBe('webgl');
   expect(typeof passBackend.createComposite).toBe('function');
   expect(typeof passBackend.createDownscale).toBe('function');
+  expect(typeof passBackend.buildMaterialTextures).toBe('function');
   expect(typeof passBackend.runPostProcess).toBe('function');
   expect(typeof passBackend.exportLightmap).toBe('function');
 
