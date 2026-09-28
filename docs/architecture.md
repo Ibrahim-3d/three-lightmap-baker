@@ -47,9 +47,9 @@ docs/                               Product docs, status, roadmap
    - Dilation and optional bilateral denoise.
 7. **Result assembly**
    - Stable `LightmapBakeResult` with `apply/export/dispose`, AO refresh/rebake hooks, and group internals.
-   - Composite, refinement, downscale and export flow through the internal
-     `LightmapPassBackend`; the shipping backend delegates to the existing
-     WebGL implementations.
+   - Composite, refinement, downscale, material-texture atlas construction and
+     export flow through the internal `LightmapPassBackend`; the shipping
+     backend delegates to the existing WebGL implementations.
 
 ## Critical invariants (do not regress)
 
