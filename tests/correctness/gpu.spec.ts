@@ -28,6 +28,46 @@ test('GPU transport: attenuation, 17 lights, area integral and secondary sky', a
   expect(r.backArea).toBe(0);
   expect(errors).toEqual([]);
 });
+
+test('portable node passes preserve composite math and live updates', async ({ page }) => {
+  const r = await page.evaluate(
+    async (u) => (await import(u)).validatePortableNodePasses(),
+    base + '/tests/browser/bakeCorrectnessValidation.ts',
+  );
+
+  const expectedInitial = [1, 0.5, 0.25].map((v) => Math.pow(v, 1 / 1.1));
+  expect(r.initialComposite[0]).toBeCloseTo(expectedInitial[0]!, 3);
+  expect(r.initialComposite[1]).toBeCloseTo(expectedInitial[1]!, 3);
+  expect(r.initialComposite[2]).toBeCloseTo(expectedInitial[2]!, 3);
+  expect(r.initialComposite[3]).toBeCloseTo(1, 3);
+  expect(r.initialOptions).toEqual({
+    directIntensity: 1,
+    giIntensity: 2,
+    aoEnabled: true,
+    aoIntensity: 1,
+    aoExponent: 1,
+  });
+
+  const expectedRefresh = [1, 0.5, 0.25].map((v) => Math.pow(v, 1 / 1.1));
+  expect(r.refreshedComposite[0]).toBeCloseTo(expectedRefresh[0]!, 3);
+  expect(r.refreshedComposite[1]).toBeCloseTo(expectedRefresh[1]!, 3);
+  expect(r.refreshedComposite[2]).toBeCloseTo(expectedRefresh[2]!, 3);
+  expect(r.refreshedOptions.giIntensity).toBe(0);
+  expect(r.refreshedOptions.aoEnabled).toBe(false);
+
+  expect(r.downscaleA.slice(0, 4)).toEqual(
+    expect.arrayContaining([
+      expect.closeTo(0.25, 3),
+      expect.closeTo(0.5, 3),
+      expect.closeTo(0.75, 3),
+      expect.closeTo(1, 3),
+    ]),
+  );
+  expect(r.downscaleB[0]).toBeCloseTo(0.75, 3);
+  expect(r.downscaleB[1]).toBeCloseTo(0.25, 3);
+  expect(r.downscaleB[2]).toBeCloseTo(0.5, 3);
+});
+
 test('GPU filters retain separate chart colors', async ({ page }) => {
   const r = await page.evaluate(
     async (u) => (await import(u)).validateFiltering(),
