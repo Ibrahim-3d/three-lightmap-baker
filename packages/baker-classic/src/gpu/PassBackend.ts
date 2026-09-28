@@ -1,14 +1,18 @@
 import type { Texture, WebGLRenderer } from 'three';
 import {
-  createDownscale as createWebGLDownscale,
   runComposite as runWebGLComposite,
-  runPostProcess as runWebGLPostProcess,
   type CompositeOverrides,
   type CompositeResult,
+} from '../lightmap/Composite';
+import {
+  createDownscale as createWebGLDownscale,
   type DownscaleResult,
+} from '../lightmap/Downscale';
+import {
+  runPostProcess as runWebGLPostProcess,
   type PostProcessOptions,
   type PostProcessResult,
-} from '../lightmap';
+} from '../lightmap/Refinement';
 import {
   exportLightmap as exportWebGLLightmap,
   type ExportFormat,
