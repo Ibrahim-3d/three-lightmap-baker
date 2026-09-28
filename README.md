@@ -1,3 +1,5 @@
+> **Legacy WebGL reference.** This repository preserves the original browser-local LightBaker implementation and its MIT-licensed open-source package. Active next-generation LightBaker development powers the hosted LightBaker product.
+
 <p align="center">
   <img src="https://raw.githubusercontent.com/Ibrahim-3d/three-lightmap-baker/master/screenshots/after-production-baked-combined.png" alt="Cornell advanced scene with path-traced global illumination baked in-browser" width="720" />
 </p>
