@@ -85,7 +85,7 @@ export type BakePipelineArgs = {
 export async function runBakePipeline(args: BakePipelineArgs): Promise<LightmapBakeResult> {
   const { renderer, rendererAdapter, opts, scene, allMeshes } = args;
   const { hooks, t0, tp, ctxState, checkAbort } = args;
-  const passBackend = resolveLightmapPassBackend(rendererAdapter);
+  const passBackend = await resolveLightmapPassBackend(rendererAdapter);
 
   // Partition meshes - density mode if `texelsPerMeter` is set (groups keyed
   // by atlas index, all sharing `resolution`), else resolution mode (groups
