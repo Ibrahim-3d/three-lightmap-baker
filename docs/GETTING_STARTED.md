@@ -5,12 +5,12 @@ This guide covers the public `lightmap-baker` package API for browser-based Thre
 ## Requirements
 
 - Three.js `>=0.185.1 <0.186.0`
-- `WebGLRenderer`
+- `THREE.WebGLRenderer` (required)
 - WebGL 2
 - `EXT_color_buffer_float`
 - Hardware-accelerated browser graphics strongly recommended
 
-Node/headless and WebGPU baking are not part of v1.
+`THREE.WebGPURenderer` is not supported by this package, including `WebGPURenderer({ forceWebGL: true })`. Node/headless baking is also outside this repository.
 
 ## Install
 
@@ -88,11 +88,11 @@ Preflight does not mutate UVs or allocate bake GPU resources. The normal
 
 ## Scene preparation
 
-The high-level baker targets visible Three.js meshes with standard-material-style surfaces.
+The high-level baker targets visible Three.js meshes using `MeshStandardMaterial` or `MeshPhysicalMaterial`. Other material classes are not bake targets.
 
 For predictable results:
 
-- use `MeshStandardMaterial` for bakeable surfaces;
+- use `MeshStandardMaterial` or `MeshPhysicalMaterial` for bakeable surfaces;
 - keep world transforms up to date before baking;
 - make sure the scene contains at least one supported light or configured sky contribution;
 - exclude objects that should not receive a lightmap using the integration's bake-ignore mechanism;
@@ -124,7 +124,7 @@ The following are not yet part of the diffuse GI transport model:
 - roughness/metalness maps;
 - alpha transport;
 - vertex colors;
-- custom shader materials.
+- `ShaderMaterial`, `RawShaderMaterial`, node/TSL materials, and other custom shader logic.
 
 Solid emissive color is supported.
 
@@ -278,7 +278,7 @@ const adapter = createRendererAdapter(renderer, { label: 'automation-renderer' }
 const baker = new LightmapBaker({ rendererAdapter: adapter });
 ```
 
-The adapter boundary does not make Node/headless baking available by itself; it allows browser/offscreen-browser integrations to own renderer and context-loss wiring cleanly.
+The adapter boundary does not make Node/headless or WebGPU baking available. It only lets browser/offscreen-browser integrations own a `WebGLRenderer` and context-loss wiring cleanly.
 
 ## Runtime capability check
 
@@ -325,5 +325,5 @@ Static lightmaps do not automatically illuminate moving objects. Generate a nati
 - [README](../README.md)
 - [API status](./API_STATUS.md)
 - [Light probes](./LIGHT_PROBES.md)
-- [Roadmap](./ROADMAP.md)
+- [Maintenance scope](./MAINTENANCE.md)
 - [Changelog](../CHANGELOG.md)

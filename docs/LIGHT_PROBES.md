@@ -269,7 +269,7 @@ Starting a new static bake invalidates the old probe field because it was derive
 
 ### Native
 
-- Requires Three.js `WebGLRenderer`.
+- Requires Three.js `WebGLRenderer`; `WebGPURenderer` is not supported by this package.
 - Capture is synchronous in the upstream `LightProbeGrid` implementation.
 - Dense grids can be expensive; validate capture time on target hardware.
 - Three.js selects/provides probe-grid lighting using the object's spatial integration available in the upstream runtime; very large moving objects are not a substitute for visibility-aware DDGI.
@@ -291,4 +291,4 @@ The static bake/probe source convention supports solid material color plus base-
 
 - [Getting Started](./GETTING_STARTED.md)
 - [API Status](./API_STATUS.md)
-- [Roadmap](./ROADMAP.md)
+- [Maintenance scope](./MAINTENANCE.md)

@@ -4,6 +4,13 @@ All notable public changes to `lightmap-baker` are documented here.
 
 ## Unreleased
 
+### Repository transition
+
+- This repository now represents the original browser-local WebGL LightBaker and its public npm package.
+- The product UI/gallery moved to `lightbaker-web`.
+- WebGPU, hosted/cloud, headless infrastructure and next-generation backend development are outside this repository.
+- Public documentation now explicitly requires `THREE.WebGLRenderer` and documents the supported material/shader boundary.
+
 ## lightmap-baker v1.1.0 — 2026-09-27
 
 Correctness and lifecycle release for the browser/WebGL baker. This release is

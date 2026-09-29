@@ -1,5 +1,5 @@
 name: Usage question
-description: Ask about integrating or using Lightmap Baker.
+description: Ask about integrating or using the original WebGL Lightmap Baker package.
 labels: ["question"]
 body:
   - type: input
@@ -31,11 +31,11 @@ body:
     id: code
     attributes:
       label: Minimal code or reproduction
-      description: Add the smallest useful snippet, repository or demo steps.
+      description: Add the smallest useful snippet, repository or reproduction steps.
   - type: checkboxes
     id: docs
     attributes:
       label: Documentation check
       options:
-        - label: I checked Getting Started, API Status and the current Roadmap.
+        - label: I checked Getting Started, API Status and Maintenance Scope.
           required: true
