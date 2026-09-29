@@ -1,19 +1,23 @@
 name: Feature request
-description: Suggest a new feature or enhancement.
+description: Suggest an enhancement within the maintained WebGL package scope.
 labels: ["enhancement"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        This repository maintains the original WebGL implementation. WebGPU, cloud/headless infrastructure, hosted-product work and next-generation backend features are out of scope here.
   - type: input
     id: summary
     attributes:
       label: Summary
-      description: One-line description of the feature.
+      description: One-line description of the enhancement.
     validations:
       required: true
   - type: textarea
     id: problem
     attributes:
       label: Problem / motivation
-      description: What problem does this solve?
+      description: What problem does this solve for the maintained WebGL package?
     validations:
       required: true
   - type: textarea
@@ -24,15 +28,13 @@ body:
     validations:
       required: true
   - type: textarea
-    id: scope
-    attributes:
-      label: Scope
-      description: What is in scope vs out of scope?
-  - type: textarea
-    id: alternatives
-    attributes:
-      label: Alternatives considered
-  - type: textarea
     id: risks
     attributes:
-      label: Risks or trade-offs
+      label: Risks or compatibility impact
+  - type: checkboxes
+    id: maintenance
+    attributes:
+      label: Maintenance scope
+      options:
+        - label: I checked docs/MAINTENANCE.md and this request fits the public WebGL package scope.
+          required: true

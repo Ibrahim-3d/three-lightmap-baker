@@ -97,6 +97,18 @@ function resolveAOOptions(
   };
 }
 
+function assertSupportedRenderer(renderer: unknown): void {
+  if (
+    renderer &&
+    typeof renderer === 'object' &&
+    (renderer as { isWebGPURenderer?: boolean }).isWebGPURenderer === true
+  ) {
+    throw new TypeError(
+      'lightmap-baker v1.1 requires THREE.WebGLRenderer. THREE.WebGPURenderer is not supported, including its WebGL fallback mode.',
+    );
+  }
+}
+
 /**
  * One-call lightmap baker - wraps the lib primitives behind the Task 06 spec API.
  *
@@ -130,6 +142,14 @@ export class LightmapBaker {
     rendererOrOptions: WebGLRenderer | LightmapRendererAdapter | LightmapBakerInitOptions = {},
     maybeOptions: LightmapBakerOptions = {},
   ) {
+    const candidate = rendererOrOptions as {
+      renderer?: unknown;
+      rendererAdapter?: { renderer?: unknown };
+    };
+    assertSupportedRenderer(rendererOrOptions);
+    assertSupportedRenderer(candidate.renderer);
+    assertSupportedRenderer(candidate.rendererAdapter?.renderer);
+
     // We intentionally rely on `isWebGLRenderer === true` (Three.js runtime tag)
     // and a minimal shape check as a fallback for compatibility across renderer
     // wrappers that preserve the same API surface.
@@ -190,11 +210,13 @@ export class LightmapBaker {
   }
 
   setRenderer(renderer: WebGLRenderer): this {
+    assertSupportedRenderer(renderer);
     this._rendererAdapter = createRendererAdapter(renderer);
     return this;
   }
 
   setRendererAdapter(rendererAdapter: LightmapRendererAdapter): this {
+    assertSupportedRenderer(rendererAdapter.renderer);
     this._rendererAdapter = rendererAdapter;
     return this;
   }

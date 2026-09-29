@@ -16,10 +16,16 @@ export function preflightBakeScene(scene: Object3D): BakeSceneIssue[] {
     if (!(object as Mesh).isMesh || !isBakeVisible(object)) return;
     const mesh = object as Mesh;
     const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    if (!materials.some((m) => (m as MeshStandardMaterial).isMeshStandardMaterial)) return;
     const report = (message: string, severity: 'error' | 'warning' = 'error'): void => {
       issues.push({ severity, object: mesh.name || mesh.uuid, message });
     };
+    if (!materials.some((m) => (m as MeshStandardMaterial).isMeshStandardMaterial)) {
+      report(
+        'Unsupported bake material. Use MeshStandardMaterial or MeshPhysicalMaterial; ShaderMaterial, RawShaderMaterial and node/TSL materials are not supported.',
+        'warning',
+      );
+      return;
+    }
     const geometry = mesh.geometry;
     if ('isSkinnedMesh' in mesh || Object.keys(geometry.morphAttributes).length)
       report('Skinned and morph geometry must be frozen before baking.');

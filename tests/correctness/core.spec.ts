@@ -11,6 +11,7 @@ import {
   BoxGeometry,
   Mesh,
   MeshStandardMaterial,
+  MeshBasicMaterial,
   InstancedMesh,
   Matrix4,
 } from 'three';
@@ -19,6 +20,7 @@ import {
   buildLightTexture,
 } from '../../packages/baker-classic/src/lightmap/Lights';
 import { preflightBakeScene } from '../../packages/baker-classic/src/bake/preflight';
+import { LightmapBaker } from '../../packages/baker-classic/src/LightmapBaker';
 import { prepareBakeScene } from '../../packages/baker-classic/src/bake/prepareScene';
 import { toLinearColor, validateOptions } from '../../packages/baker-classic/src/bake/validation';
 import { runAnimationTask } from '../../packages/baker-classic/src/bake/animationTask';
@@ -96,6 +98,23 @@ test('preflight rejects nonfinite attributes, singular transforms and partial ge
   expect(
     preflightBakeScene(scene).filter((i) => i.severity === 'error').length,
   ).toBeGreaterThanOrEqual(3);
+});
+test('preflight warns when a visible mesh uses an unsupported material class', () => {
+  const scene = new Scene();
+  scene.add(new Mesh(new BoxGeometry(), new MeshBasicMaterial()));
+  expect(
+    preflightBakeScene(scene).some(
+      (issue) => issue.severity === 'warning' && issue.message.includes('Unsupported bake material'),
+    ),
+  ).toBe(true);
+});
+test('LightmapBaker rejects WebGPURenderer-shaped inputs', () => {
+  expect(
+    () =>
+      new LightmapBaker({
+        renderer: { isWebGPURenderer: true } as never,
+      }),
+  ).toThrow(/WebGPURenderer/);
 });
 test('Color is not decoded twice and bounce depth is validated', () => {
   expect(toLinearColor(new Color(0.5, 0.2, 0.1), 0).r).toBe(0.5);
