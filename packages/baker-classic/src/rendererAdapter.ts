@@ -26,10 +26,23 @@ export type LightmapRendererAdapter = {
 
 export type LightmapRendererAdapterOptions = Omit<LightmapRendererAdapter, 'renderer'>;
 
+export function assertSupportedLightmapRenderer(renderer: unknown): void {
+  if (
+    renderer &&
+    typeof renderer === 'object' &&
+    (renderer as { isWebGPURenderer?: boolean }).isWebGPURenderer === true
+  ) {
+    throw new TypeError(
+      'lightmap-baker v1.1 requires THREE.WebGLRenderer. THREE.WebGPURenderer is not supported, including its WebGL fallback mode.',
+    );
+  }
+}
+
 export function createRendererAdapter(
   renderer: WebGLRenderer,
   options: LightmapRendererAdapterOptions = {},
 ): LightmapRendererAdapter {
+  assertSupportedLightmapRenderer(renderer);
   return {
     renderer,
     contextLossTarget: options.contextLossTarget ?? renderer.domElement,
