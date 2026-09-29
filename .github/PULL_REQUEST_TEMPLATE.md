@@ -8,7 +8,8 @@ What problem does this solve? Link the relevant issue when one exists.
 
 ## Validation
 
-- [ ] `pnpm run check`
+- [ ] `pnpm run typecheck`
+- [ ] `pnpm run lint`
 - [ ] `pnpm run build`
 - [ ] Relevant focused tests passed
 - [ ] Browser/GPU evidence included when the change is rendering-sensitive
@@ -21,7 +22,7 @@ Commands/results:
 
 ## Visual / GPU evidence
 
-For lighting, atlas, renderer or demo changes, include the browser, OS, GPU,
+For lighting, atlas or renderer changes, include the browser, OS, GPU,
 reported WebGL renderer, bake settings, and before/after captures when useful.
 
 ## Public API / compatibility

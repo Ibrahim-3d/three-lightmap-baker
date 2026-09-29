@@ -8,7 +8,7 @@ Use this file to initialize the GitHub Wiki navigation. The version-controlled `
 - What LightBaker is
 - WebGL-only compatibility warning
 - Links to installation, API and troubleshooting
-- Link to the current public LightBaker web product
+- Link to the separate LightBaker Studio/client repository
 
 ### Installation
 - `npm install lightmap-baker three`
@@ -45,7 +45,7 @@ Use this file to initialize the GitHub Wiki navigation. The version-controlled `
 
 ### Maintenance Scope
 - what this OSS repo still accepts
-- what has moved to the hosted product/backend
+- which capabilities are intentionally outside this repository
 
 ## Source links
 

@@ -1,6 +1,6 @@
 # LightBaker — original WebGL implementation
 
-This MIT-licensed repository preserves the original browser-local LightBaker for Three.js. It remains an open-source package and WebGL reference implementation. Active next-generation LightBaker development powers the hosted LightBaker product. The public product interface lives in [lightbaker-web](https://github.com/Ibrahim-3d/lightbaker-web).
+This MIT-licensed repository is the original browser-local LightBaker for Three.js: a maintained WebGL package and reference implementation. The separate [lightbaker-web](https://github.com/Ibrahim-3d/lightbaker-web) repository contains the newer public Studio/client surface; its public deployment is intentionally held until the hosted backend is ready.
 
 **This package is intentionally WebGL-only. It requires `THREE.WebGLRenderer`. `THREE.WebGPURenderer` is not supported, including its WebGL fallback mode. WebGPU, cloud/headless execution, and the next-generation baking backend are not developed in this repository.**
 
@@ -41,7 +41,7 @@ Diffuse transport supports `material.color × material.map`, UV0/UV1, geometry g
 - [Architecture of the original package](docs/architecture.md)
 - [Changelog](CHANGELOG.md)
 
-The original playground and preview applications remain available in repository history. Their public gallery and baked-result presentation have moved to [lightbaker-web](https://github.com/Ibrahim-3d/lightbaker-web). This repository now builds the original npm package and keeps its examples and correctness tests.
+The original playground/editor remains available in Git history. This repository now contains only the WebGL library, examples, documentation and correctness tests.
 
 ## Develop
 

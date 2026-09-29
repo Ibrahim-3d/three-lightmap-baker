@@ -59,7 +59,7 @@ console.log(stats.probeCount);
 
 Use `bounces: 0` for normal baked-scene capture. The static lightmaps already contain indirect lighting; asking the probe capture to create another bounce layer would double-count the intended transport.
 
-The demo/editor's intended native capture intensity default is **3.2**. Library integrations can set `lightMapIntensity` explicitly as shown above.
+Set `lightMapIntensity` explicitly for your integration; `3.2` is the validated example value used throughout this documentation.
 
 ## What `captureLightmappedProbeGrid()` owns
 
@@ -220,7 +220,7 @@ Therefore:
 - actual spacing is never larger than the requested target;
 - a layout exceeding `maxProbes` fails instead of silently lowering density.
 
-The editor can show a separate cyan positions-only preview before generating actual irradiance. Preview positions are never persisted as lighting data.
+Applications may visualize probe positions before generating irradiance. Position previews are diagnostic only and should not be persisted as lighting data.
 
 ## Legacy energy convention
 
@@ -250,20 +250,16 @@ Debug tone mapping never modifies stored or runtime irradiance values.
 
 ---
 
-## Playground workflow
+## Typical integration workflow
 
-1. Bake the static scene.
-2. Open **Probes**.
-3. Keep **Three.js L2 SH (GPU)** selected for the preferred runtime.
-4. Choose spacing/count and cubemap size.
-5. Capture the native grid.
-6. Toggle probe visualization if needed.
-7. Enable the moving demo object to inspect spatial response.
-8. Save the project if persistence is required.
+1. Bake the static scene with `LightmapBaker`.
+2. Apply the resulting lightmaps.
+3. Capture a native `LightProbeGrid` with `captureLightmappedProbeGrid()`.
+4. Add or enable dynamic objects that should receive probe lighting.
+5. Inspect dynamic-object response across the intended movement area.
+6. Persist the returned descriptor if the application needs to reconstruct the grid later.
 
-The playground stores native descriptor/settings and restored baked lightmaps; on load it recaptures the GPU grid rather than attempting to serialize the internal GPU texture.
-
-Starting a new static bake invalidates the old probe field because it was derived from the previous baked-lighting state.
+Starting a new static bake invalidates a probe field derived from the previous baked-lighting state.
 
 ## Current limitations
 

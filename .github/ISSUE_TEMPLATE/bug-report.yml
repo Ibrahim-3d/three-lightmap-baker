@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible issue in the baker or demo.
+description: Report a reproducible issue in the WebGL lightmap-baker package.
 labels: ["bug"]
 body:
   - type: input

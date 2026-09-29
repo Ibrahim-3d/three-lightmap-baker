@@ -1,81 +1,81 @@
-# npm v1 Release Checklist
+# npm Release Checklist
 
-This is the repository-side publication checklist for `lightmap-baker`.
+This is the release checklist for the public `lightmap-baker` WebGL package.
 
-Publishing is always explicit. Do not tag, release, version-bump or run the real `npm publish` command as a side effect of normal development.
+Publishing is always explicit. Normal development and cleanup must not create tags, GitHub Releases, version bumps, or run a real `npm publish`.
 
-## 1. Release candidate state
+## Release state
+
+The repository currently targets `lightmap-baker@1.1.0`.
+
+That version is **not released** until all three agree:
+
+1. npm contains the intended artifact;
+2. Git tag `v1.1.0` exists;
+3. the matching GitHub Release exists.
+
+## 1. Candidate validation
 
 Before publication:
 
-- `master` contains the intended release changes;
+- `master` contains only the intended package changes;
 - working tree is clean;
-- package version is the intended version;
-- README and public docs describe the code actually being published;
+- `package.json` has the intended version;
+- README and shipped docs match the package;
 - Three.js peer range matches the tested line;
-- no demo/editor runtime packages have leaked into public package dependencies.
+- no editor/Studio dependencies are owned by this library repository.
 
-Current v1 compatibility target:
+Current compatibility target:
 
 ```text
 three >=0.185.1 <0.186.0
+THREE.WebGLRenderer
+WebGL 2
+EXT_color_buffer_float
 ```
 
-## 2. Hardware validation
+## 2. Automated release check
 
-Run hardware-sensitive rendering checks on a real supported GPU, not a software/headless CI renderer.
-
-Run the hardware gate:
-
-```bash
-pnpm run test:release:hardware
-```
-
-The gate rejects software WebGL fallbacks, runs the focused numerical
-correctness suite, then runs the full release suite on the hardware-backed
-browser path.
-
-The local hardware command uses installed Google Chrome and lets ANGLE select
-the native backend (normally D3D11 on Windows). Set `BAKER_E2E_ANGLE` only for
-targeted backend diagnostics. CI continues to use its installed Playwright
-Chromium browser and is a browser smoke gate, not evidence of real-GPU GI.
-
-Also manually confirm:
-
-- Cornell produces visible non-black baked lighting;
-- textured GI behaves correctly;
-- Gym / Desert / Backrooms load;
-- native probe workflow behaves normally;
-- a new playground project starts with the intended probe intensity.
-
-## 3. Full release check
-
-Run on the actual release commit:
+Run on the actual candidate commit:
 
 ```bash
 pnpm install --frozen-lockfile
 pnpm run release:check
 ```
 
-`release:check` covers:
+The release check covers:
 
 - source TypeScript;
 - example TypeScript;
 - ESLint;
 - Prettier;
-- the full browser test suite, including hardware-marked tests when run locally;
-- demo build;
-- bundle budget;
+- browser correctness tests;
 - npm package build;
 - TypeScript declarations;
-- isolated ESM/CJS/tarball import checks;
+- ESM/CJS/tarball import checks;
 - `npm publish --dry-run --access public`.
 
-Do not continue if this command fails.
+Do not continue if it fails.
 
-## 4. Inspect the dry-run package
+## 3. Hardware validation
 
-Confirm the tarball contains only intended public material, especially:
+If a change affects lighting, GPU resource behavior, atlas generation, filters, probes or renderer lifecycle, validate it on a real supported WebGL2 GPU/browser path.
+
+Record:
+
+- browser / OS;
+- GPU and reported WebGL renderer;
+- representative bake settings;
+- focused numerical/correctness results;
+- representative visual result.
+
+Do not treat software/headless WebGL CI as evidence of production GPU output quality.
+
+## 4. Inspect the package
+
+Inspect `npm pack` / dry-run output.
+
+Expected public material includes:
 
 - `dist/package`;
 - `README.md`;
@@ -85,26 +85,12 @@ Confirm the tarball contains only intended public material, especially:
 - `docs/GETTING_STARTED.md`;
 - `docs/API_STATUS.md`;
 - `docs/LIGHT_PROBES.md`;
+- `docs/MAINTENANCE.md`;
 - `docs/architecture.md`.
 
-Confirm the package does not ship playground/editor source or Preact UI runtime dependencies.
+Confirm no editor/Studio source or UI runtime dependencies are shipped.
 
-## 5. Registry/account checks
-
-Before the real publish command:
-
-```bash
-npm whoami
-npm view lightmap-baker
-```
-
-Verify:
-
-- npm authentication is using the intended account;
-- the package name is available or owned by the intended account;
-- 2FA / provenance requirements are understood before publication.
-
-## 6. Publish
+## 5. Publish
 
 Only after explicit approval:
 
@@ -112,11 +98,7 @@ Only after explicit approval:
 npm publish --access public
 ```
 
-Do not run the real publish command without Ibrahim's explicit release instruction.
-
-## 7. Verify the registry artifact
-
-After publication:
+Then verify:
 
 ```bash
 npm view lightmap-baker version
@@ -124,26 +106,20 @@ npm view lightmap-baker peerDependencies
 npm view lightmap-baker dist
 ```
 
-Then test from a clean consumer project:
+Test a clean consumer install with the supported Three.js version.
 
-```bash
-mkdir baker-consumer-smoke
-cd baker-consumer-smoke
-npm init -y
-npm install three lightmap-baker typescript
-```
+## 6. Tag and GitHub Release
 
-Compile/import a minimal TypeScript consumer and run a browser integration smoke.
+Only after the npm artifact is confirmed healthy:
 
-## 8. GitHub release/tag
+- create the matching Git tag;
+- create the GitHub Release from the same commit;
+- use `CHANGELOG.md` as the release-note source.
 
-Create the corresponding Git tag/GitHub Release only after the npm artifact has been confirmed healthy.
-
-Release notes should use `CHANGELOG.md` as the source of truth and call out:
+Release notes must call out:
 
 - browser/WebGL requirement;
-- Three r185 compatibility;
-- textured/multi-material GI;
-- native `LightProbeGrid` support;
-- material-transport limitations;
-- Node/WebGPU status.
+- supported Three.js range;
+- material/shader transport limits;
+- probe support;
+- that WebGPU/headless/cloud work is outside this repository.

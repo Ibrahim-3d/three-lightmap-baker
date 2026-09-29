@@ -16,7 +16,7 @@ This site documents the original MIT-licensed browser-local LightBaker for Three
 - [Light Probes](./LIGHT_PROBES.md)
 - [Maintenance scope](./MAINTENANCE.md)
 - [Architecture](./architecture.md)
-- [Changelog](../CHANGELOG.md)
+- [Changelog](https://github.com/Ibrahim-3d/three-lightmap-baker/blob/master/CHANGELOG.md)
 
 ## What this repository is
 

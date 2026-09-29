@@ -1,6 +1,6 @@
-# API Status — v1.1.0
+# API Status — v1.1 development
 
-This document describes the public browser-local WebGL package maintained in this repository. The repository is the original open-source LightBaker implementation; next-generation hosted/backend development is outside this repository.
+This document describes the current v1.1 development line of the public browser-local WebGL package. v1.1 is not considered released until its npm artifact, Git tag and GitHub Release are explicitly published.
 
 ## Renderer contract
 

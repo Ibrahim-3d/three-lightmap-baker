@@ -2,7 +2,9 @@
 
 All notable public changes to `lightmap-baker` are documented here.
 
-## Unreleased
+## Unreleased — target lightmap-baker v1.1.0
+
+> v1.1.0 is the current release target in source. It is not a published GitHub release/tag until the npm artifact and release are explicitly created.
 
 ### Repository transition
 
@@ -11,7 +13,7 @@ All notable public changes to `lightmap-baker` are documented here.
 - WebGPU, hosted/cloud, headless infrastructure and next-generation backend development are outside this repository.
 - Public documentation now explicitly requires `THREE.WebGLRenderer` and documents the supported material/shader boundary.
 
-## lightmap-baker v1.1.0 — 2026-09-27
+### v1.1.0 target
 
 Correctness and lifecycle release for the browser/WebGL baker. This release is
 backward compatible with v1.0.0 and keeps the same Three.js r185 peer range.
@@ -56,15 +58,13 @@ backward compatible with v1.0.0 and keeps the same Three.js r185 peer range.
 - Focused hardware correctness gate: **14/14 passed**.
 - Full hardware release suite on NVIDIA GeForce RTX 3090 / ANGLE D3D11:
   **47 passed, 1 intentional opt-in benchmark skipped, 0 failures**.
-- Current GitHub CI passes typecheck, lint, formatting, package/demo builds,
-  package import smoke, browser correctness/runtime smoke, dependency guards and
-  deployment.
+- Current GitHub CI validates typecheck, lint, formatting, package build, package import smoke and browser correctness coverage.
 
 ### Compatibility
 
 - Three.js peer range remains `>=0.185.1 <0.186.0`.
 - Requires `WebGLRenderer`, WebGL 2 and `EXT_color_buffer_float` for baking.
-- Node/headless and WebGPU baking remain future work.
+- Node/headless and WebGPU baking are not part of this repository's maintained scope.
 
 ## lightmap-baker v1.0.0 — 2026-08-13
 
