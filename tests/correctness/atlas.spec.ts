@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-const base = '/three-lightmap-baker/@fs/' + process.cwd().replace(/\\/g, '/');
+const base = '/@fs/' + process.cwd().replace(/\\/g, '/');
 test.beforeEach(async ({ page }) => {
   await page.goto(base + '/tests/browser/correctness.html');
 });
