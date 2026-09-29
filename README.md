@@ -6,6 +6,12 @@ This MIT-licensed repository preserves the original browser-local LightBaker for
 
 ![Cornell scene after browser-local bake](screenshots/after-production-baked-combined.png)
 
+## Documentation site
+
+GitHub Pages target: https://ibrahim-3d.github.io/three-lightmap-baker/
+
+The Pages site is now documentation-first. The repository Wiki can be used as the friendlier manual/navigation layer; version-controlled files under `/docs` remain the authoritative source.
+
 ## Install
 
 ```sh
