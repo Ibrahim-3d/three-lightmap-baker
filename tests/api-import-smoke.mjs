@@ -70,12 +70,20 @@ if (packageManifest.dependencies?.three !== undefined) {
 if (packageManifest.dependencies?.['@types/three'] !== '^0.185.4') {
   throw new Error('@types/three must ship with the published r185 TypeScript contract');
 }
-for (const editorDependency of ['preact', '@preact/signals', 'lucide-preact']) {
-  if (packageManifest.dependencies?.[editorDependency] !== undefined) {
-    throw new Error(`${editorDependency} must not be owned as a runtime dependency`);
-  }
-  if (packageManifest.devDependencies?.[editorDependency] === undefined) {
-    throw new Error(`${editorDependency} must remain available to the demo as a dev dependency`);
+for (const editorDependency of [
+  'preact',
+  '@preact/signals',
+  'lucide-preact',
+  '@preact/preset-vite',
+  'tailwindcss',
+  'postcss',
+  'autoprefixer',
+]) {
+  if (
+    packageManifest.dependencies?.[editorDependency] !== undefined ||
+    packageManifest.devDependencies?.[editorDependency] !== undefined
+  ) {
+    throw new Error(`${editorDependency} is stale editor/demo baggage and must not be owned by this library repository`);
   }
 }
 if (packageManifest.peerDependencies?.three !== '>=0.185.1 <0.186.0') {

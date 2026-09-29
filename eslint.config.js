@@ -6,7 +6,7 @@ export default [
     ignores: ['dist/**', 'node_modules/**', '*.config.js', '*.config.ts'],
   },
   {
-    files: ['packages/**/*.{ts,tsx}', 'apps/**/*.{ts,tsx}'],
+    files: ['packages/**/*.ts'],
     languageOptions: {
       parser: tsparser,
       parserOptions: {
@@ -19,9 +19,6 @@ export default [
       '@typescript-eslint': tseslint,
     },
     rules: {
-      // Recommended (syntactic) rules only - type-aware variants fire too
-      // noisily against Three.js uniform shapes; TypeScript strict mode is
-      // the real safety net.
       ...tseslint.configs.recommended.rules,
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-non-null-assertion': 'warn',
@@ -38,15 +35,6 @@ export default [
       'no-var': 'error',
       'prefer-const': 'error',
       'no-throw-literal': 'error',
-    },
-  },
-  {
-    // Apps (playground glue + scene presets) loosen `no-console` and
-    // `no-explicit-any` since they're demo wiring, not library code.
-    files: ['apps/**/*.{ts,tsx}'],
-    rules: {
-      'no-console': 'off',
-      '@typescript-eslint/no-explicit-any': 'off',
     },
   },
 ];

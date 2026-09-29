@@ -4,13 +4,18 @@
     "target": "esnext",
     "baseUrl": ".",
     "paths": {
-      "baker-classic": ["packages/baker-classic/src/index.ts"]
+      "baker-classic": [
+        "packages/baker-classic/src/index.ts"
+      ]
     },
-    "lib": ["es2015", "ES2019", "DOM", "ES7"],
+    "lib": [
+      "es2015",
+      "ES2019",
+      "DOM",
+      "ES7"
+    ],
     "moduleResolution": "Node",
     "esModuleInterop": true,
-    "jsx": "react-jsx",
-    "jsxImportSource": "preact",
     "allowSyntheticDefaultImports": true,
     "experimentalDecorators": true,
     "alwaysStrict": false,
@@ -26,8 +31,15 @@
     "sourceMap": true,
     "skipLibCheck": true,
     "ignoreDeprecations": "5.0",
-    "types": ["vite/client"]
+    "types": [
+      "vite/client"
+    ]
   },
-  "include": ["./packages/baker-classic/src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "./packages/baker-classic/src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }
