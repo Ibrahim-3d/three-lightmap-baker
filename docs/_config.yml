@@ -1,0 +1,7 @@
+title: LightBaker WebGL Documentation
+description: Documentation for the original browser-local WebGL LightBaker for Three.js.
+theme: minima
+markdown: kramdown
+show_downloads: false
+github:
+  is_project_page: true
