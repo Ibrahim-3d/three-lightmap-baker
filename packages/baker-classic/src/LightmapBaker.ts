@@ -9,6 +9,7 @@ import { runBakePipeline } from './bake/pipeline';
 import type { BakeHooks, LightmapBakerOptions, ResolvedBakerOptions } from './bake/types';
 import type { ContextLossState } from './bake/internals';
 import {
+  assertSupportedLightmapRenderer,
   createRendererAdapter,
   isLightmapRendererAdapter,
   type LightmapRendererAdapter,
@@ -97,18 +98,6 @@ function resolveAOOptions(
   };
 }
 
-function assertSupportedRenderer(renderer: unknown): void {
-  if (
-    renderer &&
-    typeof renderer === 'object' &&
-    (renderer as { isWebGPURenderer?: boolean }).isWebGPURenderer === true
-  ) {
-    throw new TypeError(
-      'lightmap-baker v1.1 requires THREE.WebGLRenderer. THREE.WebGPURenderer is not supported, including its WebGL fallback mode.',
-    );
-  }
-}
-
 /**
  * One-call lightmap baker - wraps the lib primitives behind the Task 06 spec API.
  *
@@ -146,9 +135,9 @@ export class LightmapBaker {
       renderer?: unknown;
       rendererAdapter?: { renderer?: unknown };
     };
-    assertSupportedRenderer(rendererOrOptions);
-    assertSupportedRenderer(candidate.renderer);
-    assertSupportedRenderer(candidate.rendererAdapter?.renderer);
+    assertSupportedLightmapRenderer(rendererOrOptions);
+    assertSupportedLightmapRenderer(candidate.renderer);
+    assertSupportedLightmapRenderer(candidate.rendererAdapter?.renderer);
 
     // We intentionally rely on `isWebGLRenderer === true` (Three.js runtime tag)
     // and a minimal shape check as a fallback for compatibility across renderer
@@ -210,13 +199,13 @@ export class LightmapBaker {
   }
 
   setRenderer(renderer: WebGLRenderer): this {
-    assertSupportedRenderer(renderer);
+    assertSupportedLightmapRenderer(renderer);
     this._rendererAdapter = createRendererAdapter(renderer);
     return this;
   }
 
   setRendererAdapter(rendererAdapter: LightmapRendererAdapter): this {
-    assertSupportedRenderer(rendererAdapter.renderer);
+    assertSupportedLightmapRenderer(rendererAdapter.renderer);
     this._rendererAdapter = rendererAdapter;
     return this;
   }
