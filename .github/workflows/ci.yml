@@ -24,6 +24,8 @@ jobs:
       - run: pnpm run lint
       - run: pnpm run format:check
       - run: pnpm run build
+      - run: pnpm run typecheck:demo
+      - run: pnpm run build:demo
       - run: pnpm run test:api-import
   correctness:
     runs-on: ubuntu-latest
