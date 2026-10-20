@@ -26,7 +26,8 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: r('dist'),
+    // Separate from dist/package so a demo build can never empty the published library.
+    outDir: r('dist/demo'),
     emptyOutDir: true,
   },
   server: {

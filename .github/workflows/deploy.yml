@@ -35,13 +35,13 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build the playground demo
-        run: VITE_BASE_PATH=/three-lightmap-baker/ pnpm run build:demo && touch dist/.nojekyll
+        run: VITE_BASE_PATH=/three-lightmap-baker/ pnpm run build:demo && touch dist/demo/.nojekyll
 
       - name: Publish production site
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_branch: gh-pages
-          publish_dir: ./dist
+          publish_dir: ./dist/demo
           keep_files: false
           full_commit_message: Deploy production site from ${{ github.sha }}

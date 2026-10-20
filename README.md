@@ -10,11 +10,9 @@ This MIT-licensed repository is the original browser-local LightBaker for Three.
 
 Try the baker in the browser: https://ibrahim-3d.github.io/three-lightmap-baker/ (desktop, WebGL2; a discrete GPU is recommended for full bakes). The playground source is `apps/playground`; run it locally with `pnpm dev` and build it with `pnpm build:demo`.
 
-## Documentation site
+## Documentation
 
-GitHub Pages target: https://ibrahim-3d.github.io/three-lightmap-baker/
-
-The Pages site is now documentation-first. The repository Wiki can be used as the friendlier manual/navigation layer; version-controlled files under `/docs` remain the authoritative source.
+The documentation lives in [`/docs`](docs/) in this repository (the authoritative source); the repository Wiki can serve as a friendlier manual. GitHub Pages hosts the demo above.
 
 ## Install
 
