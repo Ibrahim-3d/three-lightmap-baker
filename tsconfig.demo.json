@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+    "paths": {
+      "baker-classic": ["packages/baker-classic/src/index.ts"],
+      "shared": ["packages/shared/src/index.ts"],
+      "shared/*": ["packages/shared/src/*"],
+      "demo-shell": ["packages/demo-shell/src/index.ts"],
+      "demo-shell/baker": ["packages/demo-shell/src/baker/index.ts"],
+      "pt-renderer": ["packages/pt-renderer/src/index.ts"],
+      "pt-renderer/*": ["packages/pt-renderer/src/*"],
+      "pt-baker": ["packages/pt-baker/src/index.ts"],
+      "pt-baker/*": ["packages/pt-baker/src/*"]
+    }
+  },
+  "include": ["apps/playground", "packages/baker-classic/src/types", "packages/shared/src", "packages/demo-shell/src", "packages/pt-renderer/src", "packages/pt-baker/src"]
+}
