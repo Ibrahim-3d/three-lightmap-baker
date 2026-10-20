@@ -37,7 +37,14 @@
     "rendering",
     "architectural-visualization"
   ],
-  "sideEffects": false,
+  "sideEffects": [
+    "./apps/**",
+    "./packages/shared/**",
+    "./packages/demo-shell/**",
+    "./packages/pt-renderer/**",
+    "./packages/pt-baker/**",
+    "*.css"
+  ],
   "main": "./dist/package/index.cjs",
   "module": "./dist/package/index.js",
   "types": "./dist/package/index.d.ts",

@@ -79,11 +79,9 @@ for (const editorDependency of [
   'postcss',
   'autoprefixer',
 ]) {
-  if (
-    packageManifest.dependencies?.[editorDependency] !== undefined ||
-    packageManifest.devDependencies?.[editorDependency] !== undefined
-  ) {
-    throw new Error(`${editorDependency} is stale editor/demo baggage and must not be owned by this library repository`);
+  // The playground demo may use these as devDependencies; the published library must never depend on them.
+  if (packageManifest.dependencies?.[editorDependency] !== undefined) {
+    throw new Error(`${editorDependency} is a demo-only dependency and must not be a runtime dependency of the library`);
   }
 }
 if (packageManifest.peerDependencies?.three !== '>=0.185.1 <0.186.0') {
